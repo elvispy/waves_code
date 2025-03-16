@@ -1,10 +1,15 @@
 import jax.numpy as jnp
 
-def DtN_generator(N=100):
+def DtN_generator(N: int):
     '''
-    This script will generate the matrix so that Aphi is an approximation of dphi/dz
+    This script will generate the matrix M so that M @ phi is an approximation of
+    \frac{1}{\pi} \left(\lim_{\epsilon\to 0} \int_{|x-x_0| > \epsilon} 
+    \frac{\phi(x_0, 0) - \phi(x, 0)}{(x-x_0)^2} dx\right)
+
+    For harmonic functions in the plane with decaying behaviour, this is exactly 
+    d/dz phi(x, 0)|_{x = x0}
     '''
-    Delta_x = 1/jnp.float32(N)
+    #N = int(1/Delta_x) if N is None else N
 
     # Create the main diagonal with 66's
     DtN = jnp.diag(jnp.full(N, 66))
@@ -19,37 +24,29 @@ def DtN_generator(N=100):
         DtN += jnp.diag(jnp.full(N-2, -1), k=2)
         DtN += jnp.diag(jnp.full(N-2, -1), k=-2)
         
-    DtN = DtN / (18*jnp.pi * Delta_x) # This is the integral around the origin
-    DtN = DtN + jnp.diag(jnp.full(N, 1/(Delta_x*jnp.pi))) # First integral away of the origin. 
+    DtN = DtN / 18.0 # This is the integral around the origin
+    DtN = DtN + jnp.diag(jnp.full(N, 1.0)) # First integral away of the origin. 
     
     # Now second integral away from the origin
     coefficients = [0 for _ in range(N+1)]
-    coef = lambda n, d: -jnp.float32(n)/(n+d) + (2*n -d)/2 * jnp.log((n+1)/(n-1)) - 1
+    coef = lambda n, d: -jnp.float32(n)/(n+d) + (2*n - d)/2 * jnp.log((n+1)/(n-1)) - 1
     for jj in range(1, int(N/2)):
         n = 2 * jj + 1
-        coefficients[n-1] += coef(n, -1)
-        coefficients[n+1] += coef(n, +1)
-        coefficients[n]   += 2 - 2 * n * jnp.log((n+1)/(n-1))
+        coefficients[n-1] += coef(n, -1.0)
+        coefficients[n+1] += coef(n, +1.0)
+        coefficients[n]   += -2*coef(n, 0.0)
 
     coefficients = jnp.array(coefficients)  
-    i = jnp.arange(N)
-    j = jnp.arange(N)
-    I, J = jnp.meshgrid(i, j, indexing='ij')
-    diff = J - I
-    # Use jnp.where to apply the function elementwise
-    matrix = jnp.where(diff >= 0, 
-                  jnp.take(coefficients, diff),  # coefficients[J - I] safely
-                  -jnp.take(coefficients, -diff))  # -coefficients[I - J] safely
+    i, j = jnp.meshgrid(jnp.arange(N), jnp.arange(N), indexing='ij')
+    matrix = coefficients[jnp.abs(i - j)]
     
-    
-    # Apply the function f(i, j) to all pairs (i, j)
-    DtN = DtN + matrix/(jnp.pi * Delta_x)  # Broadcasting will handle the rest
+    DtN = DtN + matrix  # Broadcasting will handle the rest
 
-    return DtN
+    return DtN/(jnp.pi)
 
 # Example usage:
 if __name__ == "__main__":
     N = 6  # Example size
-    matrix = DtN_generator(N)
+    matrix = DtN_generator(N = N)
     print(matrix)
 
