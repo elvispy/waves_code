@@ -38,9 +38,9 @@ def DtN_generator(N: int):
 
     coefficients = jnp.array(coefficients)  
     i, j = jnp.meshgrid(jnp.arange(N), jnp.arange(N), indexing='ij')
-    matrix = coefficients[jnp.abs(i - j)]
+    DtN3 = coefficients[jnp.abs(i - j)]
     
-    DtN = DtN + matrix  # Broadcasting will handle the rest
+    DtN = DtN + DtN3  # Broadcasting will handle the rest
 
     return DtN/(jnp.pi)
 
