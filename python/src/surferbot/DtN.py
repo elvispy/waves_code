@@ -1,6 +1,6 @@
 import jax.numpy as jnp
 
-def DtN_generator(N: int):
+def DtN_generator(N: int, h):
     '''
     This script will generate the matrix M so that M @ phi is an approximation of
     \frac{1}{\pi} \left(\lim_{\epsilon\to 0} \int_{|x-x_0| > \epsilon} 
@@ -42,7 +42,7 @@ def DtN_generator(N: int):
     
     DtN = DtN + DtN3  # Broadcasting will handle the rest
 
-    return DtN/(jnp.pi)
+    return h * DtN/(jnp.pi)
 
 # Example usage:
 if __name__ == "__main__":
