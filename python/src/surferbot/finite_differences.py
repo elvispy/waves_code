@@ -3,6 +3,7 @@ import unittest
 from DtN import DtN_generator
 import scipy.integrate as spi
 from findiff import Diff
+from integration import simpson_weights
  
 # constants
 x = jnp.linspace(0, 10, 100)
@@ -13,10 +14,9 @@ g = 9.8
 # rho = 
 # omega = 
 # nu = 
-# phi = 
 
 
-def solver(sigma, rho, omega, nu, n, g, L, domain):
+def solver(sigma, rho, omega, nu, eta, zeta, theta, n, g, L, force, mass, domain):
     
     DtN = DtN_generator(n)
     N = DtN / (L / n)
@@ -26,11 +26,25 @@ def solver(sigma, rho, omega, nu, n, g, L, domain):
     d_dx = jnp.array(first_deriv.toarray())
 
     d2_dx2 = Diff(0, float(h), acc=2) ** 2
-
-    # manual finite differences
-    C = (4 * 1j * nu  * omega / g)
+    constant = (4 * 1j * nu  * omega / g)
     
-    A = N @ d_dx(phi_vector) - N * (sigma / (rho * g)) @ d2_dx2(phi_vector) - (omega**2 / g) * d_dx - C * d2_dx2
+    B = N @ d_dx - N * (sigma / (rho * g)) @ d2_dx2 - (omega**2 / g) * d_dx - constant * d2_dx2
+
+    # fix eta, zeta, theta, currently not a matrix
+
+    C = N @ d_dx - 1j(zeta + x * theta) * omega
+
+    G = N @ d_dx - 1j * omega * eta @ d_dx + 2 * nu * eta @ d2_dx2
+
+    H = eta - zeta + theta * L / 2
+
+    # fix function
+    f: lambda x: 1j * omega @ d_dx + g * zeta + nu * N**2 @ d_dx
+    w = simpson_weights(n, L / (n-1))
+
+    A1 = force + mass * omega**2 * zeta - rho * jnp.dot(w, f(x))
+
+    A2 = 
 
     return A
 
