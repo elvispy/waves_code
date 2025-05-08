@@ -16,10 +16,21 @@ g = 9.8
 # phi = 
 
 
-def solver(sigma, rho, omega, nu, n, g, L, domain):
-    
+def surferbot(sigma, rho, omega, nu, g, L_raft, L_domain, n: int = 100):
+
+    ## Derived dimensional Parameters (SI Units)
+
+
+    ## Non-dimensional Parameters
+
+
+    ## Helper variables
+    x = jnp.linspace(-L_domain, L_domain, n)
+    x_contact = x[abs(x) <= L_raft]
+    x_free    = x[abs(x) >  L_raft]
+    h = x[1] - x[0]
     DtN = DtN_generator(n)
-    N = DtN / (L / n)
+    N = DtN / (L_raft / n)
 
     # findiff
     first_deriv = Diff(0, h).matrix((n, ))
@@ -27,13 +38,22 @@ def solver(sigma, rho, omega, nu, n, g, L, domain):
 
     d2_dx2 = Diff(0, float(h), acc=2) ** 2
 
+
+    ## Building the first block of equations (Bernoullli on free surface)
     # manual finite differences
     C = (4 * 1j * nu  * omega / g)
-    
+
     A = N @ d_dx(phi_vector) - N * (sigma / (rho * g)) @ d2_dx2(phi_vector) - (omega**2 / g) * d_dx - C * d2_dx2
+    ## Building the second block of equations (Kinematic BC on the free surface)
+
+    ## Building the third block of equations (Kinematic BC on the raft)
+
+    ## Building the fourth block (Raft-free surface BC)
+
+    ## 
 
     return A
 
 if __name__ == "__main__":
-    solver(1, 1, 1, 1, 100, 9.8, 10, 100)
+    surferbot(1, 1, 1, 1, 100, 9.8, 10, 100)
 
