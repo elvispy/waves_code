@@ -1,24 +1,85 @@
 import jax.numpy as jnp
-import jax
-import unittest
-from DtN import DtN_generator
-import scipy.integrate as spi
-from findiff import Diff
+from findiff import Diff as _Diff
+from findiff import grids
+import numpy as np
+import numbers
 from integration import simpson_weights
  
+def make_axis(dim, config_or_axis, periodic=False):
+    """
+    A reimplementation of the make_axis function to create a grid axis.
+    Supports Jax arrays
+    """
+    if isinstance(config_or_axis, grids.GridAxis):
+        return config_or_axis
+    if isinstance(config_or_axis, numbers.Number):
+        return grids.EquidistantAxis(dim, spacing=config_or_axis, periodic=periodic)
+    elif isinstance(config_or_axis, jnp.ndarray) and len(config_or_axis) == 1:
+        return grids.EquidistantAxis(dim, spacing=config_or_axis.item(0), periodic=periodic)
+    elif isinstance(config_or_axis, (np.ndarray, jnp.ndarray)):
+        return grids.NonEquidistantAxis(dim, coords=config_or_axis, periodic=periodic)
 
-def jDiff(axis, grid=None, periodic = False, acc=2):
-    # If coords is jax array, convert it to pure float
-    if isinstance(grid, jnp.ndarray):
-        grid = jnp.round(grid, 5)
-        grid = grid.tolist()
-    return Diff(axis, grid=grid, periodic=periodic, acc=acc)
+
+class Diff(_Diff):
+
+    def __init__(self, axis=0, grid=None, periodic=False, acc=_Diff.DEFAULT_ACC):
+        grid_axis = make_axis(axis, grid, periodic)
+        super().__init__(axis, grid_axis, acc)
+
+    # TODO: Implement an instatiatior to make AD compliant. And check this implementation
+    def __call__(self, shape, *args, **kwargs):
+        if isinstance(shape, tuple) and len(shape) <= 2:
+            if len(shape) == 1:
+                return self.matrix(shape).toarray().reshape(shape[0], shape[0])
+            elif len(shape) == 2:
+                return self.matrix(shape).toarray().reshape(shape[0], shape[1], shape[0], shape[1])
+        else:
+            return super().__call__(shape, *args, **kwargs)
 
 
 
+def solve_tensor_system(A, b):
+    m = A.shape[0]
+    x_shape = A.shape[1:]
+    A_mat = A.reshape(m, -1)  # shape (m, N)
+    b_vec = b.reshape(m)
+    if A_mat.shape[0] == A_mat.shape[1]:
+        # If the system is square, use solve
+        x_flat = jnp.linalg.solve(A_mat, b_vec)
+    else:
+        x_flat, _, _, _ = jnp.linalg.lstsq(A_mat, b_vec, rcond=None)
 
-def solver(sigma, rho, omega, nu, eta, g, 
-           L_raft, force, L_domain, E, I, rho_raft, n = 101):
+    return x_flat.reshape(x_shape)
+
+def test_solution(eta, phi, domain):
+    """
+    Test the solution by checking the continuity of the velocity field
+    """
+    # TODO: Implement this function
+    x, z = domain
+    N = x.shape[0]
+    M = z.shape[0]
+    
+    # Calculate the velocity field
+    u = jnp.zeros((N, M), dtype=jnp.complex64)
+    v = jnp.zeros((N, M), dtype=jnp.complex64)
+    
+    # Calculate the velocity field using finite differences
+    d_dx = Diff(axis=0, grid=x, acc=1)
+    d_dz = Diff(axis=1, grid=z, acc=1)
+    
+    u = d_dx @ phi[:, 0]  # Velocity in x direction
+    v = d_dz @ eta       # Velocity in z direction
+    
+    # Check continuity of the velocity field
+    continuity_check = jnp.allclose(u + v, 0.0)
+    
+    return continuity_check
+
+def solver(sigma = 72.20, rho = 1000., omega = 60., nu = 1e-5, g = 9.81, 
+           L_raft = 0.1, force = 1., motor_position = 0.025, 
+           L_domain = 1., E = 1., I = 1., 
+           rho_raft = 1240., n = 21, DEBUG = False):
     """
     Solves the linearized water wave problem for a flexible raft
     Inputs:
