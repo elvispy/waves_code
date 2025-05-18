@@ -74,5 +74,5 @@ def solver(sigma, rho, omega, nu, eta, zeta, theta, g, L_raft, force, mass, L_do
     return A
 
 if __name__ == "__main__":
-    surferbot(1, 1, 1, 1, 100, 9.8, 10, 100)
+    solver(1, 1, 1, 1, 100, 9.8, 10, 100)
 
