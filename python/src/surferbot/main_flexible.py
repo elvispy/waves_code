@@ -3,6 +3,7 @@ from findiff import Diff as _Diff
 from findiff import grids
 import numpy as np
 import numbers
+import types
 from integration import simpson_weights
  
 def make_axis(dim, config_or_axis, periodic=False):
@@ -19,23 +20,49 @@ def make_axis(dim, config_or_axis, periodic=False):
     elif isinstance(config_or_axis, (np.ndarray, jnp.ndarray)):
         return grids.NonEquidistantAxis(dim, coords=config_or_axis, periodic=periodic)
 
+def _dynamic_s_op_method(S, shape=None):
+    target_shape = shape if shape is not None else S.shape
+    if isinstance(target_shape, tuple) and len(target_shape) <= 2:
+        return jnp.array(S.matrix(target_shape).toarray().reshape(*(target_shape + target_shape)))
+    else:
+        return NotImplemented
 
 class Diff(_Diff):
 
     def __init__(self, axis=0, grid=None, periodic=False, acc=_Diff.DEFAULT_ACC):
         grid_axis = make_axis(axis, grid, periodic)
         super().__init__(axis, grid_axis, acc)
+        self.shape = shape
 
-    # TODO: Implement an instatiatior to make AD compliant. And check this implementation
-    def __call__(self, shape, *args, **kwargs):
-        if isinstance(shape, tuple) and len(shape) <= 2:
-            if len(shape) == 1:
-                return self.matrix(shape).toarray().reshape(shape[0], shape[0])
-            elif len(shape) == 2:
-                return self.matrix(shape).toarray().reshape(shape[0], shape[1], shape[0], shape[1])
-        else:
-            return super().__call__(shape, *args, **kwargs)
+    # TODO: Write a test to check if this is AD compliant.
+    def op(self, shape=None):
+        return _dynamic_s_op_method(self, shape=shape)
+        
+    def __pow__(self, power):
+        """Returns a Diff instance for a higher order derivative."""
+        new_diff = Diff(self.dim, self.axis, shape=self.shape, acc=self.acc)
+        new_diff._order *= power
+        return new_diff
 
+    def __mul__(self, other):
+        if isinstance(other, Diff) and self.dim == other.dim:
+            new_diff = Diff(self.dim, self.axis, shape=self.shape, acc=self.acc)
+            new_diff._order += other.order
+            return new_diff
+        elif isinstance(other, (numbers.Number, jnp.ndarray)):
+            return other * self.op()
+        S = super().__mul__(other)
+        if self.shape == other.shape:
+            S.shape = self.shape
+            S.op = types.MethodType(_dynamic_s_op_method, S)
+            return S
+        return NotImplemented
+    
+    def __rmul__(self, other):
+        if isinstance(other, (numbers.Number, jnp.ndarray)):
+            return self.__mul__(other)
+        return super().__rmul__(other)
+    
 
 
 def solve_tensor_system(A, b):
