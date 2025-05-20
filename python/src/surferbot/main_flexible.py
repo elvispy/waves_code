@@ -192,8 +192,9 @@ def solver(sigma = 72.20, rho = 1000., omega = 60., nu = 1e-5, g = 9.81,
     # For example, A[i, j, :, :] are the weights for the linear equation that corresponds to the node (i, j)
 
     # Building the first block of equations (Bernoullli on the surface)
-    E1 = C11 * d_dz - C12 * d_dz * d_dx**2 - C13 * Id - C14 * d_dx**2
-    E1 = E1.matrix((N, M)).toarray().reshape(N, M, N, M)
+    M11 = d_dz; M12 = (d_dz * d_dx**2).op(); M13 = 1.0; M14 = d_dx**2 # Note: M12 has to be isolated due to left-to-right operator evaluation
+    E1 = C11 * M11 - C12 * M12 - C13 * M13 - C14 * M14
+    #E1 = E1.matrix((N, M)).toarray().reshape(N, M, N, M)
     E1 = E1[:, [0], :, :] # Only take the surface equations
     pad = jnp.zeros((N, 1, N, 1), dtype=jnp.complex64)
     E1 = jnp.concatenate([pad, E1], axis=3) # Adding surface variable
@@ -202,9 +203,10 @@ def solver(sigma = 72.20, rho = 1000., omega = 60., nu = 1e-5, g = 9.81,
     assert E1.shape[0] == N - H, f"Shape of E1 is {E1.shape} instead of {N-H}" if DEBUG else None
     
     # Building the second block of equations (Euler beam Equation)
-    d_dxc = Diff(axis=0, grid=jnp.round(x[x_contact], 3), acc=2) # I dont want to take information from outside for the beam equation
-    E2_eta = C21 * d_dxc**4 - C22 * Id - C25 * Id ## TODO: Change this to second order derivative
-    E2_eta = E2_eta.matrix((H, 1)).toarray().reshape(H, 1, H, 1)
+    d_dx1D = Diff(axis=0, grid=jnp.round(x[x_contact], 3), acc=2, shape=(H, 1)) # I dont want to take information from outside for the beam equation
+    M21 = d_dx1D**4
+    E2_eta = C21 * M21 - C22 * Id - C25 * Id ## TODO: Change this to second order derivative
+    #E2_eta = E2_eta.matrix((H, 1)).toarray().reshape(H, 1, H, 1)
     aux = jnp.zeros((H, 1, N, 1), dtype=jnp.complex64)
     E2_eta = aux.at[:, :, x_contact, :].set(E2_eta)
     surface_tension = jnp.zeros((H, 1, N, 1), dtype=jnp.complex64)
@@ -213,8 +215,9 @@ def solver(sigma = 72.20, rho = 1000., omega = 60., nu = 1e-5, g = 9.81,
     surface_tension = - C27 * surface_tension
     E2_eta = E2_eta + surface_tension
 
-    E2_phi =  - C24 * Id - C26 * d_dx ** 2
-    E2_phi = E2_phi.matrix((N, M)).toarray().reshape(N, M, N, M)
+    M26 = d_dx**2
+    E2_phi = - C24 * Id - C26 * M26
+    #E2_phi = E2_phi.matrix((N, M)).toarray().reshape(N, M, N, M)
     E2_phi = E2_phi[x_contact, 0:1, :, :] # Only take the surface equations
     # This shape should be (H, 1, N, M+1)    
     E2 = jnp.concatenate([E2_eta, E2_phi], axis=3).reshape(-1, N, M+1) 
@@ -222,23 +225,23 @@ def solver(sigma = 72.20, rho = 1000., omega = 60., nu = 1e-5, g = 9.81,
 
     # Kinematic boundary conditions
     E3_phi = C31 * d_dz
-    E3_phi = E3_phi.matrix((N, M)).toarray().reshape(N, M, N, M)
+    #E3_phi = E3_phi.matrix((N, M)).toarray().reshape(N, M, N, M)
     E3_phi = E3_phi[:, [0], :, :] # Only take the free surface equations
     E3_eta = - C32 * jnp.eye(N).reshape(N, 1, N, 1)
     # This shape should be (N, 1, N, M+1)
     E3 = jnp.concatenate([E3_eta, E3_phi], axis=3).reshape(-1, N, M+1) 
     assert E3.shape[0] == N, f"Shape of E3 is {E3.shape} instead of {N}" if DEBUG else None
 
-    # Laplacian
-    E4 = d_dx**2 + d_dz**2
-    E4 = E4.matrix((N, M)).toarray().reshape(N, M, N, M)
+    # Laplacian in operator form
+    E4 = (1.0 * d_dx**2 + 1.0 * d_dz**2)
+    #E4 = E4.matrix((N, M)).toarray().reshape(N, M, N, M)
     # We remove the bottom of 
     # Adding surface variable. This shape should be (N, M, N, M+1)
     E4 = jnp.concatenate([jnp.zeros((N, M, N, 1)), E4], axis=3).reshape(-1, N, M+1) 
     assert E4.shape[0] == N*M, f"Shape of E4 is {E4.shape} instead of {N*M}" if DEBUG else None
 
     # Boundary condition at the bottom of the surface
-    E5 = d_dz.matrix((N, M)).toarray().reshape(N, M, N, M)
+    E5 = 1.0 * d_dz#matrix((N, M)).toarray().reshape(N, M, N, M)
     E5 = E5[:, [-1], :, :] 
     E5 = jnp.concatenate([pad, E5], axis=3).reshape(-1, N, M+1)
     assert E5.shape[0] == N, f"Shape of E5 is {E5.shape} instead of {N}" if DEBUG else None
@@ -265,14 +268,14 @@ def solver(sigma = 72.20, rho = 1000., omega = 60., nu = 1e-5, g = 9.81,
     
     ## ASSEMBLE PRESSURE
     # Phi component of pressure
-    P1 = (C24 * Id + C26 * d_dx ** 2).matrix((N, )).toarray().reshape(N, N)
-    P1 = P1 @ phi_surface
-    p = (C25 * eta + P1)[x_contact] # Pressure (eqn 2.20)
+    d_dx1D.shape = (H,)
+    P1 = (C24 * Id + C26 * d_dx1D ** 2) # TODO: Check that i want to calculate pressure only with information from inside the raft
+    P1 = P1 @ (phi_surface[x_contact])
+    p = (C25 * eta[x_contact] + P1) # Pressure (eqn 2.20)
 
-    Dx = d_dxc.matrix((H, )).toarray().reshape(H, H)
-    eta_x = Dx @ eta[x_contact]
+    eta_x = (1.0 * d_dx1D) @ eta[x_contact]
 
-    integral = simpson_weights(H, dx)
+    integral = simpson_weights(H, dx) # TODO: This assumes uniform grid
     thrust = integral @ (-1/2 * (jnp.real(p) * jnp.real(eta_x) + jnp.imag(p) * jnp.imag(eta_x)))
 
     thrust = F_c * thrust # Adding dimensions
