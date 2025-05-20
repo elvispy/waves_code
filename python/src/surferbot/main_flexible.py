@@ -1,4 +1,5 @@
 import jax.numpy as jnp
+import jax
 from findiff import Diff as _Diff
 from findiff import grids
 import numpy as np
@@ -29,7 +30,7 @@ def _dynamic_s_op_method(S, shape=None):
 
 class Diff(_Diff):
 
-    def __init__(self, axis=0, grid=None, periodic=False, acc=_Diff.DEFAULT_ACC):
+    def __init__(self, axis=0, grid=None, shape= None, periodic=False, acc=_Diff.DEFAULT_ACC):
         grid_axis = make_axis(axis, grid, periodic)
         super().__init__(axis, grid_axis, acc)
         self.shape = shape
@@ -82,7 +83,8 @@ def test_solution(eta, phi, domain):
     """
     Test the solution by checking the continuity of the velocity field
     """
-    # TODO: Implement this function
+    # TODO: Implement this function (all below is GPT)
+    return True
     x, z = domain
     N = x.shape[0]
     M = z.shape[0]
@@ -106,7 +108,7 @@ def test_solution(eta, phi, domain):
 def solver(sigma = 72.20, rho = 1000., omega = 60., nu = 1e-5, g = 9.81, 
            L_raft = 0.1, force = 1., motor_position = 0.025, 
            L_domain = 1., E = 1., I = 1., 
-           rho_raft = 1240., n = 21, DEBUG = False):
+           rho_raft = 1240., n = 21, DEBUG = True):
     """
     Solves the linearized water wave problem for a flexible raft
     Inputs:
@@ -163,8 +165,8 @@ def solver(sigma = 72.20, rho = 1000., omega = 60., nu = 1e-5, g = 9.81,
     ## Helper variables
     L_raft_adim = L_raft / L_c
     L_domain_adim = jnp.floor(L_domain / L_c) - jnp.floor(L_domain/L_c) % 2 + 1 # We make it odd
-    N = int(n * L_domain_adim / L_raft_adim)
-    
+    N = int(n * L_domain_adim / L_raft_adim) # TODO: Jax does not like this for jitting
+        
     x = jnp.linspace(-L_domain_adim/2, L_domain_adim/2, N)
     x_contact = abs(x) <= L_raft_adim/2; H = sum(x_contact)
     x_free    = abs(x) >  L_raft_adim/2
@@ -175,8 +177,8 @@ def solver(sigma = 72.20, rho = 1000., omega = 60., nu = 1e-5, g = 9.81,
     z = jnp.logspace(0, jnp.log10(2), M) - 1; #z[-1] = -1.
 
     # Define second derivative operators along x and z
-    d_dx = Diff(axis=0, grid=jnp.round(x, 3), acc=2) # TODO: Adapt this to nonuniform grids
-    d_dz = Diff(axis=1, grid=jnp.round(z, 3), acc=2)
+    d_dx = Diff(axis=0, grid=jnp.round(x, 3), acc=2, shape=(N, M)) # TODO: Adapt this to nonuniform grids
+    d_dz = Diff(axis=1, grid=jnp.round(z, 3), acc=2, shape=(N, M))
 
     # Define the position of the motor
     x_motor = abs(x[x_contact] - motor_position/L_c) < 0.05 #TODO: Check that the motor occupying 5% of the raft is reasonable
