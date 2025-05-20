@@ -284,4 +284,6 @@ def solver(sigma = 72.20, rho = 1000., omega = 60., nu = 1e-5, g = 9.81,
 
 
 if __name__ == "__main__":
-    A = solver()
+    s = jax.jit(solver)
+    A = s()
+    print(A)
