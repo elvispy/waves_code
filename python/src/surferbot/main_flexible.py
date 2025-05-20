@@ -182,6 +182,7 @@ def solver(sigma = 72.20, rho = 1000., omega = 60., nu = 1e-5, g = 9.81,
 
     # Define the position of the motor
     x_motor = abs(x[x_contact] - motor_position/L_c) < 0.05 #TODO: Check that the motor occupying 5% of the raft is reasonable
+    # TODO: We can make the load distribution continuous (to make it AD compliant)
     weights = 1. / sum(x_motor)
     
     Id = 1.0 # Identity operator
