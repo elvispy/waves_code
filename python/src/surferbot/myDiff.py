@@ -4,6 +4,10 @@ import numpy as np
 import numbers
 import types
 import jax.numpy as jnp
+import jax.experimental.sparse as jsparse
+from surferbot.constants import SPARSE
+from surferbot.sparse_utils import _SparseAtProxy
+jsparse.BCOO.at = property(lambda self: _SparseAtProxy(self))
 
 
 def make_axis(dim, config_or_axis, periodic=False):
@@ -17,18 +21,21 @@ def make_axis(dim, config_or_axis, periodic=False):
         return grids.EquidistantAxis(dim, spacing=config_or_axis, periodic=periodic)
     elif isinstance(config_or_axis, jnp.ndarray) and len(config_or_axis) == 1:
         return grids.EquidistantAxis(dim, spacing=config_or_axis.item(0), periodic=periodic)
-    elif isinstance(config_or_axis, (np.ndarray, jnp.ndarray)):
+    elif isinstance(config_or_axis, (np.ndarray, jnp.ndarray, jsparse.BCOO)):
         return grids.NonEquidistantAxis(dim, coords=config_or_axis, periodic=periodic)
 
 def _dynamic_s_op_method(S, shape=None):
     target_shape = shape if shape is not None else S.shape
     if isinstance(target_shape, tuple) and len(target_shape) <= 2:
-        return jnp.array(S.matrix(target_shape).toarray().reshape(*(target_shape + target_shape)))
+        if SPARSE:
+            return jsparse.BCOO.from_scipy_sparse(S.matrix(target_shape)).reshape(*(target_shape + target_shape))
+        else:
+            return jnp.array(S.matrix(target_shape).toarray().reshape(*(target_shape + target_shape)))
     else:
         return NotImplemented
 
-class Diff(_Diff):
 
+class Diff(_Diff):
     def __init__(self, axis=0, grid=None, shape= None, periodic=False, acc=_Diff.DEFAULT_ACC):
         grid_axis = make_axis(axis, grid, periodic)
         super().__init__(axis, grid_axis, acc)
