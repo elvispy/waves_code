@@ -1,0 +1,22 @@
+# python/pyproject.toml
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "surferbot"           # the importable package name
+version = "0.1.0"            # **required** by PEP 621
+description = "…brief desc…"
+authors = [{ name = "Your Name", email = "you@example.com" }]
+readme = "README.md"         # optional but recommended
+license = { text = "MIT" }
+dependencies = [
+    "jax>=0.4.10"
+]            # runtime deps, if any
+
+[tool.setuptools.package-dir]
+"" = "src"                   # “root of all packages is src/”
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["surferbot*", "experimental*"]
