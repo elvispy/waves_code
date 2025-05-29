@@ -8,7 +8,7 @@ from surferbot.utils import solve_tensor_system, gaussian_load, test_solution
 def solver(sigma = 72.20, rho = 30., omega = 2*jnp.pi*80., nu = 1e-6, g = 9.81, 
            L_raft = 0.05, force = 2.74, motor_position = 1.9/5 * 0.05, 
            L_domain = .5, EI = 3.0e+9 * 3e-2 * 1e-4**3 / 12, # 3GPa times 3 cm times 0.05 cm ^4 / 12
-           rho_raft = 0.018 * 3., n = 21, DEBUG = True): #TODO CHECK UNITS FOR THE PROBLEM TO BE OF DEPTH 3cm (original surferbot)
+           rho_raft = 0.018 * 3., n = 21, M = 10, DEBUG = True): #TODO CHECK UNITS FOR THE PROBLEM TO BE OF DEPTH 3cm (original surferbot)
     """
     Solves the linearized water wave problem for a flexible raft
     Inputs:
@@ -25,6 +25,8 @@ def solver(sigma = 72.20, rho = 30., omega = 2*jnp.pi*80., nu = 1e-6, g = 9.81,
     - EI: Young's modulus (Pa) * moment of inertia (m^4)
     - rho_raft: density of the raft (per unit length) (kg/m)
     - n: number of points in the raft
+    - M: number of points in the z direction
+    - DEBUG: whether to print debug information
     Outputs:
     - U: Terminal Velocity of the raft
     
@@ -74,7 +76,6 @@ def solver(sigma = 72.20, rho = 30., omega = 2*jnp.pi*80., nu = 1e-6, g = 9.81,
     contact_boundary = jnp.array([(N-H)/2, (N+H)/2], dtype=int); left_raft_boundary = (N-H)//2; right_raft_boundary = (N+H)//2
     dx = (x[contact_boundary[0]] - x[contact_boundary[0]-1]).item(0) # TODO: Check if i want this to be a float
     #contact_boundary2= jnp.array([(N-H)/2 - 1, (N+H)/2 + 1], dtype=int)
-    M = 10 # Number of points in the z direction
     z = jnp.logspace(0, jnp.log10(2), M) - 1; #z[-1] = -1.
 
     # Define second derivative operators along x and z
@@ -82,7 +83,6 @@ def solver(sigma = 72.20, rho = 30., omega = 2*jnp.pi*80., nu = 1e-6, g = 9.81,
     d_dz = Diff(axis=1, grid=jnp.round(z, 3), acc=2, shape=(N, M))
 
     # Define the position of the motor
-    #x_motor = abs(x[x_contact] - motor_position/L_c) >= 0.0 #< 0.05 #TODO: Check that the motor occupying 5% of the raft is reasonable
     # TODO: We can make the load distribution continuous (to make it AD compliant)
     weights = gaussian_load(motor_position/L_c, 0.01, x[x_contact])
     
@@ -98,15 +98,10 @@ def solver(sigma = 72.20, rho = 30., omega = 2*jnp.pi*80., nu = 1e-6, g = 9.81,
     # That is to say, the k index is the order of the derivative.
 
     # Building the first block of equations (Bernoullli on the surface)
-    #M11 = 1.0 * d_dz; M12 = 1.0 * d_dz; M13 = 1.0; M14 = 1.0 # Note: M12 has to be isolated due to left-to-right operator evaluation
     E1 = jnp.stack([C11 * d_dz + C13 * I_NM, O_NM, C12 * d_dz + C14 * I_NM, O_NM, O_NM], axis = -1)
-    #E1 = E1.matrix((N, M)).toarray().reshape(N, M, N, M)
-    #E1 = E1[:, [0], :, :, :] # Only take the surface equations
-    
-    #pad = jnp.zeros((N, 1, N, 1), dtype=jnp.complex64)
-    #E1 = jnp.concatenate([pad, E1], axis=3) # Adding surface variable
+
     # Only the equations that are not in contact. This shape should be (N-H, 1, N, M+1)
-    E1 = E1.at[~x_free, 0, :, :, :].set(0.0) # Remove the contact equations
+    E1 = E1.at[~x_free, 0, :, :, :].set(0.0) # Remove the contact equations at the surface
     E1 = E1.at[:      ,1:, :, :, :].set(0.0) # Just to make sure equations that do not refer to the surface dont enter
     assert E1.shape == (N, M, N, M, 5), f"Shape of E1 is {E1.shape}." if DEBUG else None 
     
@@ -115,11 +110,7 @@ def solver(sigma = 72.20, rho = 30., omega = 2*jnp.pi*80., nu = 1e-6, g = 9.81,
     d_dz1D = deepcopy(d_dz); d_dz1D.shape = (H, M); d_dz1D = 1.0 * d_dz1D
     I_HM = jnp.eye(H)[:, None, :, None] * jnp.eye(M)[None, :, None, :]
     O_HM = jnp.zeros(I_HM.shape, dtype=jnp.complex64)
-    #M21 = d_dx1D
-    #E2_eta = C21 * M21 - C22 * Id - C25 * Id 
-    #E2_eta = E2_eta.matrix((H, 1)).toarray().reshape(H, 1, H, 1)
-    #aux = jnp.zeros((H, 1, N, 1), dtype=jnp.complex64)
-    #E2_eta = aux.at[:, :, x_contact, :].set(E2_eta)
+
     E2 = jnp.stack([C22 * d_dz1D + C24 * I_HM + C25 * d_dz1D, O_HM, C26 * I_HM, O_HM, C21 * d_dz1D], axis = -1)
     E2 = E2.at[:, 1:, :, :, :].set(0.0) # Just to make sure equations that do not refer to the surface dont enter
     
@@ -139,11 +130,11 @@ def solver(sigma = 72.20, rho = 30., omega = 2*jnp.pi*80., nu = 1e-6, g = 9.81,
 
     # Laplacian in operator form
     E4 = (1.0 * d_dx**2 + 1.0 * d_dz**2)
-    #E4 = E4.matrix((N, M)).toarray().reshape(N, M, N, M)
+
     # We remove the bottom of 
     # Adding surface variable. This shape should be (N, M, N, M+1)
-    E4 = E4.at[[0, -1],  0, :, :].set(0.0) # Remove the boundaries
-    E4 = E4.at[[0, -1], -1, :, :].set(0.0) # Remove the boundaries
+    E4 = E4.at[[0, -1], :, :, :].set(0.0) # Remove the boundaries
+    E4 = E4.at[:, [0, -1], :, :].set(0.0) # Remove the boundaries
     E4 = jnp.stack([E4, O_NM, O_NM, O_NM, O_NM], axis=-1)
     assert E4.shape == (N, M, N, M, 5), f"Shape of E4 is {E4.shape} instead of {N*M}" if DEBUG else None
 
