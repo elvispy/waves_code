@@ -1,5 +1,6 @@
 import jax.numpy as jnp
 from jax.scipy.sparse.linalg import gmres   # square, general sparse solver
+import logging
 
 def solve_tensor_system(A, b, *, tol=1e-8, maxiter=None):
     """
@@ -16,15 +17,16 @@ def solve_tensor_system(A, b, *, tol=1e-8, maxiter=None):
     A_flat = A.reshape(m, n)
     b_vec  = b.reshape(m)
 
-    is_dense = isinstance(A, type(jnp.eye(3)))  # BCOO / BCSR
+    is_sparse = not isinstance(A, type(jnp.eye(3)))  # BCOO / BCSR
 
-    if not is_dense:
+    if is_sparse:
         if m == n:                                   # square sparse → GMRES
             x_flat, info = gmres(A_flat, b_vec, tol=tol, maxiter=maxiter)
             if info != 0:
                 raise RuntimeError(f"GMRES failed to converge (info={info})")
-        else:                                        # rectangular sparse → fallback
-            return NotImplemented #x_flat = jnp.linalg.lstsq(A_flat.todense(), b_vec, rcond=None)[0]
+        else:     
+            logging.warning("Using least-squares solver for rectangular sparse matrix.")
+            x_flat = jnp.linalg.lstsq(A_flat.todense(), b_vec, rcond=None)[0]
     else:                                            # dense
         if m == n:
             x_flat = jnp.linalg.solve(A_flat, b_vec)
