@@ -2,7 +2,7 @@ import unittest
 import jax.numpy as jnp
 
 # Import your Simpson weights function
-from integration import simpson_weights  # adjust path if needed
+from surferbot.integration import simpson_weights  # adjust path if needed
 
 # Dictionary of test functions and their exact integrals over [0, 1]
 TEST_FUNCTIONS = {
