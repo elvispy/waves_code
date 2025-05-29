@@ -1,6 +1,6 @@
 import jax.numpy as jnp
 
-def DtN_generator(N: int, h):
+def DtN_generator(N: int, h: float = 1.0):
     '''
     This script will generate the matrix M so that M @ phi is an approximation of
     \frac{1}{\pi} \left(\lim_{\epsilon\to 0} \int_{|x-x_0| > \epsilon} 

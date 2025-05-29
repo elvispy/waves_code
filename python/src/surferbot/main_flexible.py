@@ -6,6 +6,8 @@ import numpy as np
 import numbers
 import types
 from integration import simpson_weights
+
+
  
 def make_axis(dim, config_or_axis, periodic=False):
     """
@@ -105,10 +107,10 @@ def test_solution(eta, phi, domain):
     
     return continuity_check
 
-def solver(sigma = 72.20, rho = 1000., omega = 60., nu = 1e-5, g = 9.81, 
-           L_raft = 0.1, force = 1., motor_position = 0.025, 
-           L_domain = 1., E = 1., I = 1., 
-           rho_raft = 1240., n = 21, DEBUG = True):
+def solver(sigma = 72.20, rho = 30., omega = 2*jnp.pi*80., nu = 1e-6, g = 9.81, 
+           L_raft = 0.05, force = 2.74, motor_position = 1.9/5 * 0.05, 
+           L_domain = .5, EI = 3.0e+9 * 3e-2 * 1e-4**3 / 12, # 3GPa times 3 cm times 0.05 cm ^4 / 12
+           rho_raft = 0.018 * 3., n = 21, DEBUG = True):
     """
     Solves the linearized water wave problem for a flexible raft
     Inputs:
@@ -144,7 +146,7 @@ def solver(sigma = 72.20, rho = 1000., omega = 60., nu = 1e-5, g = 9.81,
     C13 = omega**2 / g * L_c                
     C14 = 4.0j * nu * omega / (g*L_c)       # Viscous drag
     ## Equation 2: Euler Beam equation
-    C21 = E*I/(m_c * L_c**3 / t_c**2)       # Elasticity
+    C21 = EI/(m_c * L_c**3 / t_c**2)       # Elasticity
     C22 = 1.
     C23 = force / (m_c * L_c / t_c**2)      # Force
     C24 = - rho/rho_raft * 1.0j * L_c       # Inertia

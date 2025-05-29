@@ -1,12 +1,12 @@
+from copy import deepcopy
 import jax.numpy as jnp
-import jax
 from findiff import Diff as _Diff
 from findiff import grids
 import numpy as np
 import numbers
 import types
 from integration import simpson_weights
-
+from python.src.surferbot.utils import solve_tensor_system, gaussian_load
 
  
 def make_axis(dim, config_or_axis, periodic=False):
@@ -68,65 +68,6 @@ class Diff(_Diff):
     
 
 
-def trapezoidal_weights(x: jnp.ndarray) -> jnp.ndarray:
-    """
-    Return 1-D trapezoidal integration weights for an arbitrary,
-    **sorted** node array x (length N+1).
-
-    w[0]   = ½ (x[1]   - x[0])
-    w[-1]  = ½ (x[-1]  - x[-2])
-    w[i]   = ½ (x[i+1] - x[i-1])   for 1 ≤ i ≤ N-1
-    """
-    dx = jnp.diff(x)                              # length N
-    w_mid = 0.5 * (dx[:-1] + dx[1:])              # length N-1
-    w = jnp.concatenate([0.5*dx[:1], w_mid, 0.5*dx[-1:]])
-    return w
-
-
-def gaussian_load(F: float,
-                  x0: float,
-                  sigma: float,
-                  x: jnp.ndarray) -> jnp.ndarray:
-    """
-    Smooth point load on an *arbitrary* 1-D grid.
-
-    Parameters
-    ----------
-    F      : total force [N]
-    x0     : centre of the Gaussian [same units as x]
-    sigma  : physical width of the Gaussian (std-dev) [same units as x]
-    x      : 1-D array of node coordinates (sorted)
-    w      : optional pre-computed integration weights.
-             If None, trapezoidal_weights(x) is used.
-
-    Returns
-    -------
-    q      : array of size x.shape with units N·m⁻¹ such that
-             jnp.sum(q * w) == F   (up to machine precision)
-    """
-    x = jnp.asarray(x)
-    w = trapezoidal_weights(x)
-
-    # Gaussian envelope (fully smooth in x0 → AD-friendly)
-    phi = jnp.exp(-0.5 * ((x - x0) / sigma)**2)
-
-    # exact discrete normalisation on this non-uniform grid
-    delta = phi / jnp.sum(phi * w)      # Σ delta_i w_i = 1
-    return F * delta                    # q_i  (units N·m⁻¹)
-
-
-def solve_tensor_system(A, b):
-    m = A.shape[0]
-    x_shape = A.shape[1:]
-    A_mat = A.reshape(m, -1)  # shape (m, N)
-    b_vec = b.reshape(m)
-    if A_mat.shape[0] == A_mat.shape[1]:
-        # If the system is square, use solve
-        x_flat = jnp.linalg.solve(A_mat, b_vec)
-    else:
-        x_flat, _, _, _ = jnp.linalg.lstsq(A_mat, b_vec, rcond=None)
-
-    return x_flat.reshape(x_shape)
 
 def test_solution(eta, phi, domain):
     """
@@ -172,8 +113,7 @@ def solver(sigma = 72.20, rho = 30., omega = 2*jnp.pi*80., nu = 1e-6, g = 9.81,
     - force: force applied to the raft (N)
     - mass: mass of the raft (kg)
     - L_domain: length of the domain (m)
-    - E: Young's modulus (Pa)
-    - I: moment of inertia (m^4)
+    - EI: Young's modulus (Pa) * moment of inertia (m^4)
     - rho_raft: density of the raft (per unit length) (kg/m)
     - n: number of points in the raft
     Outputs:
@@ -187,22 +127,21 @@ def solver(sigma = 72.20, rho = 30., omega = 2*jnp.pi*80., nu = 1e-6, g = 9.81,
     m_c = rho * L_c**2
     F_c = m_c * L_c**2 / t_c
 
-    sigma_load = 2 * sigma / (L_c/n) # The load is linear and decays as  dx #TODO Check that this is stable
-
     ## Non-dimensional Parameters
     ## Equation 1: Bernoulli on free surface
     C11 = 1.0
-    C12 = sigma/(rho * g * L_c**2)
-    C13 = omega**2 / g * L_c                
-    C14 = 4.0j * nu * omega / (g*L_c)       # Viscous drag
+    C12 = -sigma/(rho * g * L_c**2)
+    C13 = -omega**2 / g * L_c                
+    C14 = -4.0j * nu * omega / (g*L_c)       # Viscous drag
+
     ## Equation 2: Euler Beam equation
-    C21 = EI * t_c /(1.0j * omega * m_c * L_c**3 )       # Elasticity
-    C22 = rho_raft * omega * L_c * t_c / (1.0j * m_c)    # Inertia
-    C23 = force / (m_c * L_c / t_c**2)                         # Force load
-    C24 = - (rho * t_c * 1.0j * omega * L_c**2) / m_c    # Inertia
-    C25 = - (rho * t_c * g * L_c) / (m_c * 1.0j * omega) # Gravity
-    C26 = (rho * t_c * 2 * nu) / m_c                     # Viscous drag
-    C27 = sigma * t_c / (1.0j * omega * m_c * L_c)       # Surface tension force
+    C21 = EI * t_c /(1.0j * omega * m_c * L_c**3 )        # Elasticity
+    C22 = -rho_raft * omega * L_c * t_c / (1.0j * m_c)    # Inertia
+    C23 = -force / (m_c * L_c / t_c**2)                   # Force load
+    C24 = (rho * t_c * 1.0j * omega * L_c**2) / m_c       # Inertia
+    C25 = (rho * t_c * g * L_c) / (m_c * 1.0j * omega)    # Gravity
+    C26 = -(rho * t_c * 2 * nu) / m_c                     # Viscous drag
+    C27 = -sigma * t_c / (1.0j * omega * m_c * L_c)       # Surface tension force
 
     ## Equation 3: Radiative boundary conditions
     k = 1.0 #TODO: Calculate the dispersion relation
@@ -213,7 +152,7 @@ def solver(sigma = 72.20, rho = 30., omega = 2*jnp.pi*80., nu = 1e-6, g = 9.81,
     # No coefficients here here
 
     # Equation 4: Thrust
-    thrust_factor = nu * rho**2 * L_raft/4
+    thrust_factor = 4/9 * nu * rho**2 * L_raft 
 
     ## Helper variables
     L_raft_adim = L_raft / L_c
@@ -222,10 +161,10 @@ def solver(sigma = 72.20, rho = 30., omega = 2*jnp.pi*80., nu = 1e-6, g = 9.81,
         
     x = jnp.linspace(-L_domain_adim/2, L_domain_adim/2, N)
     x_contact = abs(x) <= L_raft_adim/2; H = sum(x_contact)
-    x_free    = jnp.logical_and(abs(x) >  L_raft_adim/2, abs(x) < L_domain_adim/2)
-    contact_boundary = jnp.array([(N-H)/2, (N+H)/2], dtype=int); 
+    x_free    = abs(x) >  L_raft_adim/2; x_free = x_free.at[0].set(False); x_free = x_free.at[-1].set(False) # TODO: Check if this is correct
+    contact_boundary = jnp.array([(N-H)/2, (N+H)/2], dtype=int); left_raft_boundary = (N-H)//2; right_raft_boundary = (N+H)//2
     dx = (x[contact_boundary[0]] - x[contact_boundary[0]-1]).item(0) # TODO: Check if i want this to be a float
-    contact_boundary2= jnp.array([(N-H)/2 - 1, (N+H)/2 + 1], dtype=int)
+    #contact_boundary2= jnp.array([(N-H)/2 - 1, (N+H)/2 + 1], dtype=int)
     M = 10 # Number of points in the z direction
     z = jnp.logspace(0, jnp.log10(2), M) - 1; #z[-1] = -1.
 
@@ -234,96 +173,116 @@ def solver(sigma = 72.20, rho = 30., omega = 2*jnp.pi*80., nu = 1e-6, g = 9.81,
     d_dz = Diff(axis=1, grid=jnp.round(z, 3), acc=2, shape=(N, M))
 
     # Define the position of the motor
-    x_motor = abs(x[x_contact] - motor_position/L_c) < 0.05 #TODO: Check that the motor occupying 5% of the raft is reasonable
+    #x_motor = abs(x[x_contact] - motor_position/L_c) >= 0.0 #< 0.05 #TODO: Check that the motor occupying 5% of the raft is reasonable
     # TODO: We can make the load distribution continuous (to make it AD compliant)
-    weights = 1. / sum(x_motor)
+    weights = gaussian_load(motor_position/L_c, 0.01, x[x_contact])
     
     Id = 1.0 # Identity operator
+    I_NM = jnp.eye(N)[:, None, :, None] * jnp.eye(M)[None, :, None, :]
+    O_NM = jnp.zeros((N, N), dtype=jnp.complex64)[:, None, :, None] * jnp.zeros((M, M), dtype=jnp.complex64)[None, :, None, :]
 
     ## BUILDING THE MATRIX SYSTEM
-    # A little note on notation: The matrices A are fourth order tensors. 
-    # The first two indices are the equations, and the last two are the variables.
-    # For example, A[i, j, :, :] are the weights for the linear equation that corresponds to the node (i, j)
+    # A little note on notation: We want to construct a fifth order tensor of size (N, M, N, M, 5) 
+    # The first two indices are the equations, and the last three are the variables.
+    # For example, A[i, j, :, :, :] are the weights for the linear equation that corresponds to the node (i, j)
+    # and A[:, :, i, j, k] are the weights for the variable \partial_x^k \phi_{i, j} at the node (i, j)
+    # That is to say, the k index is the order of the derivative.
 
     # Building the first block of equations (Bernoullli on the surface)
-    M11 = d_dz; M12 = (d_dz * d_dx**2).op(); M13 = 1.0; M14 = d_dx**2 # Note: M12 has to be isolated due to left-to-right operator evaluation
-    E1 = C11 * M11 - C12 * M12 - C13 * M13 - C14 * M14
+    #M11 = 1.0 * d_dz; M12 = 1.0 * d_dz; M13 = 1.0; M14 = 1.0 # Note: M12 has to be isolated due to left-to-right operator evaluation
+    E1 = jnp.stack([C11 * d_dz + C13 * I_NM, O_NM, C12 * d_dz + C14 * I_NM, O_NM, O_NM], axis = -1)
     #E1 = E1.matrix((N, M)).toarray().reshape(N, M, N, M)
-    E1 = E1[:, [0], :, :] # Only take the surface equations
-    pad = jnp.zeros((N, 1, N, 1), dtype=jnp.complex64)
-    E1 = jnp.concatenate([pad, E1], axis=3) # Adding surface variable
+    #E1 = E1[:, [0], :, :, :] # Only take the surface equations
+    
+    #pad = jnp.zeros((N, 1, N, 1), dtype=jnp.complex64)
+    #E1 = jnp.concatenate([pad, E1], axis=3) # Adding surface variable
     # Only the equations that are not in contact. This shape should be (N-H, 1, N, M+1)
-    E1 = E1[x_free, :, :, :].reshape(-1, N, M+1)  
-    assert E1.shape[0] == N - H, f"Shape of E1 is {E1.shape} instead of {N-H}" if DEBUG else None
+    E1 = E1.at[~x_free, 0, :, :, :].set(0.0) # Remove the contact equations
+    E1 = E1.at[:      ,1:, :, :, :].set(0.0) # Just to make sure equations that do not refer to the surface dont enter
+    assert E1.shape == (N, M, N, M, 5), f"Shape of E1 is {E1.shape}." if DEBUG else None 
     
     # Building the second block of equations (Euler beam Equation)
-    d_dx1D = Diff(axis=0, grid=jnp.round(x[x_contact], 3), acc=2, shape=(H, 1)) # I dont want to take information from outside for the beam equation
-    M21 = d_dx1D**4
-    E2_eta = C21 * M21 - C22 * Id - C25 * Id ## TODO: Change this to second order derivative
+    d_dx1D = Diff(axis=0, grid=jnp.round(x[x_contact], 3), acc=2, shape=(H, M)) # I dont want to take information from outside for the beam equation
+    d_dz1D = deepcopy(d_dz); d_dz1D.shape = (H, M); d_dz1D = 1.0 * d_dz1D
+    I_HM = jnp.eye(H)[:, None, :, None] * jnp.eye(M)[None, :, None, :]
+    O_HM = jnp.zeros(I_HM.shape, dtype=jnp.complex64)
+    #M21 = d_dx1D
+    #E2_eta = C21 * M21 - C22 * Id - C25 * Id 
     #E2_eta = E2_eta.matrix((H, 1)).toarray().reshape(H, 1, H, 1)
-    aux = jnp.zeros((H, 1, N, 1), dtype=jnp.complex64)
-    E2_eta = aux.at[:, :, x_contact, :].set(E2_eta)
-    surface_tension = jnp.zeros((H, 1, N, 1), dtype=jnp.complex64)
-    surface_tension = surface_tension.at[[0, -1], 0, contact_boundary, 0].set(-dx)
-    surface_tension = surface_tension.at[[0, -1], 0, contact_boundary2, 0].set(dx)
-    surface_tension = - C27 * surface_tension
-    E2_eta = E2_eta + surface_tension
+    #aux = jnp.zeros((H, 1, N, 1), dtype=jnp.complex64)
+    #E2_eta = aux.at[:, :, x_contact, :].set(E2_eta)
+    E2 = jnp.stack([C22 * d_dz1D + C24 * I_HM + C25 * d_dz1D, O_HM, C26 * I_HM, O_HM, C21 * d_dz1D], axis = -1)
+    E2 = E2.at[:, 1:, :, :, :].set(0.0) # Just to make sure equations that do not refer to the surface dont enter
+    
+    # Bring both idx arrays into the same index-tuple
+    idx = jnp.nonzero(x_contact)[0]
+    E1 = E1.at[idx[:, None], :, idx[None, :], :, :].set(jnp.swapaxes(E2, 1, 2))
+    
+    d_dz_surface = deepcopy(d_dz); d_dz_surface.shape = (sum(x_free)//2, M)
+    # Take the derivative at the surface (no inside information)
+    d_dx_free    = Diff(0, grid=x[jnp.logical_and(x_free, x > 0)], acc=2, shape=(sum(x_free)//2, M)) #.matrix((len(x[jnp.logical_and(x_free, x > 0)]), )).toarray()[0, :]
 
-    M26 = d_dx**2
-    E2_phi = - C24 * Id - C26 * M26
-    #E2_phi = E2_phi.matrix((N, M)).toarray().reshape(N, M, N, M)
-    E2_phi = E2_phi[x_contact, 0:1, :, :] # Only take the surface equations
-    # This shape should be (H, 1, N, M+1)    
-    E2 = jnp.concatenate([E2_eta, E2_phi], axis=3).reshape(-1, N, M+1) 
-    assert E2.shape[0] == H, f"Shape of E2 is {E2.shape} instead of {H}" if DEBUG else None
+    d_dxdz = ((d_dx_free * d_dz_surface).op())[0, 0, :, :]
+    # Surface tension term on the right
+    E1 = E1.at[right_raft_boundary, 0, jnp.logical_and(x_free, x > 0), :, 1].add( C27 * d_dxdz)
+    E1 = E1.at[left_raft_boundary , 0, jnp.logical_and(x_free, x < 0), :, 1].add(-C27 * jnp.flip(d_dxdz, axis=0))
 
-    # Kinematic boundary conditions
-    E3_phi = C31 * d_dz
-    #E3_phi = E3_phi.matrix((N, M)).toarray().reshape(N, M, N, M)
-    E3_phi = E3_phi[:, [0], :, :] # Only take the free surface equations
-    E3_eta = - C32 * jnp.eye(N).reshape(N, 1, N, 1)
-    # This shape should be (N, 1, N, M+1)
-    E3 = jnp.concatenate([E3_eta, E3_phi], axis=3).reshape(-1, N, M+1) 
-    assert E3.shape[0] == N, f"Shape of E3 is {E3.shape} instead of {N}" if DEBUG else None
 
     # Laplacian in operator form
     E4 = (1.0 * d_dx**2 + 1.0 * d_dz**2)
     #E4 = E4.matrix((N, M)).toarray().reshape(N, M, N, M)
     # We remove the bottom of 
     # Adding surface variable. This shape should be (N, M, N, M+1)
-    E4 = jnp.concatenate([jnp.zeros((N, M, N, 1)), E4], axis=3).reshape(-1, N, M+1) 
-    assert E4.shape[0] == N*M, f"Shape of E4 is {E4.shape} instead of {N*M}" if DEBUG else None
+    E4 = E4.at[[0, -1],  0, :, :].set(0.0) # Remove the boundaries
+    E4 = E4.at[[0, -1], -1, :, :].set(0.0) # Remove the boundaries
+    E4 = jnp.stack([E4, O_NM, O_NM, O_NM, O_NM], axis=-1)
+    assert E4.shape == (N, M, N, M, 5), f"Shape of E4 is {E4.shape} instead of {N*M}" if DEBUG else None
 
     # Boundary condition at the bottom of the surface
-    E5 = 1.0 * d_dz#matrix((N, M)).toarray().reshape(N, M, N, M)
-    E5 = E5[:, [-1], :, :] 
-    E5 = jnp.concatenate([pad, E5], axis=3).reshape(-1, N, M+1)
-    assert E5.shape[0] == N, f"Shape of E5 is {E5.shape} instead of {N}" if DEBUG else None
+    E5 = 1.0 * d_dz
+    E5 = E5.at[:, :-1, :, :].set(0.0)
+    E5 = E5.at[[0, -1], :, :, :].set(0.0)
+    E5 = jnp.stack([E5, O_NM, O_NM, O_NM, O_NM], axis=-1)
+    #E5 = jnp.concatenate([pad, E5], axis=3).reshape(-1, N, M+1)
+    #assert E5.shape[0] == N, f"Shape of E5 is {E5.shape} instead of {N}" if DEBUG else None
 
+    # Radiative boundary conditions
+    E6 = jnp.zeros((N, M, N, M, 5), dtype=jnp.complex64)
+    E6 = E6.at[0 , :, 0, :, 0].set(C32) # Leftmost equations, left coefficients, zeroth derivative coefficients
+    E6 = E6.at[0 , :, 0, :, 1].set(C31) # Leftmost equations, left coefficients, first derivative coefficients
+    E6 = E6.at[-1, :,-1, :, 0].set(-C32)# Rightmost equations, right coefficients, zeroth derivative coefficients
+    E6 = E6.at[-1, :,-1, :, 1].set(C31) # Rightmost equations, right coefficients, first derivative coefficients
     # Concatenate everything
-    A = jnp.concatenate([E1, E2, E3, E4, E5], axis = 0)
+    E = E1 + E4 + E5 + E6
 
+    # Horizontal derivatives definition
+    Dx = 1.0 * d_dx
+    A = jnp.stack([E,
+                   jnp.stack([Dx, -I_NM, O_NM, O_NM, O_NM], axis = -1),
+                   jnp.stack([O_NM, Dx, -I_NM, O_NM, O_NM], axis = -1),
+                   jnp.stack([O_NM, O_NM, Dx, -I_NM, O_NM], axis = -1),
+                   jnp.stack([O_NM, O_NM, O_NM, Dx, -I_NM], axis = -1)], axis = 0)
+
+    assert A.shape == (5, N, M, N, M, 5), f"Shape of A is {A.shape} instead of {(5, N, M, N, M, 5)}" if DEBUG else None
+    
     ## BUILDING THE INDEPENDENT COMPONENT
-    b1 = jnp.zeros((E1.shape[0], ), dtype=jnp.complex64)
-    # Weighting only where motor is applied
-    b2 = - C23 * jnp.where(jnp.array(x_motor), weights, 0.0)
-    b3 = jnp.zeros((E3.shape[0], ), dtype=jnp.complex64)
-    b4 = jnp.zeros((E4.shape[0], ), dtype=jnp.complex64)
-    b5 = jnp.zeros((E5.shape[0], ), dtype=jnp.complex64)
-    b = jnp.concatenate([b1, b2, b3, b4, b5], axis = 0)
+    b = jnp.zeros((5, N, M))
+    # Only apply the force where the raft is in contact
+    b = b.at[0, x_contact, 0].set(-C23 * weights) 
 
     ## SOLVING THE SYSTEM AND CALCULATING THRUST
     x = solve_tensor_system(A, b)
 
-    eta = x[:, 0]
-    phi = x[:, 1:]; phi_surface = phi[:, 0]
+    phi = x[:, :, 0]; phi_surface = phi[:, 0]
+    # Extract eta from the kinematic boundary condition
+    eta = ((1.0/(1.0j * omega * t_c) * d_dz) @ phi)[:, 0]
 
     assert test_solution(eta, phi_surface, (x, z)), "The solution does not satisfy the PDE" if DEBUG else None
     
     ## ASSEMBLE PRESSURE
     # Phi component of pressure
     d_dx1D.shape = (H,)
-    P1 = (C24 * Id + C26 * d_dx1D ** 2) # TODO: Check that i want to calculate pressure only with information from inside the raft
+    P1 = (C24 + C26 * d_dx1D ** 2) # TODO: Check that i want to calculate pressure only with information from inside the raft
     P1 = P1 @ (phi_surface[x_contact])
     p = (C25 * eta[x_contact] + P1) # Pressure (eqn 2.20)
 
@@ -332,12 +291,12 @@ def solver(sigma = 72.20, rho = 30., omega = 2*jnp.pi*80., nu = 1e-6, g = 9.81,
     integral = simpson_weights(H, dx) # TODO: This assumes uniform grid
     thrust = integral @ (-1/2 * (jnp.real(p) * jnp.real(eta_x) + jnp.imag(p) * jnp.imag(eta_x)))
 
-    thrust = F_c * thrust # Adding dimensions
+    thrust = F_c * thrust # Adding dimensions #TODO: Need to add surface tension contribution
     U = jnp.power(thrust**2/thrust_factor , 1/3)
     return U
 
 
 if __name__ == "__main__":
-    s = jax.jit(solver)
-    A = s()
+    #s = jax.jit(solver)
+    A = solver()#s()
     print(A)
