@@ -67,3 +67,30 @@ def gaussian_load(x0: float,
     return delta                        # q_i  (units N·m⁻¹)
 
 
+def test_solution(eta, phi, domain):
+    """
+    Test the solution by checking the continuity of the velocity field
+    """
+    # TODO: Implement this function (all below is GPT)
+    return True
+    if False:
+        x, z = domain
+        N = x.shape[0]
+        M = z.shape[0]
+        
+        # Calculate the velocity field
+        u = jnp.zeros((N, M), dtype=jnp.complex64)
+        v = jnp.zeros((N, M), dtype=jnp.complex64)
+        
+        # Calculate the velocity field using finite differences
+        d_dx = Diff(axis=0, grid=x, acc=1)
+        d_dz = Diff(axis=1, grid=z, acc=1)
+        
+        u = d_dx @ phi[:, 0]  # Velocity in x direction
+        v = d_dz @ eta       # Velocity in z direction
+        
+        # Check continuity of the velocity field
+        continuity_check = jnp.allclose(u + v, 0.0)
+        
+        return continuity_check
+
