@@ -1,14 +1,18 @@
 from copy import deepcopy
 import jax.numpy as jnp
+from surferbot.constants import DEBUG
 from surferbot.myDiff import Diff
 from surferbot.integration import simpson_weights
 from surferbot.utils import solve_tensor_system, gaussian_load, test_solution
-
+from surferbot.sparse_utils import _SparseAtProxy
+import jax.experimental.sparse as jsparse
+# Adding the add and set properties do BCOO
+jsparse.BCOO.at = property(lambda self: _SparseAtProxy(self))
 
 def solver(sigma = 72.20, rho = 30., omega = 2*jnp.pi*80., nu = 1e-6, g = 9.81, 
            L_raft = 0.05, force = 2.74, motor_position = 1.9/5 * 0.05, 
            L_domain = .5, EI = 3.0e+9 * 3e-2 * 1e-4**3 / 12, # 3GPa times 3 cm times 0.05 cm ^4 / 12
-           rho_raft = 0.018 * 3., n = 21, M = 10, DEBUG = True): #TODO CHECK UNITS FOR THE PROBLEM TO BE OF DEPTH 3cm (original surferbot)
+           rho_raft = 0.018 * 3., n = 21, M = 10): #TODO CHECK UNITS FOR THE PROBLEM TO BE OF DEPTH 3cm (original surferbot)
     """
     Solves the linearized water wave problem for a flexible raft
     Inputs:
