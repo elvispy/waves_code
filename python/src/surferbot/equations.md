@@ -134,3 +134,42 @@ $$
 $$
 \hat{p}
 $$
+
+## Dispersion relation derivation
+
+We guess a solution of the form $\phi = f(z) e^{ik(x + \omega t)}$. We want to calculate the wavenumber $k$
+with respect to the frequency of oscillation.
+
+### BC1: Laplace's equation
+
+$$
+\phi_{xx} + \phi_{zz}  = \left( - k^2 f(z) +  f''(z)\right) e^{ikx} = 0 \implies f''= k^2 f
+$$
+Therefore, $f = A_1 e^{kz} + A_2 e^{-kz}$
+### BC2: No-penetration BC
+
+$$
+\phi_z(z = -H) = (A_1 k e^{kH} - A_2 k e^{-kH}) e^{ikz} = 0
+$$
+This way, $A_1 = A_2 e^{2kH}$.
+
+WLOG, we can set $A_2=1$ as the problem is linear. Thus, $\phi = (e^{kz + 2kH} + e^{-kz}) e^{ikz}$.
+
+### THe bernoulli equation
+
+$$
+\phi_z = \frac{\sigma}{\rho g} + \frac{\omega^2}{g} \phi + \frac{4 \nu i \omega}{g} \phi_{xx}
+$$
+
+We replace the form of $\phi$ we obtain in the previous section, therefore
+$$
+k(e^{2kH} - 1) e^{ikx} = \frac{\sigma}{\rho g} (k e^{2kH} - k)(-k^2 e^{ikx}) + \frac{\omega^2}{g} (e^{2kH} + 1) e^{ikx} - \frac{k^2 4 i \nu \omega}{g} (e^{2kH} + 1) e^{ikx}
+$$
+
+We multiply everyting by $e^{-kh}e^{-kH}(e^{kH} + e^{-kH}) g$
+
+Getting
+$$
+k tanh(kH) g = \frac{-\sigma}{\rho} k^3 tanh(kH) + \omega^2 - k^2 4 i \nu \omega
+$$
+
