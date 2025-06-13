@@ -71,12 +71,13 @@ def solver(sigma = 72.20, rho = 30., omega = 2*jnp.pi*80., nu = 1e-6, g = 9.81,
 
     ## Helper variables
     L_raft_adim = L_raft / L_c
-    L_domain_adim = jnp.floor(L_domain / L_c) - jnp.floor(L_domain/L_c) % 2 + 1 # We make it odd
+    L_domain_adim = jnp.floor(L_domain / L_c) - jnp.floor(L_domain/L_c) % 2 + 1 # We make it odd (for simson integration)
     N = jnp.int32(n * L_domain_adim / L_raft_adim) 
         
     x = jnp.linspace(-L_domain_adim/2, L_domain_adim/2, N)
     x_contact = abs(x) <= L_raft_adim/2; H = sum(x_contact)
-    x_free    = abs(x) >  L_raft_adim/2; x_free = x_free.at[0].set(False); x_free = x_free.at[-1].set(False) # TODO: Check if this is correct
+    x_free    = abs(x) >  L_raft_adim/2; x_free = x_free.at[0].set(False); x_free = x_free.at[-1].set(False)
+    assert jnp.sum(x_free) + jnp.sum(x_contact) == N-2, f"Number of free and contact points do not match the total number of points {N}." if DEBUG else None
     left_raft_boundary = (N-H)//2; right_raft_boundary = (N+H)//2
 
     dx = (x[left_raft_boundary] - x[left_raft_boundary-1]).item(0) # TODO: Check if i want this to be a float
