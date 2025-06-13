@@ -1,4 +1,5 @@
 import jax.numpy as jnp
+import jax
 from jax.scipy.sparse.linalg import gmres   # square, general sparse solver
 import logging
 
@@ -44,17 +45,14 @@ def gaussian_load(x0: float,
 
     Parameters
     ----------
-    F      : total force [N]
     x0     : centre of the Gaussian [same units as x]
     sigma  : physical width of the Gaussian (std-dev) [same units as x]
     x      : 1-D array of node coordinates (sorted)
-    w      : optional pre-computed integration weights.
-             If None, trapezoidal_weights(x) is used.
 
     Returns
     -------
     q      : array of size x.shape with units N·m⁻¹ such that
-             jnp.sum(q * w) == F   (up to machine precision)
+             jnp.sum(q * w) == 1   (up to machine precision)
     """
     x = jnp.asarray(x)
     dx = jnp.diff(x)                              # length N
