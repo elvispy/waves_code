@@ -3,7 +3,7 @@ import jax
 import jax.numpy as jnp
 from jax.experimental import sparse as jsparse
 import numpy as np
-from surferbot.utils import solve_tensor_system
+from surferbot.utils import solve_tensor_system, solve_k, gaussian_load
 
 class TestSolveTensorSystem(unittest.TestCase):
     """Test suite for the solve_tensor_system function."""
@@ -225,5 +225,113 @@ class TestSolveTensorSystem(unittest.TestCase):
         x_actual = solve_tensor_system(A_sparse, b)
         np.testing.assert_allclose(x_expected, x_actual, atol=1e-4)
         
+
+class TestGaussianLoad(unittest.TestCase):
+    """Tests for the `gaussian_load` discrete Gaussian-point-load function."""
+
+    def setUp(self):
+        # A simple non-uniform grid
+        self.x = jnp.array([0.0, 0.5, 1.5, 3.0])
+        self.x0 = 1.2
+        self.sigma = 0.4
+
+    def _weights(self, x):
+        """Recompute the trapezoidal weights used inside gaussian_load."""
+        dx = jnp.diff(x)
+        w_mid = 0.5 * (dx[:-1] + dx[1:])
+        return jnp.concatenate([0.5 * dx[:1], w_mid, 0.5 * dx[-1:]])
+
+    def test_sum_to_one(self):
+        """The discrete integral of the load density should equal 1."""
+        w = self._weights(self.x)
+        q = gaussian_load(self.x0, self.sigma, self.x)
+        total = jnp.sum(q * w)
+        # Sum over nodes times their weights ≈ 1
+        np.testing.assert_allclose(total, 1.0, atol=1e-6)
+
+    def test_integral_gradient_zero(self):
+        """Since the integral is constant, its derivative w.r.t x0 and sigma is zero."""
+        w = self._weights(self.x)
+
+        # Function that maps x0 → discrete integral
+        integral_wrt_x0 = lambda x0: jnp.sum(gaussian_load(x0, self.sigma, self.x) * w)
+        grad_x0 = jax.grad(integral_wrt_x0)(self.x0)
+        self.assertAlmostEqual(grad_x0, 0.0, places=6)
+
+        # Function that maps sigma → discrete integral
+        integral_wrt_sigma = lambda sigma: jnp.sum(gaussian_load(self.x0, sigma, self.x) * w)
+        grad_sigma = jax.grad(integral_wrt_sigma)(self.sigma)
+        self.assertAlmostEqual(grad_sigma, 0.0, places=6)
+
+    def test_jacobian_no_nans(self):
+        """The Jacobian of q w.r.t. x0 and sigma should exist and contain no NaNs."""
+        # dq/dx0
+        jac_x0 = jax.jacobian(lambda x0: gaussian_load(x0, self.sigma, self.x))(self.x0)
+        self.assertFalse(jnp.any(jnp.isnan(jac_x0)))
+
+        # dq/dsigma
+        jac_sigma = jax.jacobian(lambda sigma: gaussian_load(self.x0, sigma, self.x))(self.sigma)
+        self.assertFalse(jnp.any(jnp.isnan(jac_sigma)))
+
+
+
+class TestSolveK(unittest.TestCase):
+    """Tests for the `solve_k` dispersion‐root finder and its AD."""
+
+    def setUp(self):
+        # fixed PRNG for reproducibility
+        self.key = jax.random.PRNGKey(1234)
+
+    def _dispersion_eq(self, k, omega, g, H, nu, sigma, rho):
+        tanh_kH = jnp.tanh(k * H)
+        lhs = k * tanh_kH * g
+        rhs = (
+            (-sigma / rho) * k**3 * tanh_kH
+            + omega**2
+            - 4j * nu * omega * k**2
+        )
+        return lhs - rhs
+
+    def test_dispersion_relation(self):
+        """solve_k should return k satisfying the dispersion relation (residual ≈ 0)."""
+        # split RNG for each parameter
+        keys = jax.random.split(self.key, 6)
+        omega = jax.random.uniform(keys[0], (), minval=0.1,  maxval=10.0)
+        g     = jax.random.uniform(keys[1], (), minval=1.0,  maxval=20.0)
+        H     = jax.random.uniform(keys[2], (), minval=0.1,  maxval=5.0)
+        nu    = jax.random.uniform(keys[3], (), minval=1e-8, maxval=1e-3)
+        sigma = jax.random.uniform(keys[4], (), minval=1e-3, maxval=1.0)
+        rho   = jax.random.uniform(keys[5], (), minval=100.0, maxval=2000.0)
+
+        # solve for k
+        k = solve_k(omega, g, H, nu, sigma, rho)
+
+        # compute residual
+        res = self._dispersion_eq(k, omega, g, H, nu, sigma, rho)
+
+        # verify both real and imag parts ≈ 0
+        np.testing.assert_allclose(jnp.real(res), 0.0, atol=1e-6)
+        np.testing.assert_allclose(jnp.imag(res), 0.0, atol=1e-6)
+
+    def test_gradient_not_nan(self):
+        """The ω-derivatives of k (real and imag parts) must not be NaN."""
+        keys = jax.random.split(self.key, 6)
+        omega = jax.random.uniform(keys[0], (), minval=0.1,  maxval=10.0)
+        g     = jax.random.uniform(keys[1], (), minval=1.0,  maxval=20.0)
+        H     = jax.random.uniform(keys[2], (), minval=0.1,  maxval=5.0)
+        nu    = jax.random.uniform(keys[3], (), minval=1e-8, maxval=1e-3)
+        sigma = jax.random.uniform(keys[4], (), minval=1e-3, maxval=1.0)
+        rho   = jax.random.uniform(keys[5], (), minval=100.0, maxval=2000.0)
+
+        # wrap solve_k as a function of omega alone
+        k_fn = lambda w: solve_k(w, g, H, nu, sigma, rho)
+
+        # compute real/imag gradients
+        dk_real = jax.grad(lambda w: jnp.real(k_fn(w)))(omega)
+        dk_imag = jax.grad(lambda w: jnp.imag(k_fn(w)))(omega)
+
+        # assert neither is NaN
+        self.assertFalse(jnp.isnan(dk_real).item(), "d(Re k)/dω is NaN")
+        self.assertFalse(jnp.isnan(dk_imag).item(), "d(Im k)/dω is NaN")
 if __name__ == '__main__':
     unittest.main()
