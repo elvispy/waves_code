@@ -4,7 +4,7 @@ import jax.numpy as jnp
 from jax.experimental import sparse as jsparse
 import numpy as np
 
-from surferbot.utils import solve_tensor_system, solve_k, gaussian_load
+from surferbot.utils import solve_tensor_system, dispersion_k, gaussian_load
 
 @pytest.fixture
 def prng_key():
@@ -21,8 +21,8 @@ def simple_grid():
     return x, w
 
 @pytest.fixture
-def solve_k_params(prng_key):
-    """Random positive params for solve_k(ω, g, H, ν, σ, ρ)."""
+def dispersion_k_params(prng_key):
+    """Random positive params for dispersion_k(ω, g, H, ν, σ, ρ)."""
     keys = jax.random.split(prng_key, 6)
     omega = jax.random.uniform(keys[0], (), minval=0.1,  maxval=10.0)
     g     = jax.random.uniform(keys[1], (), minval=1.0,  maxval=20.0)
@@ -244,8 +244,8 @@ class TestGaussianLoad:
 
 
 class TestSolveK:
-    def test_dispersion_relation(self, solve_k_params):
-        omega, g, H, nu, sigma, rho = solve_k_params
+    def test_dispersion_relation(self, dispersion_k_params):
+        omega, g, H, nu, sigma, rho = dispersion_k_params
 
         def dispersion_eq(k):
             t = jnp.tanh(k * H)
@@ -253,14 +253,14 @@ class TestSolveK:
             rhs = (-sigma / rho) * k**3 * t + omega**2 - 4j * nu * omega * k**2
             return lhs - rhs
 
-        k = solve_k(omega, g, H, nu, sigma, rho)
+        k = dispersion_k(omega, g, H, nu, sigma, rho)
         res = dispersion_eq(k)
         np.testing.assert_allclose(res.real, 0.0, atol=1e-6)
         np.testing.assert_allclose(res.imag, 0.0, atol=1e-6)
 
-    def test_gradient_not_nan(self, solve_k_params):
-        omega, g, H, nu, sigma, rho = solve_k_params
-        k_fn = lambda w: solve_k(w, g, H, nu, sigma, rho)
+    def test_gradient_not_nan(self, dispersion_k_params):
+        omega, g, H, nu, sigma, rho = dispersion_k_params
+        k_fn = lambda w: dispersion_k(w, g, H, nu, sigma, rho)
 
         dk_real = jax.grad(lambda w: jnp.real(k_fn(w)))(omega)
         dk_imag = jax.grad(lambda w: jnp.imag(k_fn(w)))(omega)

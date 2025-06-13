@@ -3,7 +3,7 @@ import jax.numpy as jnp
 from surferbot.constants import DEBUG
 from surferbot.myDiff import Diff
 from surferbot.integration import simpson_weights
-from surferbot.utils import solve_tensor_system, gaussian_load, test_solution, solve_k
+from surferbot.utils import solve_tensor_system, gaussian_load, test_solution, dispersion_k
 from surferbot.sparse_utils import _SparseAtProxy
 import jax.experimental.sparse as jsparse
 # Adding the add and set properties do BCOO
@@ -40,7 +40,7 @@ def solver(sigma = 72.20, rho = 30., omega = 2*jnp.pi*80., nu = 1e-6, g = 9.81,
     L_c = L_raft
     t_c = 1/omega
     m_c = rho * L_c**2
-    F_c = m_c * L_c**2 / t_c
+    F_c = m_c * L_c / t_c**2
 
     ## Non-dimensional Parameters
     ## Equation 1: Bernoulli on free surface
@@ -59,7 +59,7 @@ def solver(sigma = 72.20, rho = 30., omega = 2*jnp.pi*80., nu = 1e-6, g = 9.81,
     C27 = -sigma * t_c / (1.0j * omega * m_c * L_c)       # Surface tension force
 
     ## Equation 3: Radiative boundary conditions
-    k = solve_k(omega, g, L_c, nu, sigma, rho) # Complex wavenumber
+    k = dispersion_k(omega, g, L_c, nu, sigma, rho) # Complex wavenumber
     C31 = 1.
     C32 = 1.0j * k * L_c
 
@@ -78,11 +78,12 @@ def solver(sigma = 72.20, rho = 30., omega = 2*jnp.pi*80., nu = 1e-6, g = 9.81,
     x_contact = abs(x) <= L_raft_adim/2; H = sum(x_contact)
     x_free    = abs(x) >  L_raft_adim/2; x_free = x_free.at[0].set(False); x_free = x_free.at[-1].set(False) # TODO: Check if this is correct
     left_raft_boundary = (N-H)//2; right_raft_boundary = (N+H)//2
+
     dx = (x[left_raft_boundary] - x[left_raft_boundary-1]).item(0) # TODO: Check if i want this to be a float
     #contact_boundary2= jnp.array([(N-H)/2 - 1, (N+H)/2 + 1], dtype=int)
     z = jnp.logspace(0, jnp.log10(2), M) - 1; #z[-1] = -1.
 
-    # Define second derivative operators along x and z
+    # Define derivative operators along x and z
     d_dx = Diff(axis=0, grid=jnp.round(x, 3), acc=2, shape=(N, M)) # TODO: Adapt this to nonuniform grids
     d_dz = Diff(axis=1, grid=jnp.round(z, 3), acc=2, shape=(N, M))
 

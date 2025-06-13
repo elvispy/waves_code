@@ -68,7 +68,7 @@ def gaussian_load(x0: float,
 
 
 # Newton iteration for complex k using fixed number of steps (JAX differentiable)
-def solve_k(omega, g, H, nu, sigma, rho, k0=1.0 + 0.0j, num_steps=100):
+def dispersion_k(omega, g, H, nu, sigma, rho, k0=1.0 + 0.0j, num_steps=100):
     def dispersion_eq(k):
         tanh_kH = jnp.tanh(k * H)
         lhs = k * tanh_kH * g

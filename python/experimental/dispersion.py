@@ -15,7 +15,7 @@ def dispersion_eq(k):
     return lhs - rhs
 
 # Newton iteration for complex k using fixed number of steps (JAX differentiable)
-def solve_k(omega, g, H, nu, sigma, rho, k0=1.0 + 0.0j, num_steps=100):
+def dispersion_k(omega, g, H, nu, sigma, rho, k0=1.0 + 0.0j, num_steps=100):
     def dispersion_eq(k):
         tanh_kH = jnp.tanh(k * H)
         lhs = k * tanh_kH * g
@@ -39,7 +39,7 @@ def solve_k(omega, g, H, nu, sigma, rho, k0=1.0 + 0.0j, num_steps=100):
 
 
 # Define a function of omega that returns real or imaginary part of k
-k_fn = lambda omega: solve_k(omega, g, H, nu, sigma, rho)
+k_fn = lambda omega: dispersion_k(omega, g, H, nu, sigma, rho)
 
 omega_val = omega
 k_val = k_fn(omega_val)
