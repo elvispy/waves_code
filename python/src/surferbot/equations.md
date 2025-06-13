@@ -114,6 +114,11 @@ Q3. A fifth order differential equation has a $dx^5$ in the denominator. We shou
 $$
 F_D = \frac{1}{2} C_D \rho_W L U^2 = \frac{2}{3} \rho_W \sqrt{\nu L U^3}
 $$
+
+$$
+U = \left(\frac{1}{\nu L}\left(\frac{3 F_T}{2 \rho_W}\right)^2\right)^{1/3}
+$$
+
 $$
 F_T = \overline{\int_S (p - p_{\infty}) (\bm{n} \cdot \bm{i}) dx} + \sigma \left(\overline{\eta_x}|_{x = -L/2} - \overline{\eta_x}|_{x = +L/2}\right)
 $$
@@ -124,9 +129,6 @@ $$
  = -\frac{1}{2}\int_S Re\{\hat{p}\} Re\{\hat{\eta}_x \} + Im\{\hat{p}\} Im\{\hat{\eta}_x \} dx + \sigma \left(Re\{\hat{\eta}_x|_{x = -L/2}\} - Re\{\hat{\eta}_x|_{x = L/2}\}\right)
 $$
 
-$$
-U = \left(\frac{1}{\nu L}\left(\frac{3 F_T}{2 \rho_W}\right)^2\right)^{1/3}
-$$
 
 
 ### Pressure on the raft
@@ -155,7 +157,7 @@ This way, $A_1 = A_2 e^{2kH}$.
 
 WLOG, we can set $A_2=1$ as the problem is linear. Thus, $\phi = (e^{kz + 2kH} + e^{-kz}) e^{ikz}$.
 
-### THe bernoulli equation
+### The bernoulli equation
 
 $$
 \phi_z = \frac{\sigma}{\rho g} + \frac{\omega^2}{g} \phi + \frac{4 \nu i \omega}{g} \phi_{xx}
