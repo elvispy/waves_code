@@ -69,6 +69,28 @@ def gaussian_load(x0: float,
     return delta                        # q_i  (units N·m⁻¹)
 
 
+# Newton iteration for complex k using fixed number of steps (JAX differentiable)
+def solve_k(omega, g, H, nu, sigma, rho, k0=1.0 + 0.0j, num_steps=100):
+    def dispersion_eq(k):
+        tanh_kH = jnp.tanh(k * H)
+        lhs = k * tanh_kH * g
+        rhs = (-sigma / rho) * k**3 * tanh_kH + omega**2 - 4j * nu * omega * k**2
+        return lhs - rhs
+
+    # Define the gradient functions
+    real_grad_fn = jax.grad(lambda k: jnp.real(dispersion_eq(k)))
+    imag_grad_fn = jax.grad(lambda k: jnp.imag(dispersion_eq(k)))
+
+    def newton_step(k, _):
+        f = dispersion_eq(k)
+        df_dk = real_grad_fn(k) + 1j * imag_grad_fn(k)  # evaluate both grads at k
+        k_next = k - f / df_dk
+        return k_next, None
+
+    k_final, _ = jax.lax.scan(newton_step, k0, None, length=num_steps)
+    return k_final
+
+
 def test_solution(eta, phi, domain):
     """
     Test the solution by checking the continuity of the velocity field
