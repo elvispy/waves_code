@@ -3,7 +3,7 @@ import jax.numpy as jnp
 from surferbot.constants import DEBUG
 from surferbot.myDiff import Diff
 from surferbot.integration import simpson_weights
-from surferbot.utils import solve_tensor_system, gaussian_load, test_solution
+from surferbot.utils import solve_tensor_system, gaussian_load, test_solution, solve_k
 from surferbot.sparse_utils import _SparseAtProxy
 import jax.experimental.sparse as jsparse
 # Adding the add and set properties do BCOO
@@ -59,7 +59,7 @@ def solver(sigma = 72.20, rho = 30., omega = 2*jnp.pi*80., nu = 1e-6, g = 9.81,
     C27 = -sigma * t_c / (1.0j * omega * m_c * L_c)       # Surface tension force
 
     ## Equation 3: Radiative boundary conditions
-    k = 1.0 #TODO: Calculate the dispersion relation
+    k = solve_k(omega, g, L_c, nu, sigma, rho) # Complex wavenumber
     C31 = 1.
     C32 = 1.0j * k * L_c
 
