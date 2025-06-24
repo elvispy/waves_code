@@ -117,7 +117,7 @@ for ii=gridSize:gridSize:gridSize^2
 end
 
 
-% Apply Right Boundary Condition (Equation 2.18d from paper)
+% Apply left Boundary Condition (Equation 2.18d from paper)
 
 for ii=gridSize^2-gridSize+1:gridSize^2
 
@@ -147,7 +147,7 @@ for ii=1:gridSize:gridSize^2
     boundaryMatrix(ii,ii+2)=1;
 end
 
-% Apply Left Boundary Condition (Equation 2.18c from paper)
+% Apply Right Boundary Condition (Equation 2.18c from paper)
 for ii=1:gridSize
     id=find(systemMatrix(ii,:));
     systemMatrix(ii,id)=0;
