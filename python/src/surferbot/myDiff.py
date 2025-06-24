@@ -74,8 +74,10 @@ def make_axis(dim: int, config_or_axis, periodic: bool = False):
 
     # Uniform spacing supplied as a *scalar* JAX array
     if isinstance(config_or_axis, jnp.ndarray) and config_or_axis.size == 1:
-        return grids.EquidistantAxis(dim, spacing=float(config_or_axis),
-                                     periodic=periodic)
+        # JAX regards shape ``(1,)`` as *not* scalar, so ``float(array)``
+        # raises.  Extract the single element explicitly.
+        spacing = float(jnp.reshape(config_or_axis, ()).item())  # → Python scalar
+        return grids.EquidistantAxis(dim, spacing=spacing, periodic=periodic)
 
     # Explicit coordinate list – any dense or sparse array type works here
     if isinstance(config_or_axis, (np.ndarray, jnp.ndarray, jsparse.BCOO)):
