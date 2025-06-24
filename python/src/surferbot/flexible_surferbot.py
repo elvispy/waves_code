@@ -30,7 +30,7 @@ def solver(sigma = 72.20, rho = 30., omega = 2*jnp.pi*80., nu = 1e-6, g = 9.81,
     - rho_raft: density of the raft (per unit length) (kg/m)
     - n: number of points in the raft
     - M: number of points in the z direction
-    - DEBUG: whether to print debug information
+
     Outputs:
     - U: Terminal Velocity of the raft
     
@@ -85,24 +85,35 @@ def solver(sigma = 72.20, rho = 30., omega = 2*jnp.pi*80., nu = 1e-6, g = 9.81,
     z = jnp.logspace(0, jnp.log10(2), M) - 1; #z[-1] = -1.
 
     # Define derivative operators along x and z
-    d_dx = Diff(axis=0, grid=jnp.round(x, 3), acc=2, shape=(N, M)) # TODO: Adapt this to nonuniform grids
-    d_dz = Diff(axis=1, grid=jnp.round(z, 3), acc=2, shape=(N, M))
+    d_dx = Diff(axis=0, grid=jnp.round(x, 5), acc=2, shape=(N, M)) # TODO: Adapt this to nonuniform grids
+    d_dz = Diff(axis=1, grid=jnp.round(z, 5), acc=2, shape=(N, M))
 
     # Define the position of the motor
     weights = gaussian_load(motor_position/L_c, 0.01, x[x_contact])
     
+    # This fourth order tensor is nonzero when:
+    #  1) the third and first indices are equal.
+    #  2) the fourth and second indices are equal.
     I_NM = jnp.eye(N)[:, None, :, None] * jnp.eye(M)[None, :, None, :]
     O_NM = jnp.zeros((N, N), dtype=jnp.complex64)[:, None, :, None] * jnp.zeros((M, M), dtype=jnp.complex64)[None, :, None, :]
 
     ## BUILDING THE MATRIX SYSTEM
-    # A little note on notation: We want to construct a fifth order tensor of size (N, M, N, M, 5) 
-    # The first two indices are the equations, and the last three are the variables.
-    # For example, A[i, j, :, :, :] are the weights for the linear equation that corresponds to the node (i, j)
-    # and A[:, :, i, j, k] are the weights for the variable \partial_x^k \phi_{i, j} at the node (i, j)
+    # Some comments on notation: 
+    #   - We want to solve a linear system of equations Ax = b where A is a 6th order tensor of shape (5, N, M, N, M, 5)
+    #   - In tensor (einstein) notation, we have A_{abcdef} x_{def} = b_{abc}
+    #   - Therefore, x is of shape (N, M, 5) and b is of shape (5, N, M).
+    #   - In reality, x encodes the velocity potential and their x derivatives.
+    #     This way x_{i,j,k} is the velocity potential at node (i, j) and k is the order of the derivative.
+    #   - There are 5 * N * M equations, N*M of them coming directly from the fluid-structure interaction equations.
+    #     The other  4 * N * M equations come from turning the 5-th order PDE into a system of first-order equations.
+    #     Notice that the domain consists of N nodes in the x direction and M nodes in the z direction.
+    #     Therefore, each point in the discretized domain is associated with an equation at that point.
+    # For example, A[0, i, j, :, :, :] are the weights for the linear equation that corresponds to the node (i, j)
+    # and A[0, :, :, i, j, k] are the weights for the variable \partial_x^k \phi_{i, j} at the node (i, j)
     # That is to say, the k index is the order of the derivative.
 
     # Building the first block of equations (Bernoullli on the surface)
-    E1 = jnp.stack([C11 * d_dz + C13 * I_NM, O_NM, C12 * d_dz + C14 * I_NM, O_NM, O_NM], axis = -1)
+    E1 = jnp.stack([C11 * d_dz + C13 * I_NM, O_NM, C12 * d_dz + C14 * I_NM, O_NM, O_NM], axis = -1) # This result has shape (N, M, 5)
 
     # Only the equations that are not in contact. This shape should be (N-H, 1, N, M+1)
     E1 = E1.at[~x_free, 0, :, :, :].set(0.0) # Remove the contact equations at the surface
@@ -110,7 +121,8 @@ def solver(sigma = 72.20, rho = 30., omega = 2*jnp.pi*80., nu = 1e-6, g = 9.81,
     assert E1.shape == (N, M, N, M, 5), f"Shape of E1 is {E1.shape}." if DEBUG else None 
     
     # Building the second block of equations (Euler beam Equation)
-    d_dx1D = Diff(axis=0, grid=jnp.round(x[x_contact], 3), acc=2, shape=(H, M)) # I dont want to take information from outside for the beam equation
+    #TODO: Maybe i want this to take information from outside the raft.
+    d_dx1D = Diff(axis=0, grid=jnp.round(x[x_contact], 5), acc=2, shape=(H, M)) # I dont want to take information from outside for the beam equation
     d_dz1D = deepcopy(d_dz); d_dz1D.shape = (H, M); d_dz1D = 1.0 * d_dz1D
     I_HM = jnp.eye(H)[:, None, :, None] * jnp.eye(M)[None, :, None, :]
     O_HM = jnp.zeros(I_HM.shape, dtype=jnp.complex64)
@@ -136,8 +148,8 @@ def solver(sigma = 72.20, rho = 30., omega = 2*jnp.pi*80., nu = 1e-6, g = 9.81,
 
     # We remove the bottom of 
     # Adding surface variable. This shape should be (N, M, N, M+1)
-    E2 = E2.at[[0, -1], :, :, :].set(0.0) # Remove the boundaries
-    E2 = E2.at[:, [0, -1], :, :].set(0.0) # Remove the boundaries
+    E2 = E2.at[[0, -1], :, :, :].set(0.0) # Remove the left-right boundaries
+    E2 = E2.at[:, [0, -1], :, :].set(0.0) # Remove the top-bottom boundaries
     E2 = jnp.stack([E2, O_NM, O_NM, O_NM, O_NM], axis=-1)
     assert E2.shape == (N, M, N, M, 5), f"Shape of E4 is {E2.shape} instead of {N*M}" if DEBUG else None
 
@@ -148,8 +160,10 @@ def solver(sigma = 72.20, rho = 30., omega = 2*jnp.pi*80., nu = 1e-6, g = 9.81,
     E3 = jnp.stack([E3, O_NM, O_NM, O_NM, O_NM], axis=-1)
     #assert E5.shape[0] == N, f"Shape of E5 is {E5.shape} instead of {N}" if DEBUG else None
 
-    # Radiative boundary conditions
+    # Radiative boundary conditions #TODO: test this with dirichlet boundary conditions
     E4 = jnp.zeros((N, M, N, M, 5), dtype=jnp.complex64)
+    #E4 = E4.at[0 , :, 0, :, 0].set(C32) # Leftmost equations, left coefficients, zeroth derivative coefficients
+    
     E4 = E4.at[0 , :, 0, :, 0].set(C32) # Leftmost equations, left coefficients, zeroth derivative coefficients
     E4 = E4.at[0 , :, 0, :, 1].set(C31) # Leftmost equations, left coefficients, first derivative coefficients
     E4 = E4.at[-1, :,-1, :, 0].set(-C32)# Rightmost equations, right coefficients, zeroth derivative coefficients
@@ -157,13 +171,14 @@ def solver(sigma = 72.20, rho = 30., omega = 2*jnp.pi*80., nu = 1e-6, g = 9.81,
     # Concatenate everything
     E = E1 + E2 + E3 + E4
 
-    # Horizontal derivatives definition
+    # Horizontal derivatives definitions
     Dx = 1.0 * d_dx
     A = jnp.stack([E,
                    jnp.stack([Dx, -I_NM, O_NM, O_NM, O_NM], axis = -1),
                    jnp.stack([O_NM, Dx, -I_NM, O_NM, O_NM], axis = -1),
                    jnp.stack([O_NM, O_NM, Dx, -I_NM, O_NM], axis = -1),
                    jnp.stack([O_NM, O_NM, O_NM, Dx, -I_NM], axis = -1)], axis = 0)
+
 
     assert A.shape == (5, N, M, N, M, 5), f"Shape of A is {A.shape} instead of {(5, N, M, N, M, 5)}" if DEBUG else None
     assert jnp.any(jnp.all(jnp.abs(A) < 1e-10, axis=(-3, -2, -1))) == False, "Matrix A is defficient" if DEBUG else None
@@ -197,6 +212,7 @@ def solver(sigma = 72.20, rho = 30., omega = 2*jnp.pi*80., nu = 1e-6, g = 9.81,
     thrust = thrust + sigma * (eta[left_raft_boundary] - eta[left_raft_boundary-1]) / (x[left_raft_boundary] - x[left_raft_boundary-1])
     thrust = thrust - sigma * (eta[right_raft_boundary+1] - eta[right_raft_boundary]) / (x[right_raft_boundary+1] - x[right_raft_boundary])                              
     U = jnp.power(thrust**2/thrust_factor , 1/3)
+
     return U
 
 
