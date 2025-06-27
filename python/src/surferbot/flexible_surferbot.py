@@ -59,7 +59,7 @@ def solver(sigma = 72.20, rho = 30., omega = 2*jnp.pi*80., nu = 1e-6, g = 9.81,
     C27 = -sigma * t_c / (1.0j * omega * m_c * L_c)       # Surface tension force
 
     ## Equation 3: Radiative boundary conditions
-    k = dispersion_k(omega, g, L_c, nu, sigma, rho) # Complex wavenumber
+    k = dispersion_k(omega, g, D, nu, sigma, rho) # Complex wavenumber 
     C31 = 1.
     C32 = 1.0j * k * L_c
 
@@ -80,13 +80,20 @@ def solver(sigma = 72.20, rho = 30., omega = 2*jnp.pi*80., nu = 1e-6, g = 9.81,
     assert jnp.sum(x_free) + jnp.sum(x_contact) == N-2, f"Number of free and contact points do not match the total number of points {N}." if DEBUG else None
     left_raft_boundary = (N-H)//2; right_raft_boundary = (N+H)//2
 
+    if jnp.std(x) < 1e-5:
+        grid_x = (x[left_raft_boundary] - x[left_raft_boundary-1]).item(0)
+    else:
+        grid_x = jnp.round(x, 5) 
     dx = (x[left_raft_boundary] - x[left_raft_boundary-1]).item(0) # TODO: Check if i want this to be a float
-    #contact_boundary2= jnp.array([(N-H)/2 - 1, (N+H)/2 + 1], dtype=int)
-    z = jnp.logspace(0, jnp.log10(2), M) - 1; #z[-1] = -1.
-
+    
+    z = (D/L_c) * (jnp.logspace(0, jnp.log10(2), M) - 1)
+    if jnp.std(z) < 1e-5:
+        grid_z = (z[1] - z[0]).item(0)
+    else:
+        grid_z = jnp.round(z, 5)
     # Define derivative operators along x and z
-    d_dx = Diff(axis=0, grid=jnp.round(x, 5), acc=2, shape=(N, M)) # TODO: Adapt this to nonuniform grids
-    d_dz = Diff(axis=1, grid=jnp.round(z, 5), acc=2, shape=(N, M))
+    d_dx = Diff(axis=0, grid=grid_x, acc=2, shape=(N, M)) # TODO: Adapt this to nonuniform grids
+    d_dz = Diff(axis=1, grid=grid_z, acc=2, shape=(N, M))
 
     # Define the position of the motor
     weights = gaussian_load(motor_position/L_c, 0.01, x[x_contact])
@@ -112,6 +119,8 @@ def solver(sigma = 72.20, rho = 30., omega = 2*jnp.pi*80., nu = 1e-6, g = 9.81,
     # and A[0, :, :, i, j, k] are the weights for the variable \partial_x^k \phi_{i, j} at the node (i, j)
     # That is to say, the k index is the order of the derivative.
 
+
+    ## Here, E1, E2, E3 and E4 have shape (N, M, N, M, 5)
     # Building the first block of equations (Bernoullli on the surface)
     E1 = jnp.stack([C11 * d_dz + C13 * I_NM, O_NM, C12 * d_dz + C14 * I_NM, O_NM, O_NM], axis = -1) # This result has shape (N, M, 5)
 
@@ -121,7 +130,7 @@ def solver(sigma = 72.20, rho = 30., omega = 2*jnp.pi*80., nu = 1e-6, g = 9.81,
     assert E1.shape == (N, M, N, M, 5), f"Shape of E1 is {E1.shape}." if DEBUG else None 
     
     # Building the second block of equations (Euler beam Equation)
-    #TODO: Maybe i want this to take information from outside the raft.
+    #TODO: Maybe I want this to take information from outside the raft.
     d_dx1D = Diff(axis=0, grid=jnp.round(x[x_contact], 5), acc=2, shape=(H, M)) # I dont want to take information from outside for the beam equation
     d_dz1D = deepcopy(d_dz); d_dz1D.shape = (H, M); d_dz1D = 1.0 * d_dz1D
     I_HM = jnp.eye(H)[:, None, :, None] * jnp.eye(M)[None, :, None, :]
@@ -160,13 +169,13 @@ def solver(sigma = 72.20, rho = 30., omega = 2*jnp.pi*80., nu = 1e-6, g = 9.81,
     E3 = jnp.stack([E3, O_NM, O_NM, O_NM, O_NM], axis=-1)
     #assert E5.shape[0] == N, f"Shape of E5 is {E5.shape} instead of {N}" if DEBUG else None
 
-    # Radiative boundary conditions #TODO: test this with dirichlet boundary conditions
+    # Radiative boundary conditions
     E4 = jnp.zeros((N, M, N, M, 5), dtype=jnp.complex64)
     #E4 = E4.at[0 , :, 0, :, 0].set(C32) # Leftmost equations, left coefficients, zeroth derivative coefficients
     
-    E4 = E4.at[0 , :, 0, :, 0].set(C32) # Leftmost equations, left coefficients, zeroth derivative coefficients
+    E4 = E4.at[0 , :, 0, :, 0].set(-C32) # Leftmost equations, left coefficients, zeroth derivative coefficients
     E4 = E4.at[0 , :, 0, :, 1].set(C31) # Leftmost equations, left coefficients, first derivative coefficients
-    E4 = E4.at[-1, :,-1, :, 0].set(-C32)# Rightmost equations, right coefficients, zeroth derivative coefficients
+    E4 = E4.at[-1, :,-1, :, 0].set(C32)# Rightmost equations, right coefficients, zeroth derivative coefficients
     E4 = E4.at[-1, :,-1, :, 1].set(C31) # Rightmost equations, right coefficients, first derivative coefficients
     # Concatenate everything
     E = E1 + E2 + E3 + E4
@@ -187,14 +196,31 @@ def solver(sigma = 72.20, rho = 30., omega = 2*jnp.pi*80., nu = 1e-6, g = 9.81,
     # Only apply the force where the raft is in contact
     b = b.at[0, x_contact, 0].set(-C23 * weights) 
 
+    if BC[0] == 'd': # Dirichlet boundary conditions
+        A = A[:, 1:-1, :, 1:-1, :, :] # Remove radiative boundary conditions
+        b = b[:, 1:-1, :] # Remove radiative boundary conditions
+        #x_contact = x_contact[1:-1] # Remove radiative boundary conditions
+    elif BC[0] == 'n': # Neumann boundary conditions
+        A = A.at[:, :, :, -2, :, :].set(A[:, :, :, -2, :, :] + A[:, :, :, -1, :, :])
+        A = A.at[:, :, :,  1, :, :].set(A[:, :, :,  1, :, :] + A[:, :, :,  0, :, :])
+        A = A[:, 1:-1, :, 1:-1, :, :] # Remove radiative boundary conditions
+        b = b[:, 1:-1, :] # Remove radiative boundary conditions
     ## SOLVING THE SYSTEM AND CALCULATING THRUST
-    x = solve_tensor_system(A, b) #TODO Determinant is zero. Check for example A[0, 0, 1, :5, :5, 0]
+    solution = solve_tensor_system(A, b) 
 
-    phi = x[:, :, 0]; phi_surface = phi[:, 0]
+    if DEBUG:
+        return A, solution, z, Dx
+    
+    if BC[0] == 'd': # Dirichlet boundary conditions
+        solution = jnp.concatenate([jnp.zeros((1, M, 5)), solution, jnp.zeros((1, M, 5))], axis=0) # Add the Dirichlet boundary conditions
+    elif BC[0] == 'n': # Neumann boundary conditions
+        solution = jnp.concatenate([solution[[0], :, :], solution, solution[[-1], :, :]], axis=0)
+    phi = solution[:, :, 0]; phi_surface = solution[:, 0, 0]
+    phi_x = solution[:, :, 1]
     # Extract eta from the kinematic boundary condition
-    eta = ((1.0/(1.0j * omega * t_c) * d_dz) @ phi)[:, 0]
-
-    assert test_solution(eta, phi_surface, (x, z)), "The solution does not satisfy the PDE" if DEBUG else None
+    eta    = jnp.einsum('ijkl,kl->ij', (1.0/(1.0j * omega * t_c) * d_dz), phi)[:, 0]
+    eta_x  = jnp.einsum('ijkl,kl->ij', (1.0/(1.0j * omega * t_c) * d_dz), phi_x)[:, 0]
+    assert test_solution(eta, phi_surface, (solution, z)), "The solution does not satisfy the PDE" if DEBUG else None
     
     ## ASSEMBLE PRESSURE
     # Phi component of pressure
@@ -203,7 +229,9 @@ def solver(sigma = 72.20, rho = 30., omega = 2*jnp.pi*80., nu = 1e-6, g = 9.81,
     P1 = P1 @ (phi_surface[x_contact])
     p = (C25 * eta[x_contact] + P1) # Pressure (eqn 2.20)
 
+    #eta_x = eta_x[x_contact]
     eta_x = (1.0 * d_dx1D) @ eta[x_contact]
+
 
     integral = simpson_weights(H, dx) # TODO: This assumes uniform grid
     thrust = integral @ (-1/2 * (jnp.real(p) * jnp.real(eta_x) + jnp.imag(p) * jnp.imag(eta_x)))
@@ -211,12 +239,13 @@ def solver(sigma = 72.20, rho = 30., omega = 2*jnp.pi*80., nu = 1e-6, g = 9.81,
     thrust = F_c * thrust # Adding dimensions #TODO: Review sign convention here + maybe x-direction and small oscillations cancel each other here
     thrust = thrust + sigma * (eta[left_raft_boundary] - eta[left_raft_boundary-1]) / (x[left_raft_boundary] - x[left_raft_boundary-1])
     thrust = thrust - sigma * (eta[right_raft_boundary+1] - eta[right_raft_boundary]) / (x[right_raft_boundary+1] - x[right_raft_boundary])                              
+    thrust = jnp.real(thrust) # TODO: Thrust comes out negative? is that correct?
     U = jnp.power(thrust**2/thrust_factor , 1/3)
 
-    return U
+    return U, x * L_c, z * L_c, phi * L_c**2 / t_c, eta * L_c
 
 
 if __name__ == "__main__":
     #s = jax.jit(solver)
     A = solver()#s()
-    print(A)
+    print(A[0])
