@@ -3,7 +3,7 @@ import jax
 from jax.scipy.sparse.linalg import gmres   # square, general sparse solver
 import logging
 
-def solve_tensor_system(A, b, *, tol=1e-8, maxiter=None):
+def solve_tensor_system(A, b, *, tol=1e-5, maxiter=1000):
     """
     Solve A·x = b where b.shape == A.shape[:b.ndim].
     Works for dense or BCOO/BCSR sparse A, square or rectangular.
@@ -16,7 +16,7 @@ def solve_tensor_system(A, b, *, tol=1e-8, maxiter=None):
 
     m, n = b.size, A.size // b.size
     A_flat = A.reshape(m, n)
-    b_vec  = b.reshape(m)
+    b_vec  = b.reshape(m).astype(A_flat.dtype)
 
     is_sparse = not isinstance(A, type(jnp.eye(3)))  # BCOO / BCSR
 

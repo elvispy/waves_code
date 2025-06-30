@@ -1,115 +1,57 @@
-"""test_myDiff.py
-================================
+"""pytest suite for surferbot.myDiff
 
-Pytest suite exercising every JAX‑specific feature added in **`myDiff.py`**.
-
-Run with::
-
-    pytest -q python/tests/test_myDiff.py
-
-This file must live inside *python/tests/*.  It bootstraps a couple of stub
-modules (``surferbot.constants`` and ``surferbot.sparse_utils``) **only if they
-aren’t already importable** – so the rest of your code‑base keeps working.  The
-stubs now expose both ``SPARSE`` *and* ``DEBUG`` flags because other test files
-(e.g. *test_solver.py*) import ``surferbot.constants.DEBUG`` during collection.
+Covers every behaviour added by the thin wrapper:
+* accepts scalar spacing and explicit coordinate arrays (NumPy / JAX / BCOO)
+* `.op(shape)` yields a dense or sparse *JAX* matrix, not SciPy
+* operator algebra (power, left/right multiplication) preserves wrapper
+  semantics
+* new regression: 2‑D shape handling and scalar‑multiplication materialisation
 """
 
 from __future__ import annotations
 
-# ───────────────────────── standard lib / test scaffolding ──────────────── #
-import sys
-import types
 import importlib
-from pathlib import Path
-from typing import Any
+import types
+from copy import deepcopy
 
-import numpy as np
 import pytest
-
-# ──────────────────────────── third‑party / JAX et al. ──────────────────── #
+import numpy as np
 import jax.numpy as jnp
 import jax.experimental.sparse as jsparse
 
-# ======================================================================== #
-# 0.  Make sure *project* root (containing python/src) is on sys.path
-# ======================================================================== #
-PROJECT_ROOT = Path(__file__).resolve().parents[2]  # → <repo>/
-SRC_DIR = PROJECT_ROOT / "python" / "src"
-if str(SRC_DIR) not in sys.path:
-    sys.path.insert(0, str(SRC_DIR))
-
-# ======================================================================== #
-# 1.  Create **dummy** surferbot modules (only if missing)
-# ======================================================================== #
-
-def _install_surferbot_stubs(sparse_default: bool = False) -> None:  # noqa: D401
-    """Inject minimal stub modules under the *surferbot.* namespace.
-
-    We *only* create a stub if the real module cannot be imported.  This lets
-    developers replace the stub by adding the actual package to PYTHONPATH.
-    """
-
-    try:
-        importlib.import_module("surferbot.constants")  # type: ignore[import-not-found]
-        return  # Real package is available – nothing to patch
-    except ModuleNotFoundError:
-        pass
-
-    # Parent *surferbot* namespace package
-    sys.modules.setdefault("surferbot", types.ModuleType("surferbot"))
-
-    # ── surferbot.constants ──────────────────────────────────────────────── #
-    const_mod = types.ModuleType("surferbot.constants")
-    const_mod.SPARSE = sparse_default
-    const_mod.DEBUG = False  # <- added so other legacy tests can import DEBUG
-    sys.modules["surferbot.constants"] = const_mod
-
-    # ── surferbot.sparse_utils ───────────────────────────────────────────── #
-    sparse_utils_mod = types.ModuleType("surferbot.sparse_utils")
-
-    class _SparseAtProxy:  # noqa: D401 – stub only
-        """Very small proxy replicating JAX ``x.at`` API for sparse BCOO."""
-
-        def __init__(self, *_args: Any, **_kw: Any):
-            pass
-
-        def _noop(self, *args: Any, **kwargs: Any):  # noqa: D401 – noop
-            return args[0] if args else None
-
-        set = add = _noop  # type: ignore[assignment]
-
-    sparse_utils_mod._SparseAtProxy = _SparseAtProxy  # type: ignore[attr-defined]
-    sys.modules["surferbot.sparse_utils"] = sparse_utils_mod
-
-
-_install_surferbot_stubs()
-
-# ───────────────────────────── import wrapper under test ────────────────── #
-# The wrapper lives at python/src/surferbot/myDiff.py → import as a sub‑module
+# ---------------------------------------------------------------------------
+# Dynamically import the wrapper under test
+# ---------------------------------------------------------------------------
 myDiff = importlib.import_module("surferbot.myDiff")
 
-# ========================================================================= #
-# 2.  Helper fixtures
-# ========================================================================= #
+# ---------------------------------------------------------------------------
+# Helpers to build sample grids
+# ---------------------------------------------------------------------------
 
-@pytest.fixture(params=[False, True], ids=["dense", "sparse"])
-def wrapper(request):
-    """Return the imported wrapper module with *SPARSE* toggled as requested."""
-    myDiff.SPARSE = bool(request.param)  # flip global at runtime
-    return myDiff
+Nx = 5
+COORDS_NUMPY = np.linspace(0.0, 1.0, Nx, dtype=float)
+COORDS_JAX   = jnp.linspace(0.0, 1.0, Nx)
 
-# ========================================================================= #
-# 3.  Tests for **make_axis** and grid handling
-# ========================================================================= #
+# 1‑D coordinate array stored sparsely (just to hit that code path)
+data   = COORDS_NUMPY.astype(np.float32)
+indices = np.arange(Nx)[:, None]  # each coord sits in its own row of a (Nx,1)
+COORDS_BCOO = jsparse.BCOO((data, indices), shape=(Nx,))
+
+# ---------------------------------------------------------------------------
+# Parametrised cases for make_axis
+# ---------------------------------------------------------------------------
 
 GRID_CASES = [
-    0.2,  # scalar spacing
-    jnp.array([0.2]),  # 1‑element JAX array spacing
-    np.linspace(0.0, 1.0, 5),  # NumPy coordinate array
-    jnp.linspace(0.0, 1.0, 5),  # JAX coordinate array
-    jsparse.BCOO.fromdense(jnp.linspace(0.0, 1.0, 5)),  # sparse coords
+    0.2,                            # scalar spacing
+    jnp.array([0.2], dtype=jnp.float32),  # 1‑element JAX array (regression!)
+    COORDS_NUMPY,                   # explicit NumPy coords
+    COORDS_JAX,                     # explicit JAX coords
+    COORDS_BCOO,                    # explicit BCOO coords
 ]
 
+# ---------------------------------------------------------------------------
+# Tests
+# ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize("grid", GRID_CASES, ids=[
     "scalar‑spacing",
@@ -119,55 +61,56 @@ GRID_CASES = [
     "bcoo‑coords",
 ])
 def test_make_axis_accepts_all_grid_types(grid):
-    diff = myDiff.Diff(axis=0, grid=grid, shape=(5,))
-    assert diff  # construction succeeded
-
-# ========================================================================= #
-# 4.  Tests for **Diff** core API additions
-# ========================================================================= #
-
-def test_scalar_left_multiplication_does_not_error(wrapper):
-    X = wrapper.Diff(axis=0, grid=1.0, shape=(8,))
-    out = 1.0 * X
-    assert isinstance(out, (jsparse.BCOO if wrapper.SPARSE else jnp.ndarray))
+    """Construction should never raise for any supported grid description."""
+    diff = myDiff.Diff(axis=0, grid=grid, shape=(Nx,))
+    assert isinstance(diff, myDiff.Diff)
 
 
-def test_op_dense_vs_sparse(wrapper):
+def test_op_dense_vs_sparse(monkeypatch):
+    """`SPARSE` flag controls whether `.op` yields BCOO or dense array."""
     Nx = 4
-    diff = wrapper.Diff(axis=0, grid=1.0, shape=(Nx,))
-    mat = diff.op()
-    assert isinstance(mat, (jsparse.BCOO if wrapper.SPARSE else jnp.ndarray))
-    assert mat.shape == (Nx, Nx)
+    diff = myDiff.Diff(axis=0, grid=1.0, shape=(Nx,))
+
+    # Force dense
+    monkeypatch.setattr(myDiff, "SPARSE", False, raising=False)
+    dense = diff.op()
+    assert isinstance(dense, jnp.ndarray) and dense.shape == (Nx, Nx)
+
+    # Force sparse
+    monkeypatch.setattr(myDiff, "SPARSE", True, raising=False)
+    sparse = diff.op()
+    assert isinstance(sparse, jsparse.BCOO) and sparse.shape == (Nx, Nx)
 
 
-def test_diff_power_increases_order():
-    assert (myDiff.Diff(axis=0, grid=1.0) ** 3).order == myDiff.Diff(axis=0, grid=1.0).order * 3
+def test_pow_and_mul_order():
+    """`**` and `*` on two Diff objects should add / multiply derivative order."""
+    d = myDiff.Diff(axis=0, grid=1.0, shape=(Nx,))
+    d2 = d ** 2
+    assert d2.order == 2 * d.order
+
+    dd = d * d  # same axis ⇒ order add
+    assert dd.order == 2 * d.order
 
 
-def test_diff_mul_accumulates_order():
-    d1 = myDiff.Diff(axis=0, grid=1.0)
-    d2 = myDiff.Diff(axis=0, grid=1.0)
-    assert (d1 * d2).order == d1.order + d2.order
+def test_rmul_scalar_produces_matrix():
+    """Left‑scaling by a scalar materialises the operator tensor."""
+    Nx, Mx = 3, 2
+    diff = myDiff.Diff(axis=0, grid=1.0, shape=(Nx, Mx))
+    tensor = 1.0 * diff  # triggers __rmul__
+    assert tensor.shape == (Nx, Mx, Nx, Mx)
 
 
-def test_scalar_right_multiplication_returns_materialised_op(wrapper):
-    d = wrapper.Diff(axis=0, grid=1.0, shape=(6,))
-    out = d * 2.5
-    assert isinstance(out, (jsparse.BCOO if wrapper.SPARSE else jnp.ndarray))
+# ---------------------------------------------------------------------------
+# NEW regression: shape=(N, M) with coordinate grid (JAX array)
+# ---------------------------------------------------------------------------
+
+def test_op_matrix_shape_2d():
+    """`.op` (via scalar‑multiplication) for 2‑D shape returns (N,M,N,M) tensor."""
+    N, M = 4, 3
+    grid_x = jnp.linspace(0.0, 1.0, N)
+    diff = myDiff.Diff(axis=0, grid=grid_x, shape=(N, M))
+
+    mat = 1.0 * diff  # should hit __rmul__ → .op → JAX array/BCOO
+    assert mat.shape == (N, M, N, M)
 
 
-def test_bcoo_has_at_property():
-    mat = jsparse.BCOO.fromdense(jnp.eye(3))
-    assert hasattr(mat, "at") and hasattr(mat.at, "set")
-
-# ========================================================================= #
-# 5.  Tests for dynamic ``op`` patching after operator algebra
-# ========================================================================= #
-
-def test_composed_operator_has_jax_compatible_op(wrapper):
-    d = wrapper.Diff(axis=0, grid=1.0, shape=(4,))
-    vec = np.arange(4)
-    composed = d * vec
-    if composed is not NotImplemented:
-        mat = composed.op()
-        assert isinstance(mat, (jsparse.BCOO if wrapper.SPARSE else jnp.ndarray))

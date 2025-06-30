@@ -1,2 +1,2 @@
 SPARSE = False
-DEBUG  = True
+DEBUG  = False

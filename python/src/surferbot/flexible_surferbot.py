@@ -9,10 +9,13 @@ import jax.experimental.sparse as jsparse
 # Adding the add and set properties do BCOO
 jsparse.BCOO.at = property(lambda self: _SparseAtProxy(self))
 
-def solver(sigma = 72.20, rho = 30., omega = 2*jnp.pi*80., nu = 1e-6, g = 9.81, 
-           L_raft = 0.05, force = 2.74, motor_position = 1.9/5 * 0.05, 
-           L_domain = .5, EI = 3.0e+9 * 3e-2 * 1e-4**3 / 12, # 3GPa times 3 cm times 0.05 cm ^4 / 12
-           rho_raft = 0.018 * 3., n = 21, M = 10): #TODO CHECK UNITS FOR THE PROBLEM TO BE OF DEPTH 3cm (original surferbot)
+
+# Everything is SI.
+def solver(sigma = 72.2e-3, rho = 1000., omega = 2*jnp.pi*80., nu = 1e-6, g = 9.81, 
+           L_raft = 0.05, motor_position = 0.6/5 * 0.05, d = 0.03,
+           L_domain = 1., EI = 3.0e+9 * 3e-2 * 1e-4**3 / 12, # 3GPa times 3 cm times 0.05 cm ^4 / 12
+           rho_raft = 0.018 * 3., D = 0.1, n = 21, M = 10, motor_inertia = 0.13e-3 * 2.5e-3, #0.13 grams times eccentricity 2.5 mm
+           BC = 'neumann'): #TODO CHECK UNITS FOR THE PROBLEM TO BE OF DEPTH 3cm (original surferbot)
     """
     Solves the linearized water wave problem for a flexible raft
     Inputs:
@@ -28,8 +31,13 @@ def solver(sigma = 72.20, rho = 30., omega = 2*jnp.pi*80., nu = 1e-6, g = 9.81,
     - L_domain: length of the domain (m)
     - EI: Young's modulus (Pa) * moment of inertia (m^4)
     - rho_raft: density of the raft (per unit length) (kg/m)
+    - D: Vertical extension of water (depth) (m)
     - n: number of points in the raft
     - M: number of points in the z direction
+    - motor_inertia: inertia of the motor (kg*m^2)
+    - motor_position: position of the motor (m)
+    - BC: Boundary conditions, either 'dirichlet' or 'neumann'
+    - d: depth of the surferbot (m)
 
     Outputs:
     - U: Terminal Velocity of the raft
@@ -37,9 +45,10 @@ def solver(sigma = 72.20, rho = 30., omega = 2*jnp.pi*80., nu = 1e-6, g = 9.81,
     There are three equations to be solved. 
     """
     ## Derived dimensional Parameters (SI Units)
+    force = motor_inertia *  omega**2
     L_c = L_raft
     t_c = 1/omega
-    m_c = rho * L_c**2
+    m_c = rho * L_c**3
     F_c = m_c * L_c / t_c**2
 
     ## Non-dimensional Parameters
@@ -53,21 +62,21 @@ def solver(sigma = 72.20, rho = 30., omega = 2*jnp.pi*80., nu = 1e-6, g = 9.81,
     C21 = EI * t_c /(1.0j * omega * m_c * L_c**3 )        # Elasticity
     C22 = -rho_raft * omega * L_c * t_c / (1.0j * m_c)    # Inertia
     C23 = -force / (m_c * L_c / t_c**2)                   # Force load
-    C24 = (rho * t_c * 1.0j * omega * L_c**2) / m_c       # Inertia
-    C25 = (rho * t_c * g * L_c) / (m_c * 1.0j * omega)    # Gravity
-    C26 = -(rho * t_c * 2 * nu) / m_c                     # Viscous drag
-    C27 = -sigma * t_c / (1.0j * omega * m_c * L_c)       # Surface tension force
+    C24 = (rho * d * t_c * 1.0j * omega * L_c**2) / m_c       # Inertia
+    C25 = (rho * d * t_c * g * L_c) / (m_c * 1.0j * omega)    # Gravity
+    C26 = -(rho* d * t_c * 2 * nu) / m_c                     # Viscous drag
+    C27 = -sigma * d * t_c / (1.0j * omega * m_c * L_c)       # Surface tension force
 
     ## Equation 3: Radiative boundary conditions
     k = dispersion_k(omega, g, D, nu, sigma, rho) # Complex wavenumber 
     C31 = 1.
-    C32 = 1.0j * k * L_c
+    C32 = 0.0 * 1.0j * k * L_c
 
     # Equation 4: Harmonic eqn (fluid bulk)
     # No coefficients here here
 
     # Equation 5: Thrust
-    thrust_factor = 4/9 * nu * rho**2 * L_raft 
+    thrust_factor = 4/9 * nu * (rho*d)**2 * L_raft 
 
     ## Helper variables
     L_raft_adim = L_raft / L_c
@@ -96,13 +105,13 @@ def solver(sigma = 72.20, rho = 30., omega = 2*jnp.pi*80., nu = 1e-6, g = 9.81,
     d_dz = Diff(axis=1, grid=grid_z, acc=2, shape=(N, M))
 
     # Define the position of the motor
-    weights = gaussian_load(motor_position/L_c, 0.01, x[x_contact])
+    weights = gaussian_load(motor_position/L_c, 0.05, x[x_contact])
     
     # This fourth order tensor is nonzero when:
     #  1) the third and first indices are equal.
     #  2) the fourth and second indices are equal.
     I_NM = jnp.eye(N)[:, None, :, None] * jnp.eye(M)[None, :, None, :]
-    O_NM = jnp.zeros((N, N), dtype=jnp.complex64)[:, None, :, None] * jnp.zeros((M, M), dtype=jnp.complex64)[None, :, None, :]
+    O_NM = jnp.zeros((N, M, N, M), dtype=jnp.complex64)
 
     ## BUILDING THE MATRIX SYSTEM
     # Some comments on notation: 
@@ -131,7 +140,7 @@ def solver(sigma = 72.20, rho = 30., omega = 2*jnp.pi*80., nu = 1e-6, g = 9.81,
     
     # Building the second block of equations (Euler beam Equation)
     #TODO: Maybe I want this to take information from outside the raft.
-    d_dx1D = Diff(axis=0, grid=jnp.round(x[x_contact], 5), acc=2, shape=(H, M)) # I dont want to take information from outside for the beam equation
+    d_dx1D = Diff(axis=0, grid=(jnp.round(x[x_contact], 5) if len(grid_x) > 1 else grid_x), acc=2, shape=(H, M)) # I dont want to take information from outside for the beam equation
     d_dz1D = deepcopy(d_dz); d_dz1D.shape = (H, M); d_dz1D = 1.0 * d_dz1D
     I_HM = jnp.eye(H)[:, None, :, None] * jnp.eye(M)[None, :, None, :]
     O_HM = jnp.zeros(I_HM.shape, dtype=jnp.complex64)
@@ -145,7 +154,7 @@ def solver(sigma = 72.20, rho = 30., omega = 2*jnp.pi*80., nu = 1e-6, g = 9.81,
     
     d_dz_surface = deepcopy(d_dz); d_dz_surface.shape = (sum(x_free)//2, M)
     # Take the derivative at the surface (no inside information)
-    d_dx_free    = Diff(0, grid=x[jnp.logical_and(x_free, x > 0)], acc=2, shape=(sum(x_free)//2, M)) #.matrix((len(x[jnp.logical_and(x_free, x > 0)]), )).toarray()[0, :]
+    d_dx_free    = Diff(0, grid=(x[jnp.logical_and(x_free, x > 0)] if len(grid_x) > 1 else grid_x), acc=2, shape=(sum(x_free)//2, M)) #.matrix((len(x[jnp.logical_and(x_free, x > 0)]), )).toarray()[0, :]
 
     d_dxdz = ((d_dx_free * d_dz_surface).op())[0, 0, :, :]
     # Surface tension term on the right
@@ -234,11 +243,11 @@ def solver(sigma = 72.20, rho = 30., omega = 2*jnp.pi*80., nu = 1e-6, g = 9.81,
 
 
     integral = simpson_weights(H, dx) # TODO: This assumes uniform grid
-    thrust = integral @ (-1/2 * (jnp.real(p) * jnp.real(eta_x) + jnp.imag(p) * jnp.imag(eta_x)))
+    thrust = (d/L_c) * integral @ (-1/2 * (jnp.real(p) * jnp.real(eta_x) + jnp.imag(p) * jnp.imag(eta_x)))
 
     thrust = F_c * thrust # Adding dimensions #TODO: Review sign convention here + maybe x-direction and small oscillations cancel each other here
-    thrust = thrust + sigma * (eta[left_raft_boundary] - eta[left_raft_boundary-1]) / (x[left_raft_boundary] - x[left_raft_boundary-1])
-    thrust = thrust - sigma * (eta[right_raft_boundary+1] - eta[right_raft_boundary]) / (x[right_raft_boundary+1] - x[right_raft_boundary])                              
+    thrust = thrust + sigma * d * (eta[left_raft_boundary] - eta[left_raft_boundary-1]) / (x[left_raft_boundary] - x[left_raft_boundary-1])
+    thrust = thrust - sigma * d * (eta[right_raft_boundary+1] - eta[right_raft_boundary]) / (x[right_raft_boundary+1] - x[right_raft_boundary])                              
     thrust = jnp.real(thrust) # TODO: Thrust comes out negative? is that correct?
     U = jnp.power(thrust**2/thrust_factor , 1/3)
 
@@ -247,5 +256,5 @@ def solver(sigma = 72.20, rho = 30., omega = 2*jnp.pi*80., nu = 1e-6, g = 9.81,
 
 if __name__ == "__main__":
     #s = jax.jit(solver)
-    A = solver()#s()
+    A = solver()
     print(A[0])
