@@ -67,7 +67,7 @@ For $z = 0$. $|x| > 1/2$
 ## The beam equation inside the raft
 
 $$
-\frac{EI}{i \omega}\frac{\partial^5 \phi}{\partial z \partial x^4} = \frac{\rho_R \omega}{i} \hat{\phi}_z + \hat{F}_{z} \delta_{x_A} - \rho(i\omega\hat{\phi} + \frac{g}{i \omega}\hat{\phi}_z - 2\nu\hat{\phi}_{xx}) + \sigma \eta_x \delta_{\pm L/2}
+\frac{EI}{i \omega}\frac{\partial^5 \phi}{\partial z \partial x^4} = \frac{\rho_R \omega}{i} \hat{\phi}_z + \hat{F}_{z} \delta_{x_A} - \rho \cdot d (i\omega\hat{\phi} + \frac{g}{i \omega}\hat{\phi}_z - 2\nu\hat{\phi}_{xx}) + \sigma \cdot d \  \eta_x \delta_{\pm L/2}
 $$
 
 For $z = 0$, $|x| \leq L/2$
@@ -75,12 +75,12 @@ For $z = 0$, $|x| \leq L/2$
 ### Non dimensional equation
 
 $$
-\frac{EI}{i \omega L_c^3 t_c}\frac{\partial^5 \tilde{\phi}}{\partial z \partial x^4} = \frac{\rho_R \omega L_c}{i t_c} \tilde{\phi}_z + \frac{\hat{F}_{z}}{L_c} \tilde{\delta}_{x_A} - \rho\left(i\omega \frac{L_c^2}{t_c}\tilde{\phi} + \frac{g L_c}{i \omega t_c}\tilde{\phi}_z - 2\frac{\nu}{t_c} \tilde{\phi}_{xx}\right) + \frac{\sigma}{i \omega t_c L_c} \tilde{\phi}_{xz} \tilde{\delta}_{\pm 1/2}
+\frac{EI}{i \omega L_c^3 t_c}\frac{\partial^5 \tilde{\phi}}{\partial z \partial x^4} = \frac{\rho_R \omega L_c}{i t_c} \tilde{\phi}_z + \frac{\hat{F}_{z}}{L_c} \tilde{\delta}_{x_A} - \rho\cdot d \ \left(i\omega \frac{L_c^2}{t_c}\tilde{\phi} + \frac{g L_c}{i \omega t_c}\tilde{\phi}_z - 2\frac{\nu}{t_c} \tilde{\phi}_{xx}\right) + \frac{\sigma \cdot d}{i \omega t_c L_c} \tilde{\phi}_{xz} \tilde{\delta}_{\pm 1/2}
 $$
 Which is equivalent to 
 
 $$
-\frac{EI t_c}{i \omega L_c^3 m_c} \tilde{\phi}_{xxxxz} = \frac{\rho_R \omega L_c t_c}{i m_c} \tilde{\phi}_z + \frac{\hat{F}_{z} t_c^2}{m_c L_c} \delta_{x_A} - \frac{\rho t_c}{m_c}\left(i\omega L_c^2\tilde{\phi} + \frac{g L_c}{i \omega}\tilde{\phi}_z - 2\nu \tilde{\phi}_{xx}\right) + \frac{\sigma t_c}{i \omega m_c L_c} \tilde{\phi}_{xz} \tilde{\delta}_{\pm 1/2}
+\frac{EI t_c}{i \omega L_c^3 m_c} \tilde{\phi}_{xxxxz} = \frac{\rho_R \omega L_c t_c}{i m_c} \tilde{\phi}_z + \frac{\hat{F}_{z} t_c^2}{m_c L_c} \delta_{x_A} - \frac{\rho \cdot d \ t_c}{m_c}\left(i\omega L_c^2\tilde{\phi} + \frac{g L_c}{i \omega}\tilde{\phi}_z - 2\nu \tilde{\phi}_{xx}\right) + \frac{\sigma \cdot d \ t_c}{i \omega m_c L_c} \tilde{\phi}_{xz} \tilde{\delta}_{\pm 1/2}
 $$
 
 For $|x| \leq 1/2$
@@ -112,21 +112,21 @@ Q3. A fifth order differential equation has a $dx^5$ in the denominator. We shou
 ## Thrust equation
 
 $$
-F_D = \frac{1}{2} C_D \rho_W L U^2 = \frac{2}{3} \rho_W \sqrt{\nu L U^3}
+F_D = \frac{1}{2} C_D \rho_W L d U^2 = \frac{2}{3} \rho_W d \sqrt{\nu L U^3}
 $$
 
 $$
-U = \left(\frac{1}{\nu L}\left(\frac{3 F_T}{2 \rho_W}\right)^2\right)^{1/3}
+U = \left(\frac{1}{\nu L}\left(\frac{3 F_T}{2 d\ \rho_W}\right)^2\right)^{1/3}
 $$
 
 $$
-F_T = \overline{\int_S (p - p_{\infty}) (\bm{n} \cdot \bm{i}) dx} + \sigma \left(\overline{\eta_x}|_{x = -L/2} - \overline{\eta_x}|_{x = +L/2}\right)
+F_T = \overline{\int_S (p - p_{\infty}) (\bm{n} \cdot \bm{i}) dx} + \sigma \cdot d \left(\overline{\eta_x}|_{x = -L/2} - \overline{\eta_x}|_{x = +L/2}\right)
 $$
 $$
-F_T = -\overline{\int_S Re\{\hat{p} e^{i \omega t}\} Re\{\hat{\eta}_x e^{i \omega t}\} dx} + \sigma \left(Re\{\hat{\eta}_x|_{x = -L/2}\} - Re\{\hat{\eta}_x|_{x = L/2}\}\right)
+F_T = -\overline{\int_S Re\{\hat{p} e^{i \omega t}\} Re\{\hat{\eta}_x e^{i \omega t}\} dx} + \sigma \cdot d \left(Re\{\hat{\eta}_x|_{x = -L/2}\} - Re\{\hat{\eta}_x|_{x = L/2}\}\right)
 $$
 $$
- = -\frac{1}{2}\int_S Re\{\hat{p}\} Re\{\hat{\eta}_x \} + Im\{\hat{p}\} Im\{\hat{\eta}_x \} dx + \sigma \left(Re\{\hat{\eta}_x|_{x = -L/2}\} - Re\{\hat{\eta}_x|_{x = L/2}\}\right)
+ = -\frac{1}{2}\int_S Re\{\hat{p}\} Re\{\hat{\eta}_x \} + Im\{\hat{p}\} Im\{\hat{\eta}_x \} dx + \sigma \cdot d \left(Re\{\hat{\eta}_x|_{x = -L/2}\} - Re\{\hat{\eta}_x|_{x = L/2}\}\right)
 $$
 
 

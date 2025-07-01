@@ -1,3 +1,4 @@
+import jax.experimental
 import jax.numpy as jnp
 import jax
 from jax.scipy.sparse.linalg import gmres   # square, general sparse solver
