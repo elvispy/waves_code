@@ -11,6 +11,8 @@ def solve_tensor_system(A, b, *, tol=1e-5, maxiter=1000):
     • Square   →  dense: jnp.linalg.solve   |  sparse: gmres  
     • Rectang. →  dense: lstsq              |  sparse: densify + lstsq
     """
+
+    #A = jax.experimental.sparse.BCOO.fromdense(A)
     if A.shape[:b.ndim] != b.shape:
         raise ValueError("b.shape must equal A.shape[:b.ndim]")
 
