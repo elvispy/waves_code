@@ -1,7 +1,6 @@
-function x = solve_tensor_system(A, b, tol, maxiter)
+function x = solve_tensor_system(A, b)
     % Solve tensor system A · x = b
-    if nargin < 3, tol = 1e-5; end
-    if nargin < 4, maxiter = 1000; end
+
 
     A_dims = size(A);
     b_dims = size(b);

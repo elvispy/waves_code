@@ -1,4 +1,4 @@
-function [U, x, z, phi, eta] = solver(varargin)
+function [U, x, z, phi, eta] = flexible_surferbot(varargin)
     % Parse inputs
     p = inputParser;
     addParameter(p, 'sigma', 72.2e-3);
@@ -12,7 +12,7 @@ function [U, x, z, phi, eta] = solver(varargin)
     addParameter(p, 'L_domain', 1.0);
     addParameter(p, 'EI', 3.0e9 * 3e-2 * 1e-4^3 / 12);
     addParameter(p, 'rho_raft', 0.018 * 3.);
-    addParameter(p, 'D', 0.1);
+    addParameter(p, 'domainDepth', 0.1);
     addParameter(p, 'n', 21);
     addParameter(p, 'M', 10);
     addParameter(p, 'motor_inertia', 0.13e-3 * 2.5e-3);
@@ -42,7 +42,7 @@ function [U, x, z, phi, eta] = solver(varargin)
     C27 = -args.sigma * args.d * t_c / (1i * args.omega * m_c * L_c);
 
     % Wavenumber
-    k = dispersion_k(args.omega, args.g, args.D, args.nu, args.sigma, args.rho);
+    k = dispersion_k(args.omega, args.g, args.domainDepth, args.nu, args.sigma, args.rho);
     C31 = 1;
     C32 = 1i * k * L_c;
 
@@ -58,7 +58,7 @@ function [U, x, z, phi, eta] = solver(varargin)
 
     x = linspace(-L_domain_adim/2, L_domain_adim/2, N);
     dx = x(2) - x(1);
-    z = (args.D / L_c) * (logspace(0, log10(2), M) - 1);
+    z = (args.domainDepth / L_c) * (logspace(0, log10(2), M) - 1);
     dz = z(2) - z(1);
 
     % Contact and free indices
