@@ -1,24 +1,40 @@
 function [U, x, z, phi, eta, args] = flexible_surferbot(varargin)
     % Parse inputs
     p = inputParser;
-    addParameter(p, 'sigma', 72.2e-3);
-    addParameter(p, 'rho', 1000.);
-    addParameter(p, 'omega', 2*pi*80.);
-    addParameter(p, 'nu', 1e-6);
-    addParameter(p, 'g', 9.81);
-    addParameter(p, 'L_raft', 0.05);
-    addParameter(p, 'motor_position', 0.6/5 * 0.05);
-    addParameter(p, 'd', 0.03);
-    addParameter(p, 'L_domain', 0.5);
-    addParameter(p, 'EI', 3.0e9 * 3e-2 * 1e-4^3 / 12);
-    addParameter(p, 'rho_raft', 0.018 * 3.);
-    addParameter(p, 'domainDepth', 0.1);
-    addParameter(p, 'n', 201);
-    addParameter(p, 'M', 100);
-    addParameter(p, 'motor_inertia', 0.13e-3 * 2.5e-3);
-    addParameter(p, 'BC', 'radiative');
+    
+    % --- Physical constants ---
+    addParameter(p, 'sigma', 72.2e-3);              % [N/m] surface tension of water
+    addParameter(p, 'rho', 1000.);                  % [kg/m^3] density of water
+    addParameter(p, 'omega', 2*pi*80.);             % [rad/s] driving frequency (80 Hz)
+    addParameter(p, 'nu', 1e-6);                    % [m^2/s] kinematic viscosity of water
+    addParameter(p, 'g', 9.81);                     % [m/s^2] gravitational acceleration
+
+    % --- Raft properties ---
+    addParameter(p, 'L_raft', 0.05);                % [m] length of the raft
+    addParameter(p, 'motor_position', 0.6/5 * 0.05);% [m] motor position along the raft (fraction × L_raft)
+    addParameter(p, 'd', 0.03);                     % [m] depth of surferbot (third dimension, z-direction)
+    addParameter(p, 'EI', 3.0e9 * 3e-2 * 1e-4^3 / 12); % [N·m^2] bending stiffness (Young?s modulus × I)
+    addParameter(p, 'rho_raft', 0.018 * 3.);        % [kg/m] mass per unit length of the raft
+
+    % --- Domain settings ---
+    addParameter(p, 'L_domain', 0.5);               % [m] total length of the simulation domain
+    addParameter(p, 'domainDepth', 0.1);            % [m] depth of the simulation domain (second dimention, y-direction)
+
+    % --- Discretization parameters ---
+    addParameter(p, 'n', 201);                      % [unitless] number of grid points in x
+    addParameter(p, 'M', 100);                      % [unitless] number of modes or Fourier components, etc.
+
+    % --- Motor parameters ---
+    addParameter(p, 'motor_inertia', 0.13e-3 * 2.5e-3); % [kg·m^2] rotational inertia of motor
+
+    % --- Boundary condition ---
+    addParameter(p, 'BC', 'radiative');             % Boundary condition type (radiative, Neuman, Dirichlet)
+
+    
+    
     parse(p, varargin{:});
     args = p.Results;
+    args.ooa = 4; % Define finite difference accuracy in space
 
     % Derived parameters
     force = args.motor_inertia * args.omega^2;
@@ -67,23 +83,19 @@ function [U, x, z, phi, eta, args] = flexible_surferbot(varargin)
     x_free = abs(x) > args.L_raft / (2 * L_c);
     x_free(1) = false; x_free(end) = false;
 
-    left_raft_boundary = floor((N - H)/2) + 1;
-    right_raft_boundary = left_raft_boundary + H - 1;
+    %left_raft_boundary = find(x_contact, 1, 'first');
+    %right_raft_boundary = find(x_contact, 1, 'last');
 
 
-    C = struct('C11',C11,'C12',C12,'C13',C13,'C14',C14, ...
+    coeffs = struct('C11',C11,'C12',C12,'C13',C13,'C14',C14, ...
                'C21',C21,'C22',C22,'C23',C23,'C24',C24,'C25',C25, ...
                'C26',C26,'C27',C27,'C31',C31,'C32',C32);
     loads = gaussian_load(args.motor_position/L_c,0.05,x(x_contact));
-    [A_sparse, b_flat] = build_system(N, M, dx, dz, C, x_free, x_contact, ...
+    
+    % Solve system
+    xsol = build_system(N, M, dx, dz, coeffs, x_free, x_contact, ...
                                  loads, ...
-                                 args.BC);
-
-    % reshape RHS to a column vector (blocks stacked)
-    b_sparse = reshape(b_flat.', [], 1);
-
-    % now solve
-    xsol = A_sparse \ b_sparse;
+                                 args);
 
     
     % Post-processing
@@ -93,36 +105,40 @@ function [U, x, z, phi, eta, args] = flexible_surferbot(varargin)
         xsol = cat(2, xsol(1, :, :), xsol, xsol(end, :, :));
     end
 
-    phi   = xsol(true(N, 1) & true(1, M) & reshape([1 0 0 0 0], 1, 1, 5));
-    phi_x = xsol(true(N, 1) & true(1, M) & reshape([0 1 0 0 0], 1, 1, 5));
+    phi   = reshape(xsol(1:(N*M)), [], 1);
+    %prod2D = @(A, B) reshape(reshape(A, N*M, N*M) * reshape(B, N*M, N*M), N, M);
 
-
-    prod2D = @(A, B) reshape(reshape(A, N*M, N*M) * reshape(B, N*M, N*M), N, M);
-
-
-    ooa = 4;
+    ooa = args.ooa;
     % eta from kinematic condition
-    [~, Dz]  = getNonCompactFDmatrix2D(N,M,dx,dz,1,ooa);
-    eta   = (1 / (1i * args.omega * t_c)) * Dz(1:N, :) * phi; % Only first 1:N points = surface
-    eta_x = (1 / (1i * args.omega * t_c)) * Dz(1:N, :) * phi_x;
+    [Dx, Dz]  = getNonCompactFDmatrix2D(N,M,dx,dz,1,ooa);
+    phi_x = Dx * phi(:);
+    eta   = (1 / (1i * args.omega * t_c)) * Dz(1:M:end, :) * phi(:); % Only first 1:N points = surface
+    eta_x = (1 / (1i * args.omega * t_c)) * Dz(1:M:end, :) * phi_x;
 
     % Pressure
     Dxx = getNonCompactFDmatrix(sum(x_contact),dx,2,ooa);
-    P1 = (C24 + C26 * Dxx) * phi(x_contact, 1);
+    [Dx2, ~]  = getNonCompactFDmatrix2D(N,M,dx,dz,2,ooa);
+    %P1 = (C24 + C26 * Dxx) * phi(x_contact, 1);
+    P1 = (C24*phi + C26 * Dx2*phi); P1 = P1(1:M:end, 1); P1 = P1(x_contact, :);
     p = C25 * eta(x_contact) + P1;
 
     %eta_x = Dx * eta(x_contact);
     weights = simpson_weights(H, dx);
     thrust = (args.d / L_c) * (weights * (-0.5 * real(p .* eta_x(x_contact))));
     thrust = thrust * F_c;
-    thrust = thrust + args.sigma * args.d * (eta(left_raft_boundary + 1) - eta(left_raft_boundary)) / dx;
-    thrust = thrust - args.sigma * args.d * (eta(right_raft_boundary) - eta(right_raft_boundary - 1)) / dx;
-
+    
+    % NO SURFACE TENSION AFFECT x-dynamics to linear order!
+    %thrust = thrust + args.sigma * args.d * (eta(left_raft_boundary + 1) - eta(left_raft_boundary)) / dx;
+    %thrust = thrust - args.sigma * args.d * (eta(right_raft_boundary) - eta(right_raft_boundary - 1)) / dx; 
+    
+    thrust = real(thrust);
     U = (thrust^2 / thrust_factor)^(1/3);
     x = x * L_c;
     z = z * L_c;
-    phi = full(reshape(phi * L_c^2 / t_c, N, M));
+    phi = full(reshape(phi * L_c^2 / t_c, M, N));
     eta = full(eta * L_c);
     args.x_contact = x_contact;
     args.loads = loads;
+    args.N = N; args.M = M; args.dx = dx; args.dz = dz;
+    args.coeffs = coeffs;
 end

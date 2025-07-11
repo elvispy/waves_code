@@ -1,7 +1,9 @@
-function [xsol, A, b] = build_system(N, M, dx, dz, C, x_free, ...
+function [xsol, A, b] = build_system_v2(N, M, dx, dz, C, x_free, ...
                             x_contact, motor_weights, args)
-%BUILD_SYSTEM   Assemble the full linear system for the coupled PDE?ODE
-%               model of the flexible surferbot.
+%BUILD_SYSTEM_V2 Assemble the full linear system for the coupled PDE?ODE
+%               model of the flexible surferbot. The difference being that
+%               the surface equations are treated as independent in the
+%               three regions.
 %
 % This function constructs the full linear system matrix `A` and right-hand
 % side vector `b` to solve a coupled fluid?structure interaction problem.
@@ -52,7 +54,7 @@ function [xsol, A, b] = build_system(N, M, dx, dz, C, x_free, ...
 % Date: April, 2025
 % ------------------------------------------------------------------------
 
-
+% ------------------------------------------------------------------------
 % 0.  House-keeping
 % ------------------------------------------------------------------------
 NM   = N*M;
@@ -63,9 +65,12 @@ I_NM = speye(NM);
 % ------------------------------------------------------------------------
 % 1.  Finite-difference operators (1-D ? 2-D via Kronecker) 
 % ------------------------------------------------------------------------
-[Dx, Dz]   = getNonCompactFDmatrix2D(N,M,dx,dz,1,args.ooa); % ?/?x, ?/?z
-[Dxx, Dzz] = getNonCompactFDmatrix2D(N,M,dx,dz,2,args.ooa);
+[Dx, Dz]    = getNonCompactFDmatrix2D(N,M,dx,dz,1,args.ooa); % ?/?x, ?/?z
+[Dxx, Dzz]  = getNonCompactFDmatrix2D(N,M,dx,dz,2,args.ooa);
 Lapl = Dxx + Dzz;
+
+[DxFree, ~] = getNonCompactFDmatrix(sum(x_free)/2+2, dx,1,args.ooa);
+[DxRaft, ~] = getNonCompactFDmatrix(sum(x_contact),  dx,1,args.ooa);
 
 % ------------------------------------------------------------------------
 % 2.  Logical masks  ?  row-index vectors
@@ -83,6 +88,10 @@ idxBulk       = find(bulkMask);
 idxBottom     = find(bottomMask);
 idxEdge       = find(edgeMask);
 
+%We update the Dx operator in the surface: (points in the free surface dont
+%take information from the beam and vice-versa
+Dx(idxContact, idxContact) = DxRaft;
+%Dx(idxFreeSurf)
 
 % convenience: M×N grid of z-derivatives restricted to raft rows
 DzRaft = Dz(idxContact ,:);
