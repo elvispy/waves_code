@@ -17,8 +17,8 @@ function [U, x, z, phi, eta, args] = flexible_surferbot(varargin)
     addParameter(p, 'rho_raft', 0.018 * 3.);        % [kg/m] mass per unit length of the raft
 
     % --- Domain settings ---
-    addParameter(p, 'L_domain', 0.5);               % [m] total length of the simulation domain
-    addParameter(p, 'domainDepth', 0.1);            % [m] depth of the simulation domain (second dimention, y-direction)
+    addParameter(p, 'L_domain', 0.2);               % [m] total length of the simulation domain
+    addParameter(p, 'domainDepth', 0.25);            % [m] depth of the simulation domain (second dimention, y-direction)
 
     % --- Discretization parameters ---
     addParameter(p, 'n', 201);                      % [unitless] number of grid points in x
@@ -96,7 +96,6 @@ function [U, x, z, phi, eta, args] = flexible_surferbot(varargin)
     xsol = build_system(N, M, dx, dz, coeffs, x_free, x_contact, ...
                                  loads, ...
                                  args);
-
     
     % Post-processing
     if startsWith(args.BC, 'd')
