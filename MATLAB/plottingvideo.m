@@ -13,7 +13,6 @@ set(gcf, 'Position', [52 557 1632 420]);
 
 for kk=1:length(tvec)
     
-    
     plot(x*scaleX, real(eta .* exp(1i * omega * tvec(kk))) * scaleY, 'b', 'LineWidth', 2); hold on;
     set(gca, 'FontSize', 16);
     plot(x(args.x_contact) * scaleX, real(eta(args.x_contact) * exp(1i * omega * tvec(kk))) * scaleY, 'r', 'LineWidth', 3)

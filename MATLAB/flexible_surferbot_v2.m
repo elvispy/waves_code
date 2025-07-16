@@ -34,7 +34,7 @@ function [U, x, z, phi, eta, args] = flexible_surferbot_v2(varargin)
     parse(p, varargin{:});
     args = p.Results;
     args.ooa = 4; % Define finite difference accuracy in space
-    args.test = true;
+    args.test = false;
 
     % Derived parameters
     force = args.motor_inertia * args.omega^2;

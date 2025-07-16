@@ -96,12 +96,13 @@ idxRightEdge  = find(rightEdgeMask);
 S2D = repmat({sparse(NM,NM)}, 2, 2);
 
 % ------------------------------------------------------------------------
-% 4.  E1  ? Bernoulli on free surface   (rows = rowSurf) 
+% 4.  E1 = Bernoulli on free surface  
 % ------------------------------------------------------------------------
-L = idxLeftFreeSurf; %I_free = speye(nbLeft * M);
+L = idxLeftFreeSurf; 
 [DxxFree, ~] = getNonCompactFDmatrix(nbLeft,dx,2,args.ooa);
 S2D{1,1}(L(2:end-1),L) =  C.C13 * I_NM(L(2:end-1), L) + C.C14*DxxFree(2:end-1, :);
 S2D{1,2}(L(2:end-1),L) =  C.C11 * I_NM(L(2:end-1), L) + C.C12*DxxFree(2:end-1, :);
+
 R = idxRightFreeSurf;
 S2D{1,1}(R(2:end-1),R) =  C.C13 * I_NM(R(2:end-1), R) + C.C14*DxxFree(2:end-1, :);
 S2D{1,2}(R(2:end-1),R) =  C.C11 * I_NM(R(2:end-1), R) + C.C12*DxxFree(2:end-1, :);

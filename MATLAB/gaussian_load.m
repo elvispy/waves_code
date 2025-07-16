@@ -1,6 +1,6 @@
 function delta = gaussian_load(x0, sigma, x)
     % Smooth point load on an arbitrary 1D grid.
-    % Normalized so sum(delta .* w) â‰ˆ 1
+    % Normalized so sum(delta .* w)‰ˆ 1
 
     x = x(:);
     dx = diff(x);
