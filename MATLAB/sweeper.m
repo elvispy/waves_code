@@ -1,41 +1,85 @@
 
 %% We call the surferbot
-[U, x, z, phi, eta, args] = flexible_surferbot('omega', 2*pi*20); %, 'motor_inertia', 1e-10);
+[U, x, z, phi, eta, args] = flexible_surferbot_v2('omega', 2*pi*20, 'motor_position', 0); %, 'EI', 3.0e9 * 3e-2 * 1e-4^3 / 12 * 100, 'nu', 0);%, 'motor_position', 0); %, 'motor_inertia', 1e-10);
 
 close all;
-plot(x, real(eta), 'b'); hold on;
-plot(x(args.x_contact), real(eta(args.x_contact)), 'r', 'LineWidth', 2)
+scale = 1e+6;
+plot(x, real(eta) * scale, 'b'); hold on;
+plot(x(args.x_contact), real(eta(args.x_contact)) * scale, 'r', 'LineWidth', 2)
 set(gcf, 'Position', [52 557 1632 420]);
 set(gca, 'FontSize', 16);
 xlabel('x (m)'); xlim([-.1, .1]);
-ylabel('y (m)'); ylim([-1e-3, 1e-3]);
-quiver(x(args.x_contact), real(eta(args.x_contact))', zeros(1, sum(args.x_contact)), args.loads'/3e+4, 0);
+ylabel('y (um)'); %ylim([-200, 200]);
+quiver(x(args.x_contact), (real(eta(args.x_contact)).') * scale, zeros(1, sum(args.x_contact)), ...
+    args.loads.'/5e+4 * scale, 0, 'MaxHeadSize', 1e-6);
 
 figure(2); hold on;
 set(gca, 'FontSize', 20);
-plt = pcolor(x', z, imag(phi));
+plt = pcolor(x', z, real(phi));
+colorbar;
 set(gcf, 'Position', [56 49 1638 424]);
 set(plt, 'edgecolor', 'none')
-
+title("Phi field")
 fprintf("Velocity is %g mm/s\n", U*1000)
 
 
 %% Checking that solution satisfies PDE
 ooa  = args.ooa;
-[Dxx, Dzz] = getNonCompactFDmatrix2D(args.N, args.M, args.dx, args.dz, 2, ooa);
-
-Lapl = Dxx + Dzz;
+[Dxx, ~] = getNonCompactFDmatrix2D(args.N, args.M, args.dx, args.dz, 2, ooa);
+[Dx, Dz] = getNonCompactFDmatrix2D(args.N, args.M, args.dx, args.dz, 1, ooa);
+Lapl = Dxx + Dz*Dz;
 
 bulkIdx = false(args.M, args.N); bulkIdx(2:(end-1), 2:(end-1)) = true; bulkIdx = reshape(bulkIdx, [], 1);
 lapl = Lapl * phi(:); lapl = lapl(bulkIdx);
 fprintf("Norm of laplacian: %g\n", norm(lapl));
 
-[Dx, Dz] = getNonCompactFDmatrix2D(args.N, args.M, args.dx, args.dz, 1, ooa);
-I_NM = speye(args.N * args.M);
-bernoulli = Dz - args.sigma/(args.rho * args.g) * Dxx * Dz - args.omega^2/args.g * I_NM - 4 * 1i * args.nu * args.omega / (args.g * args.L_raft) * Dxx;
-bernoulli = bernoulli(1:args.M:end, :);
-fprintf("Norm of bernoulli: %g\n", norm(bernoulli * phi(:)));
+
+xfreeNb = sum(~args.x_contact)/2+1;
+phi_z = reshape(args.phi_z, args.M, args.N);
+I_FM = speye(xfreeNb);
+[DxxFree, ~] = getNonCompactFDmatrix(xfreeNb, args.dx, 2, ooa);
+
+Qty = args.M * xfreeNb;
+phi_free_left    = phi(1, 1:xfreeNb).';
+phi_free_right   = phi(1, (end-xfreeNb+1):end).';
+phi_z_free_left  = phi_z(1, 1:xfreeNb).';
+phi_z_free_right = phi_z(1, (end-xfreeNb+1):end).';
+bernoulli = @(phi, phi_z) phi_z - args.sigma/(args.rho * args.g) * DxxFree * phi_z - ...
+    args.omega^2/args.g * phi - 4 * 1i * args.nu * args.omega / (args.g ) * DxxFree * phi;
+bern = bernoulli(phi_free_left, phi_z_free_left) + bernoulli(phi_free_right, phi_z_free_right);
+fprintf("Norm of bernoulli: %g\n", norm(bern(2:end-1)));
+
+
+[DxxRaft, ~] = getNonCompactFDmatrix(sum(args.x_contact), args.dx, 2, ooa);
+[Dx4Raft, ~] = getNonCompactFDmatrix(sum(args.x_contact), args.dx, 4, ooa);
+beamIdx = find(repmat(args.x_contact,args.M,1));
+beamEqnIdx = find(repmat((1:args.M) == 1, sum(args.x_contact), 1).');
+I_HM = speye(sum(args.x_contact) * args.M);
+
+beam = args.EI / (1i * args.omega) * Dx4Raft * (eta(args.x_contact) * (1i * args.omega)) ...
+    - args.rho_raft * args.omega / 1i * (eta(args.x_contact)*(1i * args.omega)) ...
+    + args.rho * args.d * ( 1i * args.omega * phi(beamEqnIdx) + ...
+    args.g / (1i * args.omega) * (eta(args.x_contact)*(1i * args.omega)) - 2 * args.nu * DxxRaft* phi(beamEqnIdx));
+% vars = load('vars.mat');
+% S = args.rho * args.d * ( 1i * args.omega * eye(numel(beamEqnIdx)) - 2 * args.nu * DxxRaft);
+% norm(S * args.L_c^2 * args.t_c / args.m_c - vars.S2D{1, 1}(vars.contactMask, vars.contactMask), 1)
+% S2 = args.EI / (1i * args.omega) * Dx4Raft - args.rho_raft * args.omega / 1i * (eye(sum(args.x_contact)))+ args.rho * args.d * ( args.g / (1i * args.omega) * (eye(sum(args.x_contact))) );
+% norm(S2 * args.L_c * args.t_c / args.m_c - vars.S2D{1, 2}(vars.contactMask, vars.contactMask), 1)
+
+
+if args.test == true
+    fprintf("Norm of Dirichlet BC on the top: %g\n", norm(phi(beamEqnIdx) - mean(phi(beamEqnIdx))));
+else
+    fprintf("Norm of beam: %g\n", norm(beam - args.motor_inertia * args.omega^2 * args.loads, inf));
+end
 
 
 noPenetration = Dz * phi(:); bottomIdx = false(args.M, args.N); bottomIdx(end, 2:(end-1)) = 1; bottomIdx = bottomIdx(:);
 fprintf("Norm of no penetration: %g\n", norm(Dz(bottomIdx, :) * phi(:)));
+
+phix = Dx * phi(:); leftIdx = false(args.M, args.N); rightIdx = false(args.M, args.N);
+leftIdx(:, 1) = true; rightIdx(:, end) = true;
+
+fprintf("Norm of BC (left): %g\n",  norm(phix(leftIdx)  - 1i * args.k * phi(leftIdx)) );
+fprintf("Norm of BC (right): %g\n", norm(phix(rightIdx) + 1i * args.k * phi(rightIdx)) );
+
