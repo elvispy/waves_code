@@ -69,19 +69,19 @@ I_NM = speye(NM);
 % ------------------------------------------------------------------------
 % 2.  Logical masks  ?  row-index vectors
 % ------------------------------------------------------------------------
-topMask       = false(M,N); topMask(1, 2:N-1)         = true;
+topMask       = false(M,N); topMask(end, 2:N-1)       = true;
 freeMask      = repmat(x_free, M, 1)  & topMask;
 contactMask   = repmat(x_contact,M,1) & topMask;
 
-bottomMask    = false(M,N); bottomMask(end, 2:N-1)    = true;
+bottomMask    = false(M,N); bottomMask(1, 2:N-1)      = true;
 rightEdgeMask = false(M,N); rightEdgeMask(:, end)     = true;
 leftEdgeMask  = false(M,N); leftEdgeMask(:, 1)        = true;
 bulkMask      = false(M,N); bulkMask(2:M-1, 2:N-1)    = true;
 
 idxFreeSurf     = find(freeMask);
-idxLeftFreeSurf = [1; idxFreeSurf(1:(end/2)); find(contactMask, 1, 'first')]; %idxLeftFreeSurf = idxLeftFreeSurf(1:(end-1));
+idxLeftFreeSurf = [M; idxFreeSurf(1:(end/2)); find(contactMask, 1, 'first')]; %idxLeftFreeSurf = idxLeftFreeSurf(1:(end-1));
 nbLeft          = nnz(idxLeftFreeSurf);
-idxRightFreeSurf= [find(contactMask, 1, 'last'); idxFreeSurf(((end/2)+1):end); (idxFreeSurf(end)+M)]; %idxRightFreeSurf = idxRightFreeSurf(2:(end));
+idxRightFreeSurf= [find(contactMask, 1, 'last'); idxFreeSurf(((end/2)+1):end); NM]; %idxRightFreeSurf = idxRightFreeSurf(2:(end));
 idxContact      = find(contactMask);  
 
 idxBulk       = find(bulkMask);
@@ -113,11 +113,11 @@ S2D{1,2}(R(2:end-1),R) =  C.C11 * I_NM(R(2:end-1), R) + C.C12*DxxFree(2:end-1, :
 % ------------------------------------------------------------------------
 CC = idxContact;
 [DxxRaft, ~] = getNonCompactFDmatrix(sum(x_contact),dx,2,args.ooa);
-[Dx4Raft, ~] = getNonCompactFDmatrix(sum(x_contact),dx,4,args.ooa);
+[Dx4Raft, ~] = getNonCompactFDmatrix(sum(x_contact),1 ,4,args.ooa);
 S2D{1, 1}(idxContact(1), :) = 0; S2D{1, 1}(idxContact(end), :) = 0;
 S2D{1, 2}(idxContact(1), :) = 0; S2D{1, 2}(idxContact(end), :) = 0;
 S2D{1, 1}(CC, CC) = C.C26 * DxxRaft + C.C24 * I_NM(CC, CC);
-S2D{1, 2}(CC, CC) = (C.C22 + C.C25) * I_NM(CC, CC) + C.C21 * Dx4Raft;
+S2D{1, 2}(CC, CC) = (C.C22 + C.C25) * I_NM(CC, CC) + (C.C21/dx^4) * Dx4Raft;
 
 % ------------------------------------------------------------------------
 % 4c.  Surface-tension corner corrections ( +C27/dx ?²?/?x?z )
@@ -185,7 +185,7 @@ S2D{2,1} = Dz;      S2D{2,2} = -I_NM;
 % ------------------------------------------------------------------------
 b = zeros(2*NM, 1);
 if args.test == true
-    b(idxContact) = -0.001; 
+    b(idxContact) = -0.01; 
 else
     b(idxContact) = -C.C23 * motor_weights(:).';   % only on raft contact nodes
 end

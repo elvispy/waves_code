@@ -11,14 +11,14 @@ function [U, x, z, phi, eta, args] = flexible_surferbot_v2(varargin)
 
     % --- Raft properties ---
     addParameter(p, 'L_raft', 0.05);                % [m] length of the raft
-    addParameter(p, 'motor_position', 0.6/5 * 0.05);% [m] motor position along the raft (fraction × L_raft)
+    addParameter(p, 'motor_position', 0.6/2.5 * 0.05);% [m] motor position along the raft (fraction × L_raft)
     addParameter(p, 'd', 0.03);                     % [m] depth of surferbot (third dimension, z-direction)
     addParameter(p, 'EI', 3.0e9 * 3e-2 * 1e-4^3 / 12); % [N·m^2] bending stiffness (Young?s modulus × I)
     addParameter(p, 'rho_raft', 0.018 * 3.);        % [kg/m] mass per unit length of the raft
 
     % --- Domain settings ---
-    addParameter(p, 'L_domain', 0.4);               % [m] total length of the simulation domain
-    addParameter(p, 'domainDepth', 0.3);            % [m] depth of the simulation domain (second dimention, y-direction)
+    addParameter(p, 'L_domain', 0.1);               % [m] total length of the simulation domain
+    addParameter(p, 'domainDepth', 0.1);            % [m] depth of the simulation domain (second dimention, y-direction)
 
     % --- Discretization parameters ---
     addParameter(p, 'n', 201);                      % [unitless] number of grid points in x
@@ -55,7 +55,7 @@ function [U, x, z, phi, eta, args] = flexible_surferbot_v2(varargin)
     C24 = (args.rho * args.d * t_c * 1i * args.omega * L_c^2) / m_c;
     C25 = (args.rho * args.d * t_c * args.g * L_c) / (m_c * 1i * args.omega);
     C26 = -(args.rho * args.d * t_c * 2 * args.nu) / m_c;
-    C27 = 0*-args.sigma * args.d * t_c / (1i * args.omega * m_c * L_c);
+    C27 = -args.sigma * args.d * t_c / (1i * args.omega * m_c * L_c);
 
     % Wavenumber
     k = dispersion_k(args.omega, args.g, args.domainDepth, args.nu, args.sigma, args.rho); args.k = k;
@@ -74,7 +74,7 @@ function [U, x, z, phi, eta, args] = flexible_surferbot_v2(varargin)
 
     x = linspace(-L_domain_adim/2, L_domain_adim/2, N);
     dx = x(2) - x(1);
-    z = linspace(0, -args.domainDepth, M) / L_c;
+    z = linspace(-args.domainDepth, 0, M) / L_c;
     dz = abs(z(2) - z(1));
 
     % Contact and free indices
@@ -102,21 +102,21 @@ function [U, x, z, phi, eta, args] = flexible_surferbot_v2(varargin)
         xsol = cat(2, zeros(1, M, 5), xsol, zeros(1, M, 5));
     end
 
-    phi = reshape(xsol(1:(N*M)), [], 1);
-    phi_z = reshape(xsol((N*M+1):end), [], 1);
+    phi = reshape(xsol(1:(N*M)), M, N);
+    phi_z = reshape(xsol((N*M+1):end), M, N);
 
     ooa = args.ooa;
     % eta from kinematic condition
     [Dx, ~]  = getNonCompactFDmatrix2D(N,M,dx,dz,1,ooa);
     
-    eta   = (1 / (1i * args.omega * t_c)) * phi_z(1:M:end);
-    eta_x = (1 / (1i * args.omega * t_c)) * Dx(1:M:end, :) * phi_z;
+    eta   = (1 / (1i * args.omega * t_c)) * phi_z(end, :).';
+    eta_x = (1 / (1i * args.omega * t_c)) * Dx(M:M:end, :) * phi_z(:);
 
     % Pressure
-    Dxx = getNonCompactFDmatrix(sum(x_contact),dx,2,ooa);
+    
     [Dx2, ~]  = getNonCompactFDmatrix2D(N,M,dx,dz,2,ooa);
     %P1 = (C24 + C26 * Dxx) * phi(x_contact, 1);
-    P1 = (C24*phi + C26 * Dx2*phi); P1 = P1(1:M:end, 1); P1 = P1(x_contact, :);
+    P1 = (C24*phi(:) + C26 * Dx2*phi(:)); P1 = P1(M:M:end, 1); P1 = P1(x_contact, :);
     p = C25 * eta(x_contact) + P1;
 
     %eta_x = Dx * eta(x_contact);
