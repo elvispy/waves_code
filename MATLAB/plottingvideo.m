@@ -1,11 +1,11 @@
-omega = 2*pi*20;
+omega = 2*pi*80;
 tvec = linspace(0, 10*pi/omega, 200);
 
 
 myVideo = VideoWriter('makingwaves','MPEG-4'); %open video file
 myVideo.FrameRate = 10;  %can adjust this, 5 - 10 works well for me
 open(myVideo)
-[U, x, z, phi, eta, args] = flexible_surferbot_v2('omega', omega); %, 'EI', 3.0e9 * 3e-2 * 1e-4^3 / 12 * 100, 'nu', 0);%, 'motor_position', 0); %, 'motor_inertia', 1e-10);
+[U, x, z, phi, eta, args] = flexible_surferbot_v2('omega', omega, 'EI', 3.0e+9 * 3e-2 * 1e-4^3 / 12 * 10); %, 'motor_inertia', 1e-10);
 scaleY = 1e+6; scaleX = 1e+2;
 fig2=figure(3);
 set(gcf, 'Position', [52 557 1632 420]);

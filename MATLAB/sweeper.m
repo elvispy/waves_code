@@ -1,6 +1,25 @@
 
 %% We call the surferbot
-[U, x, z, phi, eta, args] = flexible_surferbot_v2('omega', 2*pi*20, 'motor_position', 0); %, 'EI', 3.0e9 * 3e-2 * 1e-4^3 / 12 * 100, 'nu', 0);%, 'motor_position', 0); %, 'motor_inertia', 1e-10);
+% ------------------------------------------------------------------------
+% Example: call flexible_surferbot_v2 with every parameter specified
+% ------------------------------------------------------------------------
+[U, x, z, phi, eta, args] = flexible_surferbot_v2( ...
+    'sigma'         , 72.2e-3      , ...   % [N m?¹] surface tension
+    'rho'           , 1000.0       , ...   % [kg m?³] water density
+    'omega'         , 2*pi*5      , ...   % [rad s?¹] drive frequency
+    'nu'            , 1.0e-6       , ...   % [m² s?¹] kinematic viscosity
+    'g'             , 9.81         , ...   % [m s?²] gravity
+    'L_raft'        , 0.05         , ...   % [m] raft length
+    'motor_position', 0.015        , ...   % [m] motor x-position (from -L/2 to L/2)
+    'd'             , 0.03         , ...   % [m] raft depth (spanwise)
+    'EI'            , 3.0e9 * 3e-2 * (1e-4)^3 / 12 , ...  % [N m²] bending stiffness
+    'rho_raft'      , 0.018*3.0    , ...   % [kg m?¹] linear mass
+    'L_domain'      , 0.2          , ...   % [m] domain length
+    'domainDepth'   , 0.4          , ...   % [m] water depth
+    'n'             , 101          , ...   % grid points in the raft
+    'M'             , 200          , ...   % modes in z (or Fourier terms)
+    'motor_inertia' , 0.13e-3*2.5e-3, ...  % [kg m²] motor inertia
+    'BC'            , 'radiative'        );% boundary-condition type
 
 close all;
 scale = 1e+6;
@@ -15,8 +34,12 @@ quiver(x(args.x_contact), (real(eta(args.x_contact)).') * scale, zeros(1, sum(ar
 
 figure(2); hold on;
 set(gca, 'FontSize', 20);
-plt = pcolor(x', z, real(phi));
+colormap winter
+shading interp
+plt = pcolor(x', z, imag(phi));
 colorbar;
+contour(x', z, imag(phi) / (args.omega* args.L_raft^2), ...
+        8, 'k'); 
 set(gcf, 'Position', [56 49 1638 424]);
 set(plt, 'edgecolor', 'none')
 title("Phi field")
@@ -40,10 +63,10 @@ I_FM = speye(xfreeNb);
 [DxxFree, ~] = getNonCompactFDmatrix(xfreeNb, args.dx, 2, ooa);
 
 Qty = args.M * xfreeNb;
-phi_free_left    = phi(1, 1:xfreeNb).';
-phi_free_right   = phi(1, (end-xfreeNb+1):end).';
-phi_z_free_left  = phi_z(1, 1:xfreeNb).';
-phi_z_free_right = phi_z(1, (end-xfreeNb+1):end).';
+phi_free_left    = phi(end, 1:xfreeNb).';
+phi_free_right   = phi(end, (end-xfreeNb+1):end).';
+phi_z_free_left  = phi_z(end, 1:xfreeNb).';
+phi_z_free_right = phi_z(end, (end-xfreeNb+1):end).';
 bernoulli = @(phi, phi_z) phi_z - args.sigma/(args.rho * args.g) * DxxFree * phi_z - ...
     args.omega^2/args.g * phi - 4 * 1i * args.nu * args.omega / (args.g ) * DxxFree * phi;
 bern = bernoulli(phi_free_left, phi_z_free_left) + bernoulli(phi_free_right, phi_z_free_right);
@@ -53,7 +76,7 @@ fprintf("Norm of bernoulli: %g\n", norm(bern(2:end-1)));
 [DxxRaft, ~] = getNonCompactFDmatrix(sum(args.x_contact), args.dx, 2, ooa);
 [Dx4Raft, ~] = getNonCompactFDmatrix(sum(args.x_contact), args.dx, 4, ooa);
 beamIdx = find(repmat(args.x_contact,args.M,1));
-beamEqnIdx = find(repmat((1:args.M) == 1, sum(args.x_contact), 1).');
+beamEqnIdx = find(repmat((1:args.M) == args.M, sum(args.x_contact), 1).');
 I_HM = speye(sum(args.x_contact) * args.M);
 
 beam = args.EI / (1i * args.omega) * Dx4Raft * (eta(args.x_contact) * (1i * args.omega)) ...
@@ -74,7 +97,7 @@ else
 end
 
 
-noPenetration = Dz * phi(:); bottomIdx = false(args.M, args.N); bottomIdx(end, 2:(end-1)) = 1; bottomIdx = bottomIdx(:);
+noPenetration = Dz * phi(:); bottomIdx = false(args.M, args.N); bottomIdx(1, 2:(end-1)) = 1; bottomIdx = bottomIdx(:);
 fprintf("Norm of no penetration: %g\n", norm(Dz(bottomIdx, :) * phi(:)));
 
 phix = Dx * phi(:); leftIdx = false(args.M, args.N); rightIdx = false(args.M, args.N);
