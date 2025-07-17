@@ -52,8 +52,8 @@ Dx1 = getNonCompactFDmatrix(gridSize, dx, 1, 2);
 Dxx1 = getNonCompactFDmatrix(gridSize, dx, 2, 2);
 
 % Build operator matrix
-[baseMatrix, boundaryMatrix] = build_matrices(gridSize, raftLeftIdx, raftRightIdx, oscillationFreq, wavenumber, dz, dx, viscosityCoeff, surfaceTension);
-
+[baseMatrix, boundaryMatrix]   = build_matrices(gridSize, raftLeftIdx, raftRightIdx, oscillationFreq, wavenumber, dz, dx, viscosityCoeff, surfaceTension);
+%[baseMatrix2, boundaryMatrix2] = build_matrices_2(gridSize, raftLeftIdx, raftRightIdx, oscillationFreq, wavenumber, dz, dx, viscosityCoeff, surfaceTension);
 % Apply boundary conditions
 boundaryIndices = find(boundaryMatrix);
 LaplacianMatrix = Dxx + Dzz;

@@ -42,56 +42,8 @@ for ii=gridSize:gridSize:gridSize^2
         boundaryMatrix(ii,ii-1)=1;
         boundaryMatrix(ii,ii-2)=1;
     else  % Apply conditions at fluid domain edges
-        if ii - gridSize <= 0  % Left boundary condition (Equation 2.18c from paper)
-            systemMatrix(ii,ii)=(-3/2).*verticalStep.^(-1)+(-3).*horizontalStep.^(-2).*verticalStep.^(-1).*surfaceTension+(sqrt(-1)*(-8)).*horizontalStep.^(-2).*viscosityCoeff+oscillationFreq.^2;
-            systemMatrix(ii,ii-1)=2.*verticalStep.^(-1)+4.*horizontalStep.^(-2).*verticalStep.^(-1).*surfaceTension;
-            systemMatrix(ii,ii-2)=(-1/2).*verticalStep.^(-1)+(-1).*horizontalStep.^(-2).*verticalStep.^(-1).*surfaceTension;
-            systemMatrix(ii,ii+gridSize)=(-15/2).*horizontalStep.^(-2).*verticalStep.^(-1).*surfaceTension+(sqrt(-1)*(-20)).*horizontalStep.^(-2).*viscosityCoeff;
-            systemMatrix(ii,ii+2*gridSize)=6.*horizontalStep.^(-2).*verticalStep.^(-1).*surfaceTension+(sqrt(-1)*16).*horizontalStep.^(-2).*viscosityCoeff;
-            systemMatrix(ii,ii+3*gridSize)=(-3/2).*horizontalStep.^(-2).*verticalStep.^(-1).*surfaceTension+(sqrt(-1)*(-4)).*horizontalStep.^(-2).*viscosityCoeff;
-            systemMatrix(ii,ii+gridSize-1)=10.*horizontalStep.^(-2).*verticalStep.^(-1).*surfaceTension;
-            systemMatrix(ii,ii+2*gridSize-1)=(-8).*horizontalStep.^(-2).*verticalStep.^(-1).*surfaceTension;
-            systemMatrix(ii,ii+3*gridSize-1)=2.*horizontalStep.^(-2).*verticalStep.^(-1).*surfaceTension;
-            systemMatrix(ii,ii+gridSize-2)=(-5/2).*horizontalStep.^(-2).*verticalStep.^(-1).*surfaceTension;
-            systemMatrix(ii,ii+2*gridSize-2)=2.*horizontalStep.^(-2).*verticalStep.^(-1).*surfaceTension;
-            systemMatrix(ii,ii+3*gridSize-2)=(-1/2).*horizontalStep.^(-2).*verticalStep.^(-1).*surfaceTension;
-            boundaryMatrix(ii,ii)=1;
-            boundaryMatrix(ii,ii-1)=1;
-            boundaryMatrix(ii,ii-2)=1;
-            boundaryMatrix(ii,ii+gridSize)=1;
-            boundaryMatrix(ii,ii+2*gridSize)=1;
-            boundaryMatrix(ii,ii+3*gridSize)=1;
-            boundaryMatrix(ii,ii+gridSize-1)=1;
-            boundaryMatrix(ii,ii+2*gridSize-1)=1;
-            boundaryMatrix(ii,ii+3*gridSize-1)=1;
-            boundaryMatrix(ii,ii+gridSize-2)=1;
-            boundaryMatrix(ii,ii+2*gridSize-2)=1;
-            boundaryMatrix(ii,ii+3*gridSize-2)=1;
-        elseif ii + gridSize > gridSize^2  % Right boundary condition (Equation 2.18d from paper)
-            systemMatrix(ii,ii)=(-3/2).*verticalStep.^(-1)+(-3).*horizontalStep.^(-2).*verticalStep.^(-1).*surfaceTension+(sqrt(-1)*(-8)).*horizontalStep.^(-2).*viscosityCoeff+oscillationFreq.^2;
-            systemMatrix(ii,ii-1)=2.*verticalStep.^(-1)+4.*horizontalStep.^(-2).*verticalStep.^(-1).*surfaceTension;
-            systemMatrix(ii,ii-2)=(-1/2).*verticalStep.^(-1)+(-1).*horizontalStep.^(-2).*verticalStep.^(-1).*surfaceTension;
-            systemMatrix(ii,ii-gridSize)=(-15/2).*horizontalStep.^(-2).*verticalStep.^(-1).*surfaceTension+(sqrt(-1)*(-20)).*horizontalStep.^(-2).*viscosityCoeff;
-            systemMatrix(ii,ii-2*gridSize)=6.*horizontalStep.^(-2).*verticalStep.^(-1).*surfaceTension+(sqrt(-1)*16).*horizontalStep.^(-2).*viscosityCoeff;
-            systemMatrix(ii,ii-3*gridSize)=(-3/2).*horizontalStep.^(-2).*verticalStep.^(-1).*surfaceTension+(sqrt(-1)*(-4)).*horizontalStep.^(-2).*viscosityCoeff;
-            systemMatrix(ii,ii-gridSize-1)=10.*horizontalStep.^(-2).*verticalStep.^(-1).*surfaceTension;
-            systemMatrix(ii,ii-2*gridSize-1)=(-8).*horizontalStep.^(-2).*verticalStep.^(-1).*surfaceTension;
-            systemMatrix(ii,ii-3*gridSize-1)=2.*horizontalStep.^(-2).*verticalStep.^(-1).*surfaceTension;
-            systemMatrix(ii,ii-gridSize-2)=(-5/2).*horizontalStep.^(-2).*verticalStep.^(-1).*surfaceTension;
-            systemMatrix(ii,ii-2*gridSize-2)=2.*horizontalStep.^(-2).*verticalStep.^(-1).*surfaceTension;
-            systemMatrix(ii,ii-3*gridSize-2)=(-1/2).*horizontalStep.^(-2).*verticalStep.^(-1).*surfaceTension;
-            boundaryMatrix(ii,ii)=1;
-            boundaryMatrix(ii,ii-1)=1;
-            boundaryMatrix(ii,ii-2)=1;
-            boundaryMatrix(ii,ii-gridSize)=1;
-            boundaryMatrix(ii,ii-2*gridSize)=1;
-            boundaryMatrix(ii,ii-3*gridSize)=1;
-            boundaryMatrix(ii,ii-gridSize-1)=1;
-            boundaryMatrix(ii,ii-2*gridSize-1)=1;
-            boundaryMatrix(ii,ii-3*gridSize-1)=1;
-            boundaryMatrix(ii,ii-gridSize-2)=1;
-            boundaryMatrix(ii,ii-2*gridSize-2)=1;
-            boundaryMatrix(ii,ii-3*gridSize-2)=1;
+        if ii - gridSize <= 0 || ii + gridSize > gridSize^2 % Left boundary condition (Equation 2.18c from paper)
+            continue;
         else
             systemMatrix(ii,ii)=(-3/2).*verticalStep.^(-1)+(-3).*horizontalStep.^(-2).*verticalStep.^(-1).*surfaceTension+(sqrt(-1)*(-8)).*horizontalStep.^(-2).*viscosityCoeff+oscillationFreq.^2;
             systemMatrix(ii,ii-1)=2.*verticalStep.^(-1)+4.*horizontalStep.^(-2).*verticalStep.^(-1).*surfaceTension;
@@ -115,10 +67,6 @@ for ii=gridSize:gridSize:gridSize^2
     end
     
 end
-
-
-
-
 
 % Apply left Boundary Condition (Equation 2.18d from paper)
 
