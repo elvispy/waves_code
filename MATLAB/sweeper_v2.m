@@ -35,7 +35,7 @@ comb   = cell(1,numel(vars));
 
 outdir = 'surferbot_results';
 
-for idx = 1:numel(comb{1})
+parfor idx = 1:numel(comb{1})
     args = base;
     for k = 1:numel(vars)
         args.(vars{k}) = comb{k}(idx);   % overwrite swept field
