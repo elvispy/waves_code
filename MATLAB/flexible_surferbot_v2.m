@@ -10,22 +10,22 @@ function [U, x, z, phi, eta, args] = flexible_surferbot_v2(varargin)
     addParameter(p, 'g', 9.81);                     % [m/s^2] gravitational acceleration
 
     % --- Raft properties ---
-    addParameter(p, 'L_raft', 0.05);                % [m] length of the raft
-    addParameter(p, 'motor_position', 0.6/2.5 * 0.05);% [m] motor position along the raft (fraction × L_raft)
-    addParameter(p, 'd', 0.03);                     % [m] depth of surferbot (third dimension, z-direction)
-    addParameter(p, 'EI', 3.0e9 * 3e-2 * 1e-4^3 / 12); % [N·m^2] bending stiffness (Young?s modulus × I)
-    addParameter(p, 'rho_raft', 0.018 * 3.);        % [kg/m] mass per unit length of the raft
+    addParameter(p, 'L_raft', 0.05);                   % [m] length of the raft
+    addParameter(p, 'motor_position', 0.6/2.5 * 0.05); % [m] motor position along the raft (fraction × L_raft)
+    addParameter(p, 'd', 0.03);                        % [m] depth of surferbot (third dimension, z-direction)
+    addParameter(p, 'EI', 3.0e9 * 3e-2 * 9e-4^3 / 12); % [N·m^2] bending stiffness (Young?s modulus × I)
+    addParameter(p, 'rho_raft', 0.018 * 3.);           % [kg/m] mass per unit length of the raft
 
     % --- Domain settings ---
     addParameter(p, 'L_domain', 0.1);               % [m] total length of the simulation domain
     addParameter(p, 'domainDepth', 0.1);            % [m] depth of the simulation domain (second dimention, y-direction)
 
     % --- Discretization parameters ---
-    addParameter(p, 'n', 201);                      % [unitless] number of grid points in x
-    addParameter(p, 'M', 100);                      % [unitless] number of modes or Fourier components, etc.
+    addParameter(p, 'n', 201);                      % [unitless] number of grid points in x in the raft
+    addParameter(p, 'M', 100);                      % [unitless] number of grid points in z
 
     % --- Motor parameters ---
-    addParameter(p, 'motor_inertia', 0.13e-3 * 2.5e-3); % [kg·m^2] rotational inertia of motor
+    addParameter(p, 'motor_inertia', 0.13e-3 * 2.5e-3); % [kg·m^2] rotational inertia of motor (mass times eccentricity)
 
     % --- Boundary condition ---
     addParameter(p, 'BC', 'radiative');             % Boundary condition type (radiative, Neuman, Dirichlet)
@@ -83,13 +83,11 @@ function [U, x, z, phi, eta, args] = flexible_surferbot_v2(varargin)
     x_free = abs(x) > args.L_raft / (2 * L_c);
     x_free(1) = false; x_free(end) = false;
 
-    %left_raft_boundary = find(x_contact, 1, 'first');
-    %right_raft_boundary = find(x_contact, 1, 'last');
-
 
     coeffs = struct('C11',C11,'C12',C12,'C13',C13,'C14',C14, ...
                'C21',C21,'C22',C22,'C23',C23,'C24',C24,'C25',C25, ...
                'C26',C26,'C27',C27,'C31',C31,'C32',C32);
+    % Loads at which the motor applies a force to the raft
     loads = gaussian_load(args.motor_position/L_c,0.05,x(x_contact));
     
     % Solve system
@@ -97,11 +95,7 @@ function [U, x, z, phi, eta, args] = flexible_surferbot_v2(varargin)
                                  loads, ...
                                  args);
     
-    % Post-processing
-    if startsWith(args.BC, 'd')
-        xsol = cat(2, zeros(1, M, 5), xsol, zeros(1, M, 5));
-    end
-
+    %% Post-processing
     phi = reshape(xsol(1:(N*M)), M, N);
     phi_z = reshape(xsol((N*M+1):end), M, N);
 
@@ -124,7 +118,7 @@ function [U, x, z, phi, eta, args] = flexible_surferbot_v2(varargin)
     thrust = (args.d / L_c) * (weights * (-0.5 * real(p .* eta_x(x_contact))));
     thrust = thrust * F_c;
     
-    % NO SURFACE TENSION AFFECT x-dynamics to linear order!
+    % NO SURFACE TENSION EFFECT x-dynamics to linear order!
     %thrust = thrust + args.sigma * args.d * (eta(left_raft_boundary + 1) - eta(left_raft_boundary)) / dx;
     %thrust = thrust - args.sigma * args.d * (eta(right_raft_boundary) - eta(right_raft_boundary - 1)) / dx; 
     

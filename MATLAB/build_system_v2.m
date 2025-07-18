@@ -17,29 +17,29 @@ function [xsol, A, b] = build_system_v2(N, M, dx, dz, C, x_free, ...
 %
 % -------------------------
 % Inputs:
-%   N             ? [int] number of grid points in x-direction
-%   M             ? [int] number of grid points in z-direction
-%   dx            ? [m] horizontal grid spacing
-%   dz            ? [m] vertical grid spacing
-%   C             ? [NM × 1] flattened solution vector from previous timestep or iteration
-%   x_free        ? [logical N×1] mask for free-surface regions (true where surface is free)
-%   x_contact     ? [logical N×1] mask for raft-contact regions (true where surface contacts raft)
-%   motor_weights ? [N×1] vector of distributed motor force weights over raft region
-%   args          ? [struct] parameters structure (see flexible_surferbot) including:
-%                     .sigma        ? [N/m] surface tension
-%                     .rho          ? [kg/m^3] fluid density
-%                     .omega        ? [rad/s] actuation frequency
-%                     .EI           ? [N·m^2] bending stiffness of raft
-%                     .rho_raft     ? [kg/m] linear density of raft
-%                     .motor_inertia? [kg·m^2] motor rotational inertia
-%                     .BC           ? boundary condition type ('radiative', etc.)
+%   N              [int] number of grid points in x-direction
+%   M              [int] number of grid points in z-direction
+%   dx             [m] horizontal grid spacing
+%   dz             [m] vertical grid spacing
+%   C              [NM × 1] flattened solution vector from previous timestep or iteration
+%   x_free         [logical N×1] mask for free-surface regions (true where surface is free)
+%   x_contact      [logical N×1] mask for raft-contact regions (true where surface contacts raft)
+%   motor_weights  [N×1] vector of distributed motor force weights over raft region
+%   args           [struct] parameters structure (see flexible_surferbot) including:
+%                     .sigma         [N/m] surface tension
+%                     .rho           [kg/m^3] fluid density
+%                     .omega         [rad/s] actuation frequency
+%                     .EI            [N·m^2] bending stiffness of raft
+%                     .rho_raft      [kg/m] linear density of raft
+%                     .motor_inertia [kg·m^2] motor rotational inertia
+%                     .BC            boundary condition type ('radiative', etc.)
 %
 % -------------------------
 % Outputs:
-%   xsol ? [5NM × 1] solution vector ordering:
-%              [phi; eta; eta_x; u_beam; u_beam_xx]
-%   A    ? [5NM × 5NM] sparse matrix, left-hand side of linear system
-%   b    ? [5NM × 1] right-hand side vector
+%   xsol  [5NM × 1] solution vector ordering:
+%              [phi; eta = phi_z]
+%   A     [5NM × 5NM] sparse matrix, left-hand side of linear system
+%   b     [5NM × 1] right-hand side vector
 %
 % -------------------------
 % Notes:
@@ -96,7 +96,7 @@ idxRightEdge  = find(rightEdgeMask);
 S2D = repmat({sparse(NM,NM)}, 2, 2);
 
 % ------------------------------------------------------------------------
-% 4.  E1 = Bernoulli on free surface  
+% 4.  Equation 1: Bernoulli on free surface  
 % ------------------------------------------------------------------------
 L = idxLeftFreeSurf; 
 [DxxFree, ~] = getNonCompactFDmatrix(nbLeft,dx,2,args.ooa);
@@ -120,7 +120,7 @@ S2D{1, 1}(CC, CC) = C.C26 * DxxRaft + C.C24 * I_NM(CC, CC);
 S2D{1, 2}(CC, CC) = (C.C22 + C.C25) * I_NM(CC, CC) + (C.C21/dx^4) * Dx4Raft;
 
 % ------------------------------------------------------------------------
-% 4c.  Surface-tension corner corrections ( +C27/dx ?²?/?x?z )
+% 4c.  Surface-tension corner corrections
 % ------------------------------------------------------------------------
 %   right raft boundary, x > 0
 rightBdry = find(contactMask, 1, 'last');      % right edge of raft
@@ -130,16 +130,12 @@ S2D{1,2}(rightBdry, idxRightFreeSurf) = ...
       S2D{1,2}(rightBdry, idxRightFreeSurf) ...
     + (C.C27/dx) * (I_NM(rightBdry+M, idxRightFreeSurf) - I_NM(rightBdry, idxRightFreeSurf))/dx;
 
-% ------------------------------------------------------------------------
-% 4c. Surface-tension corner correction ? LEFT raft boundary, x < 0
-% ------------------------------------------------------------------------
-
-% mask of free surface nodes (or their immediate left neighbour) that lie
-% strictly to the *left* of the raft
+% left raft corner contribution
 leftBdry  = find(contactMask, 1, 'first');     % left  edge of raft
 S2D{1,2}(leftBdry, idxLeftFreeSurf) = ...
     S2D{1,2}(leftBdry, idxLeftFreeSurf) ...
   + (C.C27/dx) * (I_NM(leftBdry, idxLeftFreeSurf) - I_NM(leftBdry-M, idxLeftFreeSurf))/dx;
+
 
 if args.test == true % Dirichlet BC conditions for testing
     S2D{1, 1}(idxContact, :) = 0;
@@ -150,18 +146,18 @@ if args.test == true % Dirichlet BC conditions for testing
     %S4D{1, 5}(rowRaft, :) = zeros(size(Dz(rowRaft, :)));
 end
 % ------------------------------------------------------------------------
-% 5.  E2  ? Laplace in the bulk  (rows = rowBulk, unknown 1 : ?)
+% 5.  Equation 2:  Laplace in the bulk  
 % ------------------------------------------------------------------------
 S2D{1,1}(idxBulk,:)  = Dxx(idxBulk,:);
 S2D{1,2}(idxBulk, :) = Dz(idxBulk, :);
 
 % ------------------------------------------------------------------------
-% 6.  E3  ? bottom impermeability  (rows = rowBottom, unknown 1 : ?)
+% 6.  Equation 3:  bottom impermeability  
 % ------------------------------------------------------------------------
 S2D{1,2}(idxBottom,:) = I_NM(idxBottom,:);
 
 % ------------------------------------------------------------------------
-% 7.  E4  ? radiative BC (rows = rowEdge)
+% 7.  Equation 4: radiative BC 
 % ------------------------------------------------------------------------
 S2D{1,2}(idxLeftEdge,:)  = 0;
 S2D{1,2}(idxRightEdge,:) = 0;
@@ -175,8 +171,7 @@ end
 % ------------------------------------------------------------------------
 % 8.  Derivative constraints
 % ------------------------------------------------------------------------
-% derivative-definition rows  (?x, ?xx, ?xxx, ?xxxx)
-% row-2:  ?z   ? Dz ?     = 0
+% row-2:  phi_z  - Dz phi   = 0
 S2D{2,1} = Dz;      S2D{2,2} = -I_NM;
 
 
