@@ -25,12 +25,13 @@ function run_id = save_surferbot_run(outdir_base, varargin)
     scaleX = 1e2;  scaleY = 1e6;                % cm, ?m
 
     fig = figure('Visible','off','Position',[0 0 900 240]);
+    sc = max(abs(eta), [], 'all'); scaleY = 10^(6-ceil(-log10(sc)));
     for k = 1:numel(tvec)
         yy = real(eta .* exp(1i*omega*tvec(k)));
         plot(x*scaleX , yy*scaleY ,'b','LineWidth',2); hold on
         plot(x(args.x_contact)*scaleX , yy(args.x_contact)*scaleY ,'r','LineWidth',3)
-        xlim([-0.1 0.1]*scaleX); ylim([-300e-6 300e-6]* scaleY);
-        xlabel('x (cm)'); ylabel('y (?m)');
+        xlim([-0.1 0.1]*scaleX); ylim([-10 30]* scaleY);
+        xlabel('x (cm)'); ylabel('y (um)');
         title(sprintf('t = %.5f s',tvec(k)));
         set(gca, 'FontSize', 16)
         frame = getframe(fig);
@@ -100,10 +101,10 @@ function run_id = save_surferbot_run(outdir_base, varargin)
     headline = isempty(dir(manifest));
     f = fopen(manifest, 'a');
     if headline
-        fprintf(f, "run_id,U_m,f_hz,L_raft_m,n,M,BC\n");
+        fprintf(f, "run_id,U_m,f_hz,EI_Nm2,motor_pos_m,bath_depth_m,L_raft_m,n,M,BC\n");
     end
     fprintf(f, "%s,%.6g,%.6g,%.6g,%d,%d,%s\n", ...
-            timestamp, U, args.omega/(2*pi), args.L_raft, args.n, args.M, args.BC);
+            timestamp, U, args.omega/(2*pi), args.EI, args.motor_position, args.domainDepth, args.L_raft, args.n, args.M, args.BC);
     fclose(f);
 
     % ---------- 5.  (Optional) write a blank README for notes ---------
