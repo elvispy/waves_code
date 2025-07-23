@@ -31,6 +31,8 @@ raftMass = 2.6e-3;      % Mass of SurferBot (kg)
 motorPosition = -0.003; % Position of motor relative to raft center (m)
 oscillationAmp = 152e-6;% Amplitude of oscillations (m)
 
+
+
 %% Dimensionless Parameters (following paper's notation)
 dimlessOscillationFreq = angularFreq * sqrt(raftLength / gravity); % Omega
 dimlessSurfaceTension = surfaceTension / (fluidDensity * gravity * raftLength^2); % Gamm
