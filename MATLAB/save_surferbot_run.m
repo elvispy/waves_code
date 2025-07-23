@@ -8,8 +8,11 @@ function run_id = save_surferbot_run(outdir_base, varargin)
 
     % ---------- 0.  Time-stamped subfolder -------------------------------
     timestamp = datestr(now, 'yyyy-mm-ddTHH-MM-SSZ');
-    run_id    = fullfile(outdir_base, timestamp);
-    if ~exist(run_id,'dir');  mkdir(run_id);  end
+    % ---------- 0.  Unique run folder ------------------------------------
+    run_id = fullfile(outdir_base, ...
+             char(datetime('now','Format','yyyy-MM-dd''T''HH-mm-ss')) , ...
+             char(java.util.UUID.randomUUID));   % <-- 100 % unique
+    mkdir(run_id);
 
     % ---------- 1.  Call the simulator -----------------------------------
     [U, x, z, phi, eta, args] = flexible_surferbot_v2(varargin{:});
@@ -40,21 +43,6 @@ function run_id = save_surferbot_run(outdir_base, varargin)
     if system(cmd) ~= 0
         warning('Pretty-print skipped (system Python not found).');
     end
-
-    % ---------- 4.  Append one-line manifest entry -----------------------
-    manifest = fullfile(outdir_base,'manifest.csv');
-    headline = ~isfile(manifest);
-    f = fopen(manifest,'a');
-    if headline
-        fprintf(f,"run_id,U_m,f_hz,EI_Nm2,motor_pos_m,bath_depth_m,L_raft_m,n,M,BC\n");
-    end
-    fprintf(f,"%s,%.6g,%.6g,%.6g,%g,%g,%g,%d,%d,%s\n", ...
-            timestamp,U,args.omega/(2*pi),args.EI,args.motor_position, ...
-            args.domainDepth,args.L_raft,args.n,args.M,args.BC);
-    fclose(f);
-
-    % ---------- 5.  Blank README for notes --------------------------------
-    fclose(fopen(fullfile(run_id,'README.txt'),'w'));
 
     fprintf('Saved run %s\n', timestamp);
 end
