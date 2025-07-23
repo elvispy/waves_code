@@ -175,3 +175,11 @@ $$
 k tanh(kH) g = \frac{-\sigma}{\rho} k^3 tanh(kH) + \omega^2 - k^2 4 i \nu \omega
 $$
 
+### some results for the beam equation
+
+The time frequency of the beam are given by:
+$$
+\omega = (\beta l)^2 \sqrt{\frac{EI}{\rho A l^4}}
+$$
+ 
+where $\rho$ is the 3d density of the raft, and $A$ is the cross-sectional area of the bot. 
