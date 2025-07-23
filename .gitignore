@@ -3,3 +3,5 @@
 **/*.m~
 files_content.md
 **/surferbot_results/
+**/.DS_Store
+.DS_Store
