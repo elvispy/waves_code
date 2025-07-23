@@ -1,7 +1,8 @@
 %% ------------------------------------------------------------------------
 %  Surferbot parameter sweep
 %  ------------------------------------------------------------------------
-%  ?  base values (copied from your last manual call)
+
+% Base vaariables
 base = struct( ...
     'sigma'         , 72.2e-3 , ...
     'rho'           , 1000.0  , ...
