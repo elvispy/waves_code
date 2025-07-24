@@ -2,74 +2,97 @@ import jax.numpy as jnp
 import unittest
 from DtN import DtN_generator
 import scipy.integrate as spi
-from findiff import Diff
+from surferbot.myDiff import Diff
+from surferbot.utils import solve_tensor_system, gaussian_load, test_solution, dispersion_k
 from integration import simpson_weights
- 
-# constants
-x = jnp.linspace(0, 10, 100)
-h = x[1] - x[0]
-n = 12 # size of DtN
-g = 9.8
-# delta = 
-# rho = 
-# omega = 
-# nu = 
 
-
-def solver(sigma, rho, omega, nu, eta, zeta, theta, g, L_raft, force, mass, L_domain, n = 100):
+# question: do i need to be worried about motor inertia?
+def solver(rho, omega, nu, g, L_raft, L_domain, motor_inertia, gamma, n = 100):
+    '''
+    Inputs: 
+    - 
+    Outputs:
+    - 
+    '''
 
     ## Derived dimensional Parameters (SI Units)
+    force = motor_inertia *  omega**2 # question: Unsure if this is right, also when to use t_c vs omega?
+    L_c = L_raft
 
+    m_c = rho * L_c**2
+    t_c = 1/omega
+    F_c = rho * L_c**3 / t_c**2
 
-    ## Non-dimensional Parameters
+    # Equations
+    # Equation 1    (2.18b)
+    C11 = 1.0
+    C12 = -(gamma * rho * L_c**3 * omega**2)/(rho * g * L_c * omega**2)
+    C13 = -omega**2 / (g * omega **2 * L_c)             
+    C14 = -4.0j * nu * omega * L_c**2 / (g * L_c * omega**2)
 
+    # Equation 2    (2.18c)
+    C21 = 1.0
+    C22 = 
 
-    ## Helper variables
-    '''
-    x = jnp.linspace(-L_domain, L_domain, n)
-    x_contact = x[abs(x) <= L_raft]
-    x_free    = x[abs(x) >  L_raft]
-    h = x[1] - x[0]
-    '''
+    # Used in E4
+    k = dispersion_k(omega, g, D, nu, sigma, rho) 
+    C31 = 1.
+    C32 = 0.0 * 1.0j * k * L_c
     
+    # Equation 4        (2.11b)
 
+    # Equation 5        (2.11c)
+
+    # Equation 6        (2.19)
+
+    # Equation 7        (2.20)
+
+    # Equation 8        (2.21)
+
+
+    # Raft Points
+    L_raft_adim = L_raft / L_c
+    L_domain_adim = jnp.floor(L_domain / L_c) - jnp.floor(L_domain/L_c) % 2 + 1 # We make it odd (for simson integration)
+    N = jnp.int32(n * L_domain_adim / L_raft_adim) 
+
+    # question: why do you need if-else here
+    if jnp.std(x) < 1e-5:
+        grid_x = (x[left_raft_boundary] - x[left_raft_boundary-1]).item(0)
+    else:
+        grid_x = jnp.round(x, 5)
+        
+    x = jnp.linspace(-L_domain_adim/2, L_domain_adim/2, N)
+    x_contact = abs(x) <= L_raft_adim/2; H = sum(x_contact)
+    x_free    = abs(x) >  L_raft_adim/2; x_free = x_free.at[0].set(False); x_free = x_free.at[-1].set(False)
+    assert jnp.sum(x_free) + jnp.sum(x_contact) == N-2, f"Number of free and contact points do not match the total number of points {N}." if DEBUG else None
+    left_raft_boundary = (N-H)//2; right_raft_boundary = (N+H)//2
+
+    dx = (x[left_raft_boundary] - x[left_raft_boundary-1]).item(0)
+    d_dx = Diff(axis=0, grid=grid_x, acc=2, shape=(N, M))
+
+    x_contact = x[abs(x) <= L_c]
+    x_free    = x[abs(x) >  L_c]
+
+    # question: unsure what's going on in the z-direction (and M)
+    d_dz = Diff(axis=1, grid=grid_z, acc=2, shape=(N, M))
+
+    integral = simpson_weights(H, dx)
     DtN = DtN_generator(n)
     N = DtN / (L_raft / n)
-    # findiff
-    first_deriv = Diff(0, h).matrix((n, ))
-    d_dx = jnp.array(first_deriv.toarray())
-
-    d2_dx2 = Diff(0, float(h), acc=2) ** 2
-
-    constant = (4 * 1j * nu  * omega / g)
-    
-    ## Building the first block of equations (Bernoullli on free surface)
-    B = N @ d_dx - N * (sigma / (rho * g)) @ d2_dx2 - (omega**2 / g) * d_dx - constant * d2_dx2
-
-    # fix eta, zeta, theta, currently not a matrix
-
-    ## Building the second block of equations (Kinematic BC on the free surface)
-    C = N @ d_dx - 1j(zeta + x * theta) * omega
-
-    G = N @ d_dx - 1j * omega * eta @ d_dx + 2 * nu * eta @ d2_dx2
-
-    H = eta - zeta + theta * L_raft / 2
-
-    # fix function
-    f: lambda x: 1j * omega @ d_dx + g * zeta + nu * N**2 @ d_dx
-    w = simpson_weights(n, L_raft / (n-1))
-
-    A1 = force + mass * omega**2 * zeta - rho * jnp.dot(w, f(x))
 
 
+    # Building Matrix
+    E2 = (d_dx**2 + d_dz**2)      # question: for z = 0? (2.18a)
 
-    
+    E3 = d_dz ;  E3[:, :-1] = 0     # (2.18e)
 
-    ## Building the third block of equations (Kinematic BC on the raft)
+    E4 =  E4 = jnp.zeros((N, M, N, M, 5), dtype=jnp.complex64)     # (2.18d)
+    E4 = E4.at[0 , :, 0, :, 0].set(-C32) 
+    E4 = E4.at[0 , :, 0, :, 1].set(C31) 
+    E4 = E4.at[-1, :,-1, :, 0].set(C32)
+    E4 = E4.at[-1, :,-1, :, 1].set(C31)
 
-    ## Building the fourth block (Raft-free surface BC)
 
-    ## 
 
     return A
 
