@@ -24,9 +24,8 @@ base = struct( ...
 
 % ---------- Parameters to sweep -----------------------------------------
 sweep = struct();
-sweep.omega         = 2*pi * [10 30 50];
-%sweep.EI            = base.EI * [0.01 .1 1 10];
-%sweep.motor_inertia = base.motor_inertia * [0.01 .1 1 10];
+sweep.omega         = 2*pi * [1 5 10 50];
+sweep.EI            = base.EI * logspace(-2, 2, 5);
 
 % ---------- Build the Cartesian product ---------------------------------
 vars   = fieldnames(sweep);
@@ -43,7 +42,7 @@ progCnt = 0;                              % shared with nested function
 afterEach(dq, @updateProgress);
 
 % ---------- Parallel sweep ----------------------------------------------
-for idx = 1:nRuns
+parfor idx = 1:nRuns
     args = base;
     for k = 1:numel(vars)
         args.(vars{k}) = comb{k}(idx);

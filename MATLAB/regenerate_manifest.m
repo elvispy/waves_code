@@ -1,47 +1,37 @@
 function regenerate_manifest(outdir)
-%REGENERATE_MANIFEST  Rebuild manifest.csv from the saved run folders.
-%
-%   regenerate_manifest()                % assumes 'surferbot_results'
-%   regenerate_manifest(outdir)          % specify another root folder
-%
-%   The script expects each run directory to contain:
-%     ? results.mat   (with variable U)
-%     ? config.json   (pretty or compact, created by save_surferbot_run)
+%REGENERATE_MANIFEST  Rebuild manifest.csv from the saved run folders using parallel processing.
 
-% ------------------------------------------------------------------------
 if nargin < 1 || isempty(outdir), outdir = 'surferbot_results'; end
 assert(isfolder(outdir), 'Folder not found: %s', outdir);
 
 manifestFile = fullfile(outdir, 'manifest.csv');
-tmpFile      = [manifestFile '.tmp'];          % atomic write
+tmpFile      = [manifestFile '.tmp'];  % atomic write
 
 % ------------------------------------------------------------------------
-% 1.  Gather run directories
+% 1. Gather run directories
 % ------------------------------------------------------------------------
 d = dir(outdir);
 d = d([d.isdir] & ~startsWith({d.name}, '.'));
-% sort by datenum (optional, newest last)
-[~,idx] = sort([d.datenum]);
+[~,idx] = sort([d.datenum]);  % newest last
 d = d(idx);
+runDirs = fullfile(outdir, {d.name});
+nRuns   = numel(runDirs);
 
 % ------------------------------------------------------------------------
-% 2.  Open temporary CSV
+% 2. Preallocate cell array to collect results
 % ------------------------------------------------------------------------
-fid = fopen(tmpFile,'w');
-header = ["run_id" "U_m" "f_hz" "EI_Nm2" "motor_pos_m" "motor_inertia_kgm" ...
-          "domain_depth_m" "L_raft_m" "n" "M" "BC"];
-fprintf(fid, "%s\n", strjoin(header,','));
+rows = cell(nRuns, 1);
 
 % ------------------------------------------------------------------------
-% 3.  Loop over runs
+% 3. Parallel loop over runs
 % ------------------------------------------------------------------------
-for k = 1:numel(d)
-    runDir      = fullfile(outdir, d(k).name);
+parfor k = 1:nRuns
+    runDir = runDirs{k};
+    runName = d(k).name;
     json_file   = fullfile(runDir, 'config.json');
     result_file = fullfile(runDir, 'results.mat');
 
     if ~(isfile(json_file) && isfile(result_file))
-        warning('Skipping %s (missing files).', d(k).name);
         continue
     end
 
@@ -49,34 +39,46 @@ for k = 1:numel(d)
         args = jsondecode(fileread(json_file));
         S    = load(result_file, 'U');
         U    = S.U;
-    catch ME
-        warning('Skipping %s (%s).', d(k).name, ME.message);
-        continue
+
+        % build CSV row string
+        row = sprintf("%s,%.6g,%.6g,%.6g,%.6g,%.6g,%.6g,%.6g,%d,%d,%s", ...
+             runName, ...
+             U, ...
+             args.omega/(2*pi), ...
+             args.EI, ...
+             args.motor_position, ...
+             args.motor_inertia, ...
+             args.domainDepth, ...
+             args.L_raft, ...
+             args.n, ...
+             args.M, ...
+             args.BC);
+
+        rows{k} = row;
+    catch
+        % skip and leave rows{k} empty
     end
+end
 
-    % build CSV row
-    row = sprintf("%s,%.6g,%.6g,%.6g,%.6g,%.6g,%.6g,%.6g,%d,%d,%s\n", ...
-         d(k).name, ...
-         U, ...
-         args.omega/(2*pi), ...
-         args.EI, ...
-         args.motor_position, ...
-         args.motor_inertia, ...
-         args.domainDepth, ...
-         args.L_raft, ...
-         args.n, ...
-         args.M, ...
-         args.BC);
+% ------------------------------------------------------------------------
+% 4. Write collected rows to temporary CSV
+% ------------------------------------------------------------------------
+fid = fopen(tmpFile,'w');
+header = ["run_id" "U_m" "f_hz" "EI_Nm2" "motor_pos_m" "motor_inertia_kgm" ...
+          "domain_depth_m" "L_raft_m" "n" "M" "BC"];
+fprintf(fid, "%s\n", strjoin(header,','));
 
-    fprintf(fid, "%s", row);
+for k = 1:nRuns
+    if ~isempty(rows{k})
+        fprintf(fid, "%s\n", rows{k});
+    end
 end
 
 fclose(fid);
 
 % ------------------------------------------------------------------------
-% 4.  Move tmp ? final (atomic on the same filesystem)
+% 5. Move tmp ? final
 % ------------------------------------------------------------------------
-movefile(tmpFile, manifestFile, 'f');          % 'f' = overwrite
-
-fprintf('Manifest regenerated at %s (%d runs)\n', manifestFile, numel(d));
+movefile(tmpFile, manifestFile, 'f');
+fprintf('Manifest regenerated at %s (%d valid runs)\n', manifestFile, sum(~cellfun(@isempty,rows)));
 end

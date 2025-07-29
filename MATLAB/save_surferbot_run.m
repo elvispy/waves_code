@@ -10,8 +10,7 @@ function run_id = save_surferbot_run(outdir_base, varargin)
     timestamp = datestr(now, 'yyyy-mm-ddTHH-MM-SSZ');
     % ---------- 0.  Unique run folder ------------------------------------
     run_id = fullfile(outdir_base, ...
-             char(datetime('now','Format','yyyy-MM-dd''T''HH-mm-ss')) , ...
-             char(java.util.UUID.randomUUID));   % <-- 100 % unique
+             [char(datetime('now','Format','yyyy-MM-dd''T''HH-mm-ss_')), num2str(randi(10000))]);
     mkdir(run_id);
 
     % ---------- 1.  Call the simulator -----------------------------------
@@ -34,7 +33,7 @@ function run_id = save_surferbot_run(outdir_base, varargin)
     % re-format via system Python (optional)
     tmpFile = [jsonFile '.tmp'];
     if ispc
-        cmd = sprintf('python -m json.tool "%s" > "%s" && move /Y "%s" "%s"', ...
+        cmd = sprintf('python3 -m json.tool "%s" > "%s" && move /Y "%s" "%s"', ...
                       jsonFile,tmpFile,tmpFile,jsonFile);
     else
         cmd = sprintf('python3 -m json.tool "%s" > "%s" && mv "%s" "%s"', ...
