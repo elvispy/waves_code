@@ -24,8 +24,8 @@ systemMatrix=sparse(gridSize^2,gridSize^2);
 boundaryMatrix=sparse(gridSize^2,gridSize^2);
 
 % Define left and right boundary wavenumbers
-waveNumberLeft=waveNumber;
-waveNumberRight=-waveNumber;
+waveNumberLeft =-waveNumber;
+waveNumberRight= waveNumber;
 
 % Apply boundary conditions and fill matrix entries
 j=0;
@@ -117,6 +117,9 @@ for ii=gridSize:gridSize:gridSize^2
 end
 
 
+
+
+
 % Apply left Boundary Condition (Equation 2.18d from paper)
 
 for ii=gridSize^2-gridSize+1:gridSize^2
@@ -124,7 +127,7 @@ for ii=gridSize^2-gridSize+1:gridSize^2
     id=find(systemMatrix(ii,:));
     systemMatrix(ii,id)=0;
     
-    systemMatrix(ii,ii)=-3/2-1i*waveNumberLeft*horizontalStep;
+    systemMatrix(ii,ii)=-3/2-1i*waveNumberRight*horizontalStep;
     systemMatrix(ii,ii-gridSize)=2;
     systemMatrix(ii,ii-2*gridSize)=-1/2;
     
@@ -147,12 +150,13 @@ for ii=1:gridSize:gridSize^2
     boundaryMatrix(ii,ii+2)=1;
 end
 
-% Apply Right Boundary Condition (Equation 2.18c from paper)
+
+% Apply left Boundary Condition (Equation 2.18c from paper)
 for ii=1:gridSize
     id=find(systemMatrix(ii,:));
     systemMatrix(ii,id)=0;
     
-    systemMatrix(ii,ii)=3/2-1i*waveNumberRight*horizontalStep;
+    systemMatrix(ii,ii)=3/2-1i*waveNumberLeft*horizontalStep;
     systemMatrix(ii,ii+gridSize)=-2;
     systemMatrix(ii,ii+2*gridSize)=1/2;
     

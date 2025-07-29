@@ -3,7 +3,7 @@ import jax.numpy as jnp
 def DtN_generator(N: int, h: float = 1.0):
     '''
     This script will generate the matrix M so that M @ phi is an approximation of
-    \frac{1}{\pi} \left(\lim_{\epsilon\to 0} \int_{|x-x_0| > \epsilon} 
+    \frac{1}{\pi} \(\lim_{\epsilon\to 0} \int_{|x-x_0| > \epsilon} 
     \frac{\phi(x_0, 0) - \phi(x, 0)}{(x-x_0)^2} dx\right)
 
     For harmonic functions in the plane with decaying behaviour, this is exactly 
