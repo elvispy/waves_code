@@ -11,9 +11,9 @@ function [U, x, z, phi, eta, args] = flexible_surferbot_v2(varargin)
 
     % --- Raft properties ---
     addParameter(p, 'L_raft', 0.05);                   % [m] length of the raft
-    addParameter(p, 'motor_position', 0.6/2.5 * 0.05); % [m] motor position along the raft (fraction × L_raft)
+    addParameter(p, 'motor_position', 0.6/2.5 * 0.05); % [m] motor position along the raft (fraction ï¿½ L_raft)
     addParameter(p, 'd', 0.03);                        % [m] depth of surferbot (third dimension, z-direction)
-    addParameter(p, 'EI', 3.0e9 * 3e-2 * 9e-4^3 / 12); % [N·m^2] bending stiffness (Young?s modulus × I)
+    addParameter(p, 'EI', 3.0e9 * 3e-2 * 9e-4^3 / 12); % [Nï¿½m^2] bending stiffness (Young?s modulus ï¿½ I)
     addParameter(p, 'rho_raft', 0.018 * 3.);           % [kg/m] mass per unit length of the raft
 
     % --- Domain settings ---
@@ -25,7 +25,7 @@ function [U, x, z, phi, eta, args] = flexible_surferbot_v2(varargin)
     addParameter(p, 'M', 100);                      % [unitless] number of grid points in z
 
     % --- Motor parameters ---
-    addParameter(p, 'motor_inertia', 0.13e-3 * 2.5e-3); % [kg·m^2] rotational inertia of motor (mass times eccentricity)
+    addParameter(p, 'motor_inertia', 0.13e-3 * 2.5e-3); % [kgï¿½m^2] rotational inertia of motor (mass times eccentricity)
 
     % --- Boundary condition ---
     addParameter(p, 'BC', 'radiative');             % Boundary condition type (radiative, Neuman, Dirichlet)
