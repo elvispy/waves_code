@@ -1,4 +1,4 @@
-function [xsol, A, b] = build_system_v2(N, M, dx, dz, C, x_free, ...
+function [xsol, A, b] = build_system_v2(N, M, dx, dz, x_free, ...
                             x_contact, motor_weights, args)
 %BUILD_SYSTEM   Assemble the full linear system for the coupled PDE?ODE
 %               model of the flexible surferbot.
@@ -21,25 +21,24 @@ function [xsol, A, b] = build_system_v2(N, M, dx, dz, C, x_free, ...
 %   M              [int] number of grid points in z-direction
 %   dx             [m] horizontal grid spacing
 %   dz             [m] vertical grid spacing
-%   C              [NM × 1] flattened solution vector from previous timestep or iteration
-%   x_free         [logical N×1] mask for free-surface regions (true where surface is free)
-%   x_contact      [logical N×1] mask for raft-contact regions (true where surface contacts raft)
-%   motor_weights  [N×1] vector of distributed motor force weights over raft region
+%   x_free         [logical Nï¿½1] mask for free-surface regions (true where surface is free)
+%   x_contact      [logical Nï¿½1] mask for raft-contact regions (true where surface contacts raft)
+%   motor_weights  [Nï¿½1] vector of distributed motor force weights over raft region
 %   args           [struct] parameters structure (see flexible_surferbot) including:
 %                     .sigma         [N/m] surface tension
 %                     .rho           [kg/m^3] fluid density
 %                     .omega         [rad/s] actuation frequency
-%                     .EI            [N·m^2] bending stiffness of raft
+%                     .EI            [Nï¿½m^2] bending stiffness of raft
 %                     .rho_raft      [kg/m] linear density of raft
-%                     .motor_inertia [kg·m^2] motor rotational inertia
+%                     .motor_inertia [kgï¿½m^2] motor rotational inertia
 %                     .BC            boundary condition type ('radiative', etc.)
 %
 % -------------------------
 % Outputs:
-%   xsol  [5NM × 1] solution vector ordering:
+%   xsol  [5NM ï¿½ 1] solution vector ordering:
 %              [phi; eta = phi_z]
-%   A     [5NM × 5NM] sparse matrix, left-hand side of linear system
-%   b     [5NM × 1] right-hand side vector
+%   A     [5NM ï¿½ 5NM] sparse matrix, left-hand side of linear system
+%   b     [5NM ï¿½ 1] right-hand side vector
 %
 % -------------------------
 % Notes:
@@ -57,6 +56,13 @@ function [xsol, A, b] = build_system_v2(N, M, dx, dz, C, x_free, ...
 % ------------------------------------------------------------------------
 NM   = N*M;
 BCtype = args.BC;
+Fr = args.nd_groups.Fr;
+Gamma = args.nd_groups.Gamma;
+We = args.nd_groups.We;
+kappa = args.nd_groups.kappa;
+Lambda = args.nd_groups.Lambda;
+Re = args.nd_groups.Re;
+
 I_NM = speye(NM);
 
 % ------------------------------------------------------------------------
@@ -91,7 +97,7 @@ idxRightEdge  = find(rightEdgeMask);
 
 
 % ------------------------------------------------------------------------
-% 3.  Initialise 5×5 sparse cell container
+% 3.  Initialise 5ï¿½5 sparse cell container
 % ------------------------------------------------------------------------
 S2D = repmat({sparse(NM,NM)}, 2, 2);
 
@@ -100,12 +106,12 @@ S2D = repmat({sparse(NM,NM)}, 2, 2);
 % ------------------------------------------------------------------------
 L = idxLeftFreeSurf; 
 [DxxFree, ~] = getNonCompactFDmatrix(nbLeft,dx,2,args.ooa);
-S2D{1,1}(L(2:end-1),L) =  C.C13 * I_NM(L(2:end-1), L) + C.C14*DxxFree(2:end-1, :);
-S2D{1,2}(L(2:end-1),L) =  C.C11 * I_NM(L(2:end-1), L) + C.C12*DxxFree(2:end-1, :);
+S2D{1,1}(L(2:end-1),L) =  I_NM(L(2:end-1), L) + 4.0j/Re * DxxFree(2:end-1, :);
+S2D{1,2}(L(2:end-1),L) =  -Fr^(-2) * I_NM(L(2:end-1), L) + 1/(We * Gamma)*DxxFree(2:end-1, :);
 
 R = idxRightFreeSurf;
-S2D{1,1}(R(2:end-1),R) =  C.C13 * I_NM(R(2:end-1), R) + C.C14*DxxFree(2:end-1, :);
-S2D{1,2}(R(2:end-1),R) =  C.C11 * I_NM(R(2:end-1), R) + C.C12*DxxFree(2:end-1, :);
+S2D{1,1}(R(2:end-1),R) =  I_NM(R(2:end-1), R) + 4.0j/Re *DxxFree(2:end-1, :);
+S2D{1,2}(R(2:end-1),R) =  -1/Fr^2 * I_NM(R(2:end-1), R) + 1/(We * Gamma) * DxxFree(2:end-1, :);
 
 % ------------------------------------------------------------------------
 % 4b.  Euler-beam equations inside raft  (rows = rowRaft)
@@ -116,8 +122,8 @@ CC = idxContact;
 [Dx4Raft, ~] = getNonCompactFDmatrix(sum(x_contact),1 ,4,args.ooa);
 S2D{1, 1}(idxContact(1), :) = 0; S2D{1, 1}(idxContact(end), :) = 0;
 S2D{1, 2}(idxContact(1), :) = 0; S2D{1, 2}(idxContact(end), :) = 0;
-S2D{1, 1}(CC, CC) = C.C26 * DxxRaft + C.C24 * I_NM(CC, CC);
-S2D{1, 2}(CC, CC) = (C.C22 + C.C25) * I_NM(CC, CC) + (C.C21/dx^4) * Dx4Raft;
+S2D{1, 1}(CC, CC) = -2*Gamma*Lambda / Re * DxxRaft + 1.0i * Lambda * Gamma * I_NM(CC, CC);
+S2D{1, 2}(CC, CC) = (1.0i - 1.0i * Gamma * Lambda/Fr^2) * I_NM(CC, CC) + (-1.0i * kappa/dx^4) * Dx4Raft;
 
 % ------------------------------------------------------------------------
 % 4c.  Surface-tension corner corrections
@@ -128,13 +134,13 @@ rightBdry = find(contactMask, 1, 'last');      % right edge of raft
 % right raft corner contribution
 S2D{1,2}(rightBdry, idxRightFreeSurf) = ...
       S2D{1,2}(rightBdry, idxRightFreeSurf) ...
-    + (C.C27/dx) * (I_NM(rightBdry+M, idxRightFreeSurf) - I_NM(rightBdry, idxRightFreeSurf))/dx;
+    + (1.0i * Lambda / (We*dx)) * (I_NM(rightBdry+M, idxRightFreeSurf) - I_NM(rightBdry, idxRightFreeSurf))/dx;
 
 % left raft corner contribution
 leftBdry  = find(contactMask, 1, 'first');     % left  edge of raft
 S2D{1,2}(leftBdry, idxLeftFreeSurf) = ...
     S2D{1,2}(leftBdry, idxLeftFreeSurf) ...
-  + (C.C27/dx) * (I_NM(leftBdry, idxLeftFreeSurf) - I_NM(leftBdry-M, idxLeftFreeSurf))/dx;
+  + (1.0i * Lambda / (We*dx)) * (I_NM(leftBdry, idxLeftFreeSurf) - I_NM(leftBdry-M, idxLeftFreeSurf))/dx;
 
 
 if args.test == true % Dirichlet BC conditions for testing
@@ -165,8 +171,8 @@ if startsWith(BCtype,'n','IgnoreCase',true)
     S2D{1,1}(idxLeftEdge,:)  = Dx(idxLeftEdge, :);
     S2D{1,1}(idxRightEdge,:) = Dx(idxRightEdge, :);
 elseif startsWith(BCtype,'r','IgnoreCase',true)
-    S2D{1,1}(idxLeftEdge,:)  = -C.C32*I_NM(idxLeftEdge,:)  + C.C31 * Dx(idxLeftEdge, :);
-    S2D{1,1}(idxRightEdge,:) = +C.C32*I_NM(idxRightEdge,:) + C.C31 * Dx(idxRightEdge, :);
+    S2D{1,1}(idxLeftEdge,:)  = -args.k * args.L_raft*I_NM(idxLeftEdge,:)  + Dx(idxLeftEdge, :);
+    S2D{1,1}(idxRightEdge,:) =  args.k * args.L_raft*I_NM(idxRightEdge,:) + Dx(idxRightEdge, :);
 end
 % ------------------------------------------------------------------------
 % 8.  Derivative constraints
@@ -182,7 +188,7 @@ b = zeros(2*NM, 1);
 if args.test == true
     b(idxContact) = -0.01; 
 else
-    b(idxContact) = -C.C23 * motor_weights(:).';   % only on raft contact nodes
+    b(idxContact) = - motor_weights(:).';   % only on raft contact nodes
 end
 
 % ------------------------------------------------------------------------
@@ -196,7 +202,7 @@ elseif startsWith(BCtype,'n','IgnoreCase',true)     % Neumann lumping
     % already incorporated in Dx via one-sided stencils; no action
 end
 
-A = cell2mat(S2D);   % converts the 5×5 cell of NM×NM sparse blocks into one (5*NM)×(5*NM) sparse matrix
+A = cell2mat(S2D);   % converts the 5ï¿½5 cell of NMï¿½NM sparse blocks into one (5*NM)ï¿½(5*NM) sparse matrix
 b_sparse = reshape(b.', [], 1);
 xsol = full(A \ b_sparse);
 

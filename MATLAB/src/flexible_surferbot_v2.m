@@ -11,9 +11,9 @@ function [U, x, z, phi, eta, args] = flexible_surferbot_v2(varargin)
 
     % --- Raft properties ---
     addParameter(p, 'L_raft', 0.05);                   % [m] length of the raft
-    addParameter(p, 'motor_position', 0.6/2.5 * 0.05); % [m] motor position along the raft (fraction Ã— L_raft)
+    addParameter(p, 'motor_position', 0.6/2.5 * 0.05); % [m] motor position along the raft (fraction × L_raft)
     addParameter(p, 'd', 0.03);                        % [m] depth of surferbot (third dimension, z-direction)
-    addParameter(p, 'EI', 3.0e9 * 3e-2 * 9e-4^3 / 12); % [NÂ·m^2] bending stiffness
+    addParameter(p, 'EI', 3.0e9 * 3e-2 * 9e-4^3 / 12); % [N·m^2] bending stiffness
     addParameter(p, 'rho_raft', 0.018 * 3.);           % [kg/m] mass per unit length of the raft
 
     % --- Domain settings ---
@@ -25,7 +25,7 @@ function [U, x, z, phi, eta, args] = flexible_surferbot_v2(varargin)
     addParameter(p, 'M', 100);                      % [unitless] number of grid points in z
 
     % --- Motor parameters ---
-    addParameter(p, 'motor_inertia', 0.13e-3 * 2.5e-3);  % [kgÂ·m^2] motor rotational inertia
+    addParameter(p, 'motor_inertia', 0.13e-3 * 2.5e-3);  % [kg·m^2] motor rotational inertia
     addParameter(p, 'forcing_width', 0.05);             % [fraction of L_raft] width of Gaussian forcing
 
     % --- Boundary condition ---
@@ -41,16 +41,16 @@ function [U, x, z, phi, eta, args] = flexible_surferbot_v2(varargin)
     force = args.motor_inertia * args.omega^2;
     L_c   = args.L_raft;
     t_c   = 1 / args.omega;
-    m_c   = args.rho * L_c^3;
+    m_c   = args.rho_raft * L_c;
+    F_c   = m_c * L_c / t_c;
 
     % --- Non-dimensional groups ---
-    Gamma  = args.rho     * args.L_raft^2 ...
-                / args.rho_raft;
+    Gamma  = args.rho * args.L_raft^2 / args.rho_raft;
     Fr     = sqrt(args.L_raft * args.omega^2 / args.g);
-    Re     = args.L_raft^2 * args.omega      / args.nu;
-    kappa  = args.EI      / (args.rho_raft * args.L_raft^4 * args.omega^2);
+    Re     = args.L_raft^2 * args.omega / args.nu;
+    kappa  = args.EI / (args.rho_raft * args.L_raft^4 * args.omega^2);
     We     = args.rho_raft * args.L_raft * args.omega^2 / args.sigma;
-    Lambda = args.d       / args.L_raft;
+    Lambda = args.d / args.L_raft;
 
     nd_groups = struct( ...
         'Gamma',  Gamma, ...
@@ -86,12 +86,10 @@ function [U, x, z, phi, eta, args] = flexible_surferbot_v2(varargin)
     x_free(1) = false; x_free(end) = false;
 
     % Loads at which the motor applies a force to the raft
-    loads = gaussian_load(args.motor_position/L_c, args.forcing_width, x(x_contact));
+    loads = force / F_c * gaussian_load(args.motor_position/L_c, args.forcing_width, x(x_contact));
 
     % Solve system
-    xsol = build_system_v2(N, M, dx, dz, coeffs, x_free, x_contact, ...
-                                 loads, ...
-                                 args);
+    xsol = build_system_v2(N, M, dx, dz, x_free, x_contact, loads, args);
     
     %% Post-processing
     phi = reshape(xsol(1:(N*M)), M, N);
@@ -131,7 +129,7 @@ function [U, x, z, phi, eta, args] = flexible_surferbot_v2(varargin)
     args.x_contact = x_contact;
     args.loads = loads;
     args.N = N; args.M = M; args.dx = dx * L_c; args.dz = dz * L_c;
-    args.coeffs = coeffs; args.t_c = t_c; args.L_c = L_c; args.m_c = m_c;
+    args.t_c = t_c; args.L_c = L_c; args.m_c = m_c;
 
     [U, power, thrust, eta] = calculate_surferbot_outputs(args, phi, phi_z);
     %disp(norm(U2 - U) + norm(power2-power) + norm(thrust2 - %thrust) - norm(eta2 - eta));
