@@ -11,9 +11,9 @@ function [U, x, z, phi, eta, args] = flexible_surferbot_v2(varargin)
 
     % --- Raft properties ---
     addParameter(p, 'L_raft', 0.05);                   % [m] length of the raft
-    addParameter(p, 'motor_position', 0.6/2.5 * 0.05); % [m] motor position along the raft (fraction � L_raft)
+    addParameter(p, 'motor_position', 0.6/2.5 * 0.05); % [m] motor position along the raft (fraction × L_raft)
     addParameter(p, 'd', 0.03);                        % [m] depth of surferbot (third dimension, z-direction)
-    addParameter(p, 'EI', 3.0e9 * 3e-2 * 9e-4^3 / 12); % [N�m^2] bending stiffness (Young?s modulus � I)
+    addParameter(p, 'EI', 3.0e9 * 3e-2 * 9e-4^3 / 12); % [N·m^2] bending stiffness
     addParameter(p, 'rho_raft', 0.018 * 3.);           % [kg/m] mass per unit length of the raft
 
     % --- Domain settings ---
@@ -25,7 +25,8 @@ function [U, x, z, phi, eta, args] = flexible_surferbot_v2(varargin)
     addParameter(p, 'M', 100);                      % [unitless] number of grid points in z
 
     % --- Motor parameters ---
-    addParameter(p, 'motor_inertia', 0.13e-3 * 2.5e-3); % [kg�m^2] rotational inertia of motor (mass times eccentricity)
+    addParameter(p, 'motor_inertia', 0.13e-3 * 2.5e-3);  % [kg·m^2] motor rotational inertia
+    addParameter(p, 'forcing_width', 0.05);             % [fraction of L_raft] width of Gaussian forcing
 
     % --- Boundary condition ---
     addParameter(p, 'BC', 'radiative');             % Boundary condition type (radiative, Neuman, Dirichlet)
@@ -38,28 +39,33 @@ function [U, x, z, phi, eta, args] = flexible_surferbot_v2(varargin)
 
     % Derived parameters
     force = args.motor_inertia * args.omega^2;
-    L_c = args.L_raft;
-    t_c = 1 / args.omega;
-    m_c = args.rho * L_c^3;
+    L_c   = args.L_raft;
+    t_c   = 1 / args.omega;
+    m_c   = args.rho * L_c^3;
 
-    % Non-dimensional constants
-    C11 = 1.0;
-    C12 = -args.sigma / (args.rho * args.g * L_c^2);
-    C13 = -args.omega^2 / args.g * L_c;
-    C14 = -4i * args.nu * args.omega / (args.g * L_c);
+    % --- Non-dimensional groups ---
+    Gamma  = args.rho     * args.L_raft^2 ...
+                / args.rho_raft;
+    Fr     = sqrt(args.L_raft * args.omega^2 / args.g);
+    Re     = args.L_raft^2 * args.omega      / args.nu;
+    kappa  = args.EI      / (args.rho_raft * args.L_raft^4 * args.omega^2);
+    We     = args.rho_raft * args.L_raft * args.omega^2 / args.sigma;
+    Lambda = args.d       / args.L_raft;
 
-    C21 = args.EI * t_c / (1i * args.omega * m_c * L_c^3);
-    C22 = -args.rho_raft * args.omega * L_c * t_c / (1i * m_c);
-    C23 = -force / (m_c * L_c / t_c^2);
-    C24 = (args.rho * args.d * t_c * 1i * args.omega * L_c^2) / m_c;
-    C25 = (args.rho * args.d * t_c * args.g * L_c) / (m_c * 1i * args.omega);
-    C26 = -(args.rho * args.d * t_c * 2 * args.nu) / m_c;
-    C27 = -args.sigma * args.d * t_c / (1i * args.omega * m_c * L_c);
+    nd_groups = struct( ...
+        'Gamma',  Gamma, ...
+        'Fr',     Fr, ...
+        'Re',     Re, ...
+        'kappa',  kappa, ...
+        'We',     We, ...
+        'Lambda', Lambda);
+
+    % Store nondimensional groups for later use
+    args.nd_groups = nd_groups;
 
     % Wavenumber
-    k = dispersion_k(args.omega, args.g, args.domainDepth, args.nu, args.sigma, args.rho); args.k = k;
-    C31 = 1;
-    C32 = 1i * k * L_c;
+    k = dispersion_k(args.omega, args.g, args.domainDepth, args.nu, args.sigma, args.rho);
+    args.k = k;
 
     % Grid
     L_domain_adim = ceil(args.L_domain / L_c);
@@ -76,16 +82,12 @@ function [U, x, z, phi, eta, args] = flexible_surferbot_v2(varargin)
 
     % Contact and free indices
     x_contact = abs(x) <= args.L_raft / (2 * L_c);
-    x_free = abs(x) > args.L_raft / (2 * L_c);
+    x_free    = abs(x) >  args.L_raft / (2 * L_c);
     x_free(1) = false; x_free(end) = false;
 
-
-    coeffs = struct('C11',C11,'C12',C12,'C13',C13,'C14',C14, ...
-               'C21',C21,'C22',C22,'C23',C23,'C24',C24,'C25',C25, ...
-               'C26',C26,'C27',C27,'C31',C31,'C32',C32);
     % Loads at which the motor applies a force to the raft
-    loads = gaussian_load(args.motor_position/L_c,0.05,x(x_contact));
-    
+    loads = gaussian_load(args.motor_position/L_c, args.forcing_width, x(x_contact));
+
     % Solve system
     xsol = build_system_v2(N, M, dx, dz, coeffs, x_free, x_contact, ...
                                  loads, ...
