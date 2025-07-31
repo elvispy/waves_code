@@ -23,7 +23,7 @@ function [U, power, thrust, eta] = calculate_surferbot_outputs(args, phi, phi_z)
     
     % --- Main Calculations ---
     % Get finite difference matrices
-    [Dx, Dz]  = getNonCompactFDmatrix2D(N, M, dx_adim, dz_adim, 1, args.ooa); 
+    [Dx, Dz] = getNonCompactFDmatrix2D(N, M, dx_adim, dz_adim, 1, args.ooa); 
     [Dx2, ~] = getNonCompactFDmatrix2D(N, M, dx_adim, dz_adim, 2, args.ooa);
 
     if nargin < 3

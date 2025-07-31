@@ -232,7 +232,7 @@ We call $\omega_1 = \sqrt{\frac{EI}{ L_c^3 m_c}}$, recall $m_c = \rho_B L_c$ is 
 $$
 -i\frac{\omega_1^2}{\omega^2} \tilde{\phi}_{xxxxz} = 
 -i\tilde{\phi}_z + \frac{\hat{F}_{z}}{F_c} \delta_{x_A} -
-i\frac{\rho d L_c^2}{ m_c} \tilde{\phi} -
+i\frac{\rho d L_c^2}{ m_c} \tilde{\phi} +
 i\frac{\rho d g L_c}{\omega^2 m_c}\tilde{\phi}_z + 
 \frac{2 \nu \rho d}{\omega m_c} \tilde{\phi}_{xx} - 
 i \frac{\sigma d}{ F_c} \tilde{\phi}_{xz} \tilde{\delta}_{\pm 1/2}
