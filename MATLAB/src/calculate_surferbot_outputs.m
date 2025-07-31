@@ -35,10 +35,12 @@ function [U, power, thrust, eta] = calculate_surferbot_outputs(args, phi, phi_z)
     eta_x_adim = (1 / (1i * args.omega * args.t_c)) * Dx(M:M:end, :) * phi_z(:);
     
     % Pressure
-    P1_adim = (args.coeffs.C24 * phi(:) + args.coeffs.C26 * Dx2 * phi(:));
+    P1_adim = (1.0i * args.nd_groups.Gamma * phi(:) ...
+        - 2 * args.nd_groups.Gamma / args.nd_groups.Re * Dx2 * phi(:));
     P1_adim = P1_adim(M:M:end, 1);
     P1_adim = P1_adim(args.x_contact, :);
-    p_adim = args.coeffs.C25 * eta_adim(args.x_contact) + P1_adim; 
+    p_adim = - 1.0i * args.nd_groups.Gamma / args.nd_groups.Fr^2 * eta_adim(args.x_contact) ...
+       + P1_adim; 
     
     % Thrust
     weights = simpson_weights(sum(args.x_contact), dx_adim);
@@ -46,7 +48,7 @@ function [U, power, thrust, eta] = calculate_surferbot_outputs(args, phi, phi_z)
     thrust = real(thrust_adim * F_c); 
     
     % Power
-    power = -(0.5 * args.omega * args.L_c * F_c) * weights * (imag(eta_adim(args.x_contact)) .* (-args.coeffs.C23 * args.loads));
+    power = -(0.5 * args.omega * args.L_c * F_c) * weights * (imag(eta_adim(args.x_contact)) .* (- args.loads));
     
     % Final Velocity (U)
     thrust_factor = 4/9 * args.nu * (args.rho * args.d)^2 * args.L_raft;
