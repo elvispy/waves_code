@@ -171,8 +171,8 @@ if startsWith(BCtype,'n','IgnoreCase',true)
     S2D{1,1}(idxLeftEdge,:)  = Dx(idxLeftEdge, :);
     S2D{1,1}(idxRightEdge,:) = Dx(idxRightEdge, :);
 elseif startsWith(BCtype,'r','IgnoreCase',true)
-    S2D{1,1}(idxLeftEdge,:)  = -args.k * args.L_raft*I_NM(idxLeftEdge,:)  + Dx(idxLeftEdge, :);
-    S2D{1,1}(idxRightEdge,:) =  args.k * args.L_raft*I_NM(idxRightEdge,:) + Dx(idxRightEdge, :);
+    S2D{1,1}(idxLeftEdge,:)  = -1.0i * args.k * args.L_raft*I_NM(idxLeftEdge,:)  + Dx(idxLeftEdge, :);
+    S2D{1,1}(idxRightEdge,:) =  1.0i * args.k * args.L_raft*I_NM(idxRightEdge,:) + Dx(idxRightEdge, :);
 end
 % ------------------------------------------------------------------------
 % 8.  Derivative constraints

@@ -1,4 +1,6 @@
-omega = 2*pi*80;
+addpath './src/'
+
+omega = 2*pi*20;
 tvec = linspace(0, 10*pi/omega, 200);
 
 
@@ -24,21 +26,6 @@ for kk=1:length(tvec)
     %quiver(x(args.x_contact), (real(eta(args.x_contact))') * scale, zeros(1, sum(args.x_contact)), ...
     %    args.loads'/5e+4 * scale, 0, 'MaxHeadSize', 1e-6);
 
-% 
-%     boat=real(zeta*exp(1i*2*pi*freq*tvec(kk)) +xs*theta*exp(1i*2*pi*freq*tvec(kk))  );
-%     boat(abs(xs)>1/2)=NaN;
-%     bb = 1000;
-%     plot(xs*L*1e2+Udim*tvec(kk),real(eta*exp(1i*2*pi*freq*tvec(kk)))*L*1e6,'r-','linewidth',2)
-%     hold on
-%     plot(xs*L*1e2+Udim*tvec(kk),boat*L*1e6,'b','linewidth',4)
-% 
-%     xlim([-xd,xd]*L*1e2)
-%     ylim([-1,1]*2000)
-%     xlabel('$$x$$ (cm)','interpreter','latex')
-%     ylabel('$$h$$ ($$\mu$$m)','interpreter','latex')
-%     set(gca,'fontsize',20)
-%     set(fig2,'position',[1000 900 500 500])
-%     ylim([-bb,bb])
      frame = getframe(gcf); %get frame
      writeVideo(myVideo, frame);
 %     hold off
