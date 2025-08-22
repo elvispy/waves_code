@@ -2,9 +2,11 @@ function plot_surferbot_run(run_dir)
 %PLOT_SURFERBOT_RUN  Generate plots for a saved Surferbot run.
 %
 %   PLOT_SURFERBOT_RUN()           -> displays manifest and prompts for selection.
-%   PLOT_SURFERBOT_RUN(run_dir)    -> uses the specified run directory.
+%   PLOT_SURFERBOT_RUN(run_dir)    -> uses the specified run directory (char/str),
+%                                     or uses struct S directly (no disk I/O).
 
-    %% --- 0.  Select folder if not provided -----------------------------
+    %% --- 0.  Select folder / struct if not provided --------------------
+    S = [];                        % <-- will hold data if provided as struct
     if nargin < 1 || isempty(run_dir)
         % Define path and check for the manifest file
         outdir = 'surferbot_results';
@@ -41,18 +43,32 @@ function plot_surferbot_run(run_dir)
         run_id = T.run_id{selection};
         run_dir = fullfile(outdir, run_id);
         fprintf('\nPlotting run: %s\n', run_id);
+
+    elseif isstruct(run_dir)
+        % User passed the loaded data directly
+        S = run_dir;                 % treat input as S
+        run_dir = pwd;               % save outputs to current folder
+        fprintf('Using provided struct S; saving outputs in: %s\n', run_dir);
     end
     
-    assert(isfolder(run_dir), 'Folder not found: %s', run_dir);
+    % If we are using a directory, make sure it exists
+    if ~isempty(run_dir) && ~(exist('S','var') && ~isempty(S))
+        assert(isfolder(run_dir), 'Folder not found: %s', run_dir);
+    end
 
     %% --- 1.  Load data -------------------------------------------------
-    % (The rest of the script remains unchanged)
-    dataFile = fullfile(run_dir,'results.mat');
-    S = load(dataFile);
-    U = S.U;  x = S.x;  z = S.z;  phi = S.phi; eta = S.eta; args = S.args;
+    if isempty(S)
+        dataFile = fullfile(run_dir,'results.mat');
+        S = load(dataFile);
+    end
+    U   = S.U;  
+    x   = S.x;  
+    z   = S.z;  
+    phi = S.phi; 
+    eta = S.eta; 
+    args = S.args;
     
-    %% --- 2.  Quick MP4 of η(t,x) ----------------------------------------
-    
+    %% --- 2.  Quick MP4 of η(t,x) ---------------------------------------
     vidFile = fullfile(run_dir,'waves.mp4');
     vid     = VideoWriter(vidFile,'MPEG-4');
     vid.FrameRate = args.omega/(2*pi);
@@ -64,16 +80,10 @@ function plot_surferbot_run(run_dir)
     scaleY = 1e6;  % µm
     
     % --- DYNAMIC Y-LIMITS ---
-    % 1. Find the maximum amplitude of the wave (in meters)
     sc = max(abs(eta),[],'all');
-    
-    % 2. Define a buffer. A 15% buffer makes the wave take up ~87% of the plot.
     plot_buffer = 1.4; 
-    
-    % 3. Calculate the y-axis limits in the scaled units (microns)
     y_limit_microns = sc * scaleY * plot_buffer;
     
-    % Create the figure for the video
     fig = figure('Visible','on','Position',[200 200 900 240]);
     
     for k = 1:numel(tvec)
@@ -83,23 +93,19 @@ function plot_surferbot_run(run_dir)
         plot(x(args.x_contact)*scaleX , yy(args.x_contact)*scaleY , ...
              'r','LineWidth',3);
         
-        % Apply the new dynamic y-limits in every frame
         ylim([-y_limit_microns, y_limit_microns]);
-        
-        % Other plot settings
         xlim([-0.1 0.1]*scaleX);
         xlabel('x (cm)'); ylabel('y (μm)');
         title(sprintf('t = %.5f s',tvec(k)));
         set(gca,'FontSize',16);
         
-        % Capture and write frame
         frame = getframe(fig);
         writeVideo(vid,frame);
         cla
     end
     close(vid);  %close(fig);
     
-    %% --- 3.  Static η(x,0) with loads -----------------------------------
+    %% --- 3.  Static η(x,0) with loads ----------------------------------
     scaleY = 1e6;
     f1 = figure('Visible','on','Position',[0 600 1600 420]);
     plot(x, real(eta)*scaleY ,'b','LineWidth',1.5); hold on
@@ -114,7 +120,7 @@ function plot_surferbot_run(run_dir)
     savefig(f1, fullfile(run_dir,'eta_t0.fig'));
     %close(f1);
     
-    %% --- 4.  Imaginary φ field ------------------------------------------
+    %% --- 4.  Imaginary φ field -----------------------------------------
     f2 = figure('Visible','on','Position',[0 1000 1600 420]);
     colormap(f2,'winter'); shading interp
     p  = pcolor(x', z, imag(phi));  set(p,'EdgeColor','none');
