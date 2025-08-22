@@ -17,7 +17,7 @@ function [U, x, z, phi, eta, args] = flexible_surferbot_v2(varargin)
     addParameter(p, 'rho_raft', 0.018 * 3.);           % [kg/m] mass per unit length of the raft
 
     % --- Domain settings ---
-    addParameter(p, 'L_domain', 0.1);               % [m] total length of the simulation domain
+    addParameter(p, 'L_domain', nan);               % [m] total length of the simulation domain
     addParameter(p, 'domainDepth', 0.1);            % [m] depth of the simulation domain (second dimention, y-direction)
 
     % --- Discretization parameters ---
@@ -36,6 +36,7 @@ function [U, x, z, phi, eta, args] = flexible_surferbot_v2(varargin)
     args = p.Results;
     args.ooa = 4; % Define finite difference accuracy in space
     args.test = false;
+    if isnan(args.L_domain); args.L_domain = args.L_raft * 10; end
 
     % Derived parameters
     force = args.motor_inertia * args.omega^2;
@@ -66,7 +67,7 @@ function [U, x, z, phi, eta, args] = flexible_surferbot_v2(varargin)
     % Wavenumber
     k = dispersion_k(args.omega, args.g, args.domainDepth, args.nu, args.sigma, args.rho);
     args.k = k;
-    if args.k * args.domainDepth <= 3; warning('Domain depth not enough for dispersison relation'); end
+    if tanh(args.k * args.domainDepth) < 0.95; warning('Domain depth not enough for dispersison relation'); end
 
     % Grid
     L_domain_adim = ceil(args.L_domain / L_c);
