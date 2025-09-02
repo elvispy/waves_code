@@ -134,7 +134,7 @@ $$
 ### Pressure on the raft
 
 $$
-\hat{p}
+\hat{p} = - \rho \cdot d \left( i\omega \hat{\phi} + g \hat{\eta} + 2\nu \hat{\phi}_{zz}  \right)
 $$
 
 ## Dispersion relation derivation
@@ -192,7 +192,7 @@ $$
 P(x, t) = f_z(x, t) \cdot v(x, t)
 $$
 
-Where $f_z$ is the load applied locally, satisfying $\int f_z dx = F_z$. Under periodic forcing, this becomes
+Where $f_z$ is the load applied locally, satisfying $\int f_z dx = F_z$, and $v$ is the local vertical velocity of the raft. Under periodic forcing, this becomes
 
 $$
 P(x, t) = Re(f_z(x) e^{i\omega t}) \cdot \frac{d}{dt}Re(\hat{\eta} e^{i\omega t} )

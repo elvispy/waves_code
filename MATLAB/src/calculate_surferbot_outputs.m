@@ -40,7 +40,7 @@ function [U, power, thrust, eta] = calculate_surferbot_outputs(args, phi, phi_z)
     P1_adim = P1_adim(M:M:end, 1);
     P1_adim = P1_adim(args.x_contact, :);
     p_adim = - 1.0i * args.nd_groups.Gamma / args.nd_groups.Fr^2 * eta_adim(args.x_contact) ...
-       + P1_adim; 
+       + P1_adim; %Gamma / Fr^2 = d* g / (L^2 * omega^2)
     
     % Thrust
     weights = simpson_weights(sum(args.x_contact), dx_adim);
