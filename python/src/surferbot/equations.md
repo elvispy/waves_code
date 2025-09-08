@@ -1,4 +1,69 @@
-f# Equations of motion for a flexible raft
+# Equations of motion for a rigid raft
+
+## Case 1: DtN Operator, 1D Problem
+
+### Bernoulli equation
+$$
+N\hat{\phi} = \frac{\sigma}{\rho g} N\hat{\phi}_{xx} + \frac{\omega^2}{g}\hat{\phi} + \frac{4i\nu\omega}{g}\hat{\phi}_{xx}
+$$
+
+For $|x| > L/2$
+
+### Kinematic Boundary Conditions
+
+#### Inside the raft
+$$
+N\hat{\phi} = i \omega (\hat{\zeta} + x \hat{\theta})
+$$
+
+For $|x| \leq L/2$
+
+#### Outside the raft
+
+$$
+N\hat{\phi} = i \omega \hat{\eta} - 2 \nu \hat{\eta}_{xx}
+$$
+
+For $|x| > L/2$
+
+### Newton equations
+
+$$
+-m \omega^2\hat{\zeta} = \hat{F}_z - \rho \int^{L/2}_{L/2} ( i \omega\hat{\phi} + g \hat{\eta} - 2 \nu \hat{\phi}_{xx}) dx
+$$
+
+$$
+-\frac{L^2}{12}m \omega^2\hat{\theta} = x_A \hat{F}_z - \rho \int^{L/2}_{L/2} x( i \omega\hat{\phi} + g \hat{\eta} - 2 \nu \hat{\phi}_{xx}) dx
+$$
+### Boundary conditions
+
+#### Raf-fluid
+$$
+\hat{\eta} = \hat{\zeta} + \frac{x}{2} \hat{\theta}
+$$
+at $|x|  \leq L/2$
+
+#### Radiative boundary conditions
+
+$$
+\hat{\phi}_x =  \pm i k \hat{\phi}
+$$
+at $x = \mp \ell$
+
+#### Summary
+
+Suppose our domain has $M$ points. Then, there are $2M+2$ variables in total:
+
+$
+\hat{\theta}, \hat{\zeta}, \hat{\eta}_1, \dots, \hat{\eta}_M, \hat{\phi}_1, \hat{\phi}_2, \dots, \hat{\phi}_M
+$
+
+Similarly, we need $2M+2$ equations, the bernouilli equation gives $M-P$ (say there are P points inside the raft), the Raft-fluid equation has $P$, the kinematic boundary conditions are $M$ equations, and the two newton equations make a total of $2M+2$.
+
+We replace two of the quations of bernouilli with the radiative boundary conditions, so that we dont have more euqations than variables. 
+
+
+# Equations of motion for a flexible raft
 
 ## Case 1: DtN Operator, 1D problem
 
@@ -195,7 +260,7 @@ $$
 Where $f_z$ is the load applied locally, satisfying $\int f_z dx = F_z$, and $v$ is the local vertical velocity of the raft. Under periodic forcing, this becomes
 
 $$
-P(x, t) = Re(f_z(x) e^{i\omega t}) \cdot \frac{d}{dt}Re(\hat{\eta} e^{i\omega t} )
+P(x, t) = Re(f_z(x) e^{i\omega t}) \cdot \frac{d}{dt} Re\left(\hat{\eta} e^{i\omega t} \right)
 $$
 
 
