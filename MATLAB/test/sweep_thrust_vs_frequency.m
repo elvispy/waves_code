@@ -7,7 +7,7 @@
 
 addpath '../src/'
 % Frequency range (Hz)
-f_values     = 5:3:15;
+f_values     = 5:5:15;
 omega_values = 2*pi*f_values;
 
 % Preallocate
@@ -23,7 +23,7 @@ for i = 1:numel(omega_values)
     % Run simulation (defaults elsewhere)
     [~, x, z, phi, eta, args] = flexible_surferbot_v2('omega', omega, ...
         'sigma', 0, 'nu', 0, 'domainDepth', 1.5, 'L_raft', 0.5, ...
-        'motor_position', 0.5 * 0.3, 'motor_inertia', 'EI', 10, 'g', 9.81);
+        'motor_position', 0.5 * 0.3, 'EI', 100, 'g', 9.81);
 
     % Thrust from solver
     thrust_values(i) = args.thrust;
@@ -37,13 +37,14 @@ for i = 1:numel(omega_values)
     %Sxx_values(i) = (rho*g/4 + 3/4*sigma*k^2) * (abs(eta(1))^2 - abs(eta(end))^2);
     LH_values(i)  = 1/4 * rho * omega^2 / k *   (abs(eta(2))^2 - abs(eta(end-1))^2);
 
+    % Calculate velocity as gradient of potential
     dx = abs(x(1) - x(2)); dz = abs(z(1) - z(2));
     [Dx, ~] = getNonCompactFDmatrix2D(args.M,args.N,dx,dz,1,args.ooa);
     u = reshape(Dx * reshape(phi, args.M * args.N, 1), args.M, args.N); 
 
     momentum_values(i) = rho * trapz(z, abs(u(:, 2)).^2 - abs(u(:, end-1)).^2);
 
-    fprintf("%d, %.2e;", i, args.omega^2 - k * g);
+    fprintf("%d, %.2e; ", i, args.omega^2 - k * g);
 
 end
 disp('');
@@ -76,8 +77,8 @@ title('Nondimensional thrust vs. frequency');
 legend({'Numerical thrust', 'LH', 'Momentum'}, 'Location','best', 'Interpreter','tex');
 
 % (optional) print a quick table to console
-fprintf('\n  f [Hz]   ω√(L/g)     M/(ρgL^2)     F_T/(ρgL^2)      LH\n');
+fprintf('\n  f [Hz]   ω√(L/g)     M/(ρgL^2)     F_T/(ρgL^2)      LH/(ρgL^2)\n');
 for i = 1:numel(f_values)
-    fprintf('%7.2f   %8.3g    %12.4e    %12.4e   %12.4e\n', ...
+    fprintf('%7.2f   %7.3g    %12.4e    %10.4e   %12.4e\n', ...
         f_values(i), omega_star(i), mom_star(i), thrust_star(i), LH_star(i));
 end
