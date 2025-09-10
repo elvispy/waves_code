@@ -11,9 +11,9 @@ function [U, x, z, phi, eta, args] = flexible_surferbot_v2(varargin)
 
     % --- Raft properties ---
     addParameter(p, 'L_raft', 0.05);                   % [m] length of the raft
-    addParameter(p, 'motor_position', 0.6/2.5 * 0.05); % [m] motor position along the raft (fraction × L_raft)
+    addParameter(p, 'motor_position', 0.6/2.5 * 0.05); % [m] motor position along the raft (fraction x L_raft)
     addParameter(p, 'd', 0.03);                        % [m] depth of surferbot (third dimension, z-direction)
-    addParameter(p, 'EI', 3.0e9 * 3e-2 * 9e-4^3 / 12); % [N·m^2] bending stiffness
+    addParameter(p, 'EI', 3.0e9 * 3e-2 * 9e-4^3 / 12); % [N m^2] bending stiffness
     addParameter(p, 'rho_raft', 0.018 * 3.);           % [kg/m] mass per unit length of the raft
 
     % --- Domain settings ---
@@ -23,18 +23,18 @@ function [U, x, z, phi, eta, args] = flexible_surferbot_v2(varargin)
     % --- Discretization parameters ---
     addParameter(p, 'n', 201);                      % [unitless] number of grid points in x in the raft
     addParameter(p, 'M', 100);                      % [unitless] number of grid points in z
-
+    addParameter(p, 'ooa', 2);                      % [unitless] finite difference order accuracy
     % --- Motor parameters ---
-    addParameter(p, 'motor_inertia', 0.13e-3 * 2.5e-3);  % [kg·m^2] motor rotational inertia
+    addParameter(p, 'motor_inertia', 0.13e-3 * 2.5e-3);  % [kg/m^2] motor rotational inertia
     addParameter(p, 'forcing_width', 0.05);             % [fraction of L_raft] width of Gaussian forcing
 
     % --- Boundary condition ---
     addParameter(p, 'BC', 'radiative');             % Boundary condition type (radiative, Neuman, Dirichlet)
-
+    
     
     parse(p, varargin{:});
     args = p.Results;
-    args.ooa = 4; % Define finite difference accuracy in space
+    %args.ooa = 4; % Define finite difference accuracy in space
     args.test = false;
     if isnan(args.L_domain); args.L_domain = args.L_raft * 10; end
 
@@ -68,7 +68,12 @@ function [U, x, z, phi, eta, args] = flexible_surferbot_v2(varargin)
     k = dispersion_k(args.omega, args.g, args.domainDepth, args.nu, args.sigma, args.rho);
     args.k = k;
     if tanh(args.k * args.domainDepth) < 0.95; warning('Domain depth not enough for dispersison relation'); end
-
+    if 2*pi/k / (args.L_raft / args.n) <= 10 
+        
+        args.n = ceil(10 / (2*pi/k) * args.L_raft);
+        args.n = args.n + mod(args.n, 2) + 1;
+        warning('Number of points in x direction too small. Changing n to %d', args.n); 
+    end
     % Grid
     L_domain_adim = ceil(args.L_domain / L_c);
     if mod(L_domain_adim, 2) == 0
@@ -79,6 +84,8 @@ function [U, x, z, phi, eta, args] = flexible_surferbot_v2(varargin)
 
     x = linspace(-L_domain_adim/2, L_domain_adim/2, N);
     dx = x(2) - x(1);
+    
+    
     z = linspace(-args.domainDepth, 0, M) / L_c;
     dz = abs(z(2) - z(1));
 
