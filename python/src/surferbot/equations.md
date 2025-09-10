@@ -1,4 +1,69 @@
-f# Equations of motion for a flexible raft
+# Equations of motion for a rigid raft
+
+## Case 1: DtN Operator, 1D Problem
+
+### Bernoulli equation
+$$
+N\hat{\phi} = \frac{\sigma}{\rho g} N\hat{\phi}_{xx} + \frac{\omega^2}{g}\hat{\phi} + \frac{4i\nu\omega}{g}\hat{\phi}_{xx}
+$$
+
+For $|x| > L/2$
+
+### Kinematic Boundary Conditions
+
+#### Inside the raft
+$$
+N\hat{\phi} = i \omega (\hat{\zeta} + x \hat{\theta})
+$$
+
+For $|x| \leq L/2$
+
+#### Outside the raft
+
+$$
+N\hat{\phi} = i \omega \hat{\eta} - 2 \nu \hat{\eta}_{xx}
+$$
+
+For $|x| > L/2$
+
+### Newton equations
+
+$$
+-m \omega^2\hat{\zeta} = \hat{F}_z - \rho \int^{L/2}_{L/2} ( i \omega\hat{\phi} + g \hat{\eta} - 2 \nu \hat{\phi}_{xx}) dx
+$$
+
+$$
+-\frac{L^2}{12}m \omega^2\hat{\theta} = x_A \hat{F}_z - \rho \int^{L/2}_{L/2} x( i \omega\hat{\phi} + g \hat{\eta} - 2 \nu \hat{\phi}_{xx}) dx
+$$
+### Boundary conditions
+
+#### Raf-fluid
+$$
+\hat{\eta} = \hat{\zeta} + \frac{x}{2} \hat{\theta}
+$$
+at $|x|  \leq L/2$
+
+#### Radiative boundary conditions
+
+$$
+\hat{\phi}_x =  \pm i k \hat{\phi}
+$$
+at $x = \mp \ell$
+
+#### Summary
+
+Suppose our domain has $M$ points. Then, there are $2M+2$ variables in total:
+
+$
+\hat{\theta}, \hat{\zeta}, \hat{\eta}_1, \dots, \hat{\eta}_M, \hat{\phi}_1, \hat{\phi}_2, \dots, \hat{\phi}_M
+$
+
+Similarly, we need $2M+2$ equations, the bernouilli equation gives $M-P$ (say there are P points inside the raft), the Raft-fluid equation has $P$, the kinematic boundary conditions are $M$ equations, and the two newton equations make a total of $2M+2$.
+
+We replace two of the quations of bernouilli with the radiative boundary conditions, so that we dont have more euqations than variables. 
+
+
+# Equations of motion for a flexible raft
 
 ## Case 1: DtN Operator, 1D problem
 
@@ -11,7 +76,7 @@ For $|x| > L/2$
 
 ### Force balance inside the raft
 $$
-EI\frac{\partial^4 \eta}{\partial x^4} = \rho_R \omega^2 \hat{\eta} + \hat{F}_{z} \delta_{x_A} - \rho(i\omega\hat{\phi} + g\hat{\eta} - 2\nu\hat{\phi}_{xx})
+EI\frac{\partial^4 \eta}{\partial x^4} = \rho_B \omega^2 \hat{\eta} + \hat{F}_{z} \delta_{x_A} - \rho(i\omega\hat{\phi} + g\hat{\eta} - 2\nu\hat{\phi}_{xx})
 $$
 For $|x| \leq L/2$
 
@@ -67,7 +132,7 @@ For $z = 0$. $|x| > 1/2$
 ## The beam equation inside the raft
 
 $$
-\frac{EI}{i \omega}\frac{\partial^5 \phi}{\partial z \partial x^4} = \frac{\rho_R \omega}{i} \hat{\phi}_z + \hat{F}_{z} \delta_{x_A} - \rho \cdot d (i\omega\hat{\phi} + \frac{g}{i \omega}\hat{\phi}_z - 2\nu\hat{\phi}_{xx}) + \sigma \cdot d \  \eta_x \delta_{\pm L/2}
+\frac{EI}{i \omega}\frac{\partial^5 \phi}{\partial z \partial x^4} = \frac{\rho_B \omega}{i} \hat{\phi}_z + \hat{F}_{z} \delta_{x_A} - \rho \cdot d (i\omega\hat{\phi} + \frac{g}{i \omega}\hat{\phi}_z - 2\nu\hat{\phi}_{xx}) + \sigma \cdot d \  \eta_x \delta_{\pm L/2}
 $$
 
 For $z = 0$, $|x| \leq L/2$
@@ -75,12 +140,12 @@ For $z = 0$, $|x| \leq L/2$
 ### Non dimensional equation
 
 $$
-\frac{EI}{i \omega L_c^3 t_c}\frac{\partial^5 \tilde{\phi}}{\partial z \partial x^4} = \frac{\rho_R \omega L_c}{i t_c} \tilde{\phi}_z + \frac{\hat{F}_{z}}{L_c} \tilde{\delta}_{x_A} - \rho\cdot d \ \left(i\omega \frac{L_c^2}{t_c}\tilde{\phi} + \frac{g L_c}{i \omega t_c}\tilde{\phi}_z - 2\frac{\nu}{t_c} \tilde{\phi}_{xx}\right) + \frac{\sigma \cdot d}{i \omega t_c L_c} \tilde{\phi}_{xz} \tilde{\delta}_{\pm 1/2}
+\frac{EI}{i \omega L_c^3 t_c}\frac{\partial^5 \tilde{\phi}}{\partial z \partial x^4} = \frac{\rho_B \omega L_c}{i t_c} \tilde{\phi}_z + \frac{\hat{F}_{z}}{L_c} \tilde{\delta}_{x_A} - \rho\cdot d \ \left(i\omega \frac{L_c^2}{t_c}\tilde{\phi} + \frac{g L_c}{i \omega t_c}\tilde{\phi}_z - 2\frac{\nu}{t_c} \tilde{\phi}_{xx}\right) + \frac{\sigma \cdot d}{i \omega t_c L_c} \tilde{\phi}_{xz} \tilde{\delta}_{\pm 1/2}
 $$
 Which is equivalent to 
 
 $$
-\frac{EI t_c}{i \omega L_c^3 m_c} \tilde{\phi}_{xxxxz} = \frac{\rho_R \omega L_c t_c}{i m_c} \tilde{\phi}_z + \frac{\hat{F}_{z} t_c^2}{m_c L_c} \delta_{x_A} - \frac{\rho \cdot d \ t_c}{m_c}\left(i\omega L_c^2\tilde{\phi} + \frac{g L_c}{i \omega}\tilde{\phi}_z - 2\nu \tilde{\phi}_{xx}\right) + \frac{\sigma \cdot d \ t_c}{i \omega m_c L_c} \tilde{\phi}_{xz} \tilde{\delta}_{\pm 1/2}
+\frac{EI t_c}{i \omega L_c^3 m_c} \tilde{\phi}_{xxxxz} = \frac{\rho_B \omega L_c t_c}{i m_c} \tilde{\phi}_z + \frac{\hat{F}_{z} t_c^2}{m_c L_c} \delta_{x_A} - \frac{\rho \cdot d \ t_c}{m_c}\left(i\omega L_c^2\tilde{\phi} + \frac{g L_c}{i \omega}\tilde{\phi}_z - 2\nu \tilde{\phi}_{xx}\right) + \frac{\sigma \cdot d \ t_c}{i \omega m_c L_c} \tilde{\phi}_{xz} \tilde{\delta}_{\pm 1/2}
 $$
 
 For $|x| \leq 1/2$
@@ -134,7 +199,7 @@ $$
 ### Pressure on the raft
 
 $$
-\hat{p}
+\hat{p} = - \rho \cdot d \left( i\omega \hat{\phi} + g \hat{\eta} + 2\nu \hat{\phi}_{zz}  \right)
 $$
 
 ## Dispersion relation derivation
@@ -175,3 +240,82 @@ $$
 k tanh(kH) g = \frac{-\sigma}{\rho} k^3 tanh(kH) + \omega^2 - k^2 4 i \nu \omega
 $$
 
+### some results for the beam equation
+
+The time frequency of the beam are given by:
+$$
+\omega = (\beta l)^2 \sqrt{\frac{EI}{\rho A l^4}}
+$$
+ 
+where $\rho$ is the 3d density of the raft, and $A$ is the cross-sectional area of the bot. 
+
+## Total applied power over the raft:
+
+Local, instantaneous power per unit length is given by:
+
+$$
+P(x, t) = f_z(x, t) \cdot v(x, t)
+$$
+
+Where $f_z$ is the load applied locally, satisfying $\int f_z dx = F_z$, and $v$ is the local vertical velocity of the raft. Under periodic forcing, this becomes
+
+$$
+P(x, t) = Re(f_z(x) e^{i\omega t}) \cdot \frac{d}{dt} Re\left(\hat{\eta} e^{i\omega t} \right)
+$$
+
+
+$$
+P(x, t) = f_z(x) cos(\omega t) \frac{d}{dt}\left(Re(\hat{\eta})cos(\omega t) - Im(\hat{\eta}) sin(\omega t) \right)
+$$
+
+$$
+P(x, t) = f_z(x) cos(\omega t) \left( - \omega Re(\hat{\eta})\sin(\omega t) - \omega Im(\hat{\eta}) \cos(\omega t) \right)
+$$
+
+Total applied force is an integral over space and time:
+
+$$
+\overline{P}_A = \int_{-L/2}^{L/2} \frac{\omega}{2\pi} \int_{0}^{2\pi/\omega} P(x, t) \ dt dx
+$$
+
+Which gives
+
+$$
+\overline{P}_A = - \frac{\omega}{2} \int_{-L/2}^{L/2} f_z(x) Im(\hat{\eta}) dx
+$$
+
+
+## ND groups ($t_c = 1/\omega$, $L_c = L$, $m_c = \rho_B L$)
+
+### Beam equation
+$$
+\frac{EI}{i \omega^2 L_c^3 m_c} \tilde{\phi}_{xxxxz} = \frac{\rho_B L_c}{i m_c} \tilde{\phi}_z + \frac{\hat{F}_{z}}{\omega^2 m_c L_c} \delta_{x_A} - \frac{\rho d}{\omega m_c}\left(i\omega L_c^2\tilde{\phi} + \frac{g L_c}{i \omega}\tilde{\phi}_z - 2\nu \tilde{\phi}_{xx}\right) + \frac{\sigma d}{i \omega^2 m_c L_c} \tilde{\phi}_{xz} \tilde{\delta}_{\pm 1/2}
+$$
+
+We call $\omega_1 = \sqrt{\frac{EI}{ L_c^3 m_c}}$, recall $m_c = \rho_B L_c$ is the mass of the beam, $F_c = m_c L_c / t_c^2$, to get
+
+$$
+-i\frac{\omega_1^2}{\omega^2} \tilde{\phi}_{xxxxz} = 
+-i\tilde{\phi}_z + \frac{\hat{F}_{z}}{F_c} \delta_{x_A} -
+i\frac{\rho d L_c^2}{ m_c} \tilde{\phi} +
+i\frac{\rho d g L_c}{\omega^2 m_c}\tilde{\phi}_z + 
+\frac{2 \nu \rho d}{\omega m_c} \tilde{\phi}_{xx} - 
+i \frac{\sigma d}{ F_c} \tilde{\phi}_{xz} \tilde{\delta}_{\pm 1/2}
+$$
+
+$$
+\frac{\omega_1^2}{\omega^2} \tilde{\phi}_{xxxxz} = 
+\left(1 + \frac{\rho d g L_c}{\omega^2 m_c} \right) \tilde{\phi}_z + 
+i\frac{\hat{F}_{z}}{F_c} \delta_{x_A} +
+\frac{\rho d L_c^2}{ m_c} \tilde{\phi} +
+i\frac{2 \nu \rho d}{\omega m_c} \tilde{\phi}_{xx} +
+\frac{\sigma d}{ F_c} \tilde{\phi}_{xz} \tilde{\delta}_{\pm 1/2}
+$$
+
+### Bernoulli's equation
+
+$$
+\tilde{\phi}_z = \frac{1}{Bo}\tilde{\phi}_{xxz} + L_c \frac{\omega^2}{g} \tilde{\phi} + \frac{4 i \nu \omega}{g L_c} \tilde{\phi}_{xx}
+$$
+
+With $Bo^{-1} =  \frac{\sigma}{\rho g L_c^2}$
