@@ -204,6 +204,7 @@ end
 
 A = cell2mat(S2D);                 % (5*NM) x (5*NM) sparse
 b_sparse = reshape(b.', [], 1);    % RHS as column vector
+if whos('A').bytes > 2* 2147483648; warning('Matrix A is taking %.2g GiB of space. Consider downgrading.', whos('A')/2147483648); end
 
 % ---------- Fast path: try sparse backslash, accept if residual is good ----------
 tol_relres = 1e-8;    % tighten/loosen to taste
