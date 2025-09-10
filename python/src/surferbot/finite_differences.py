@@ -15,7 +15,7 @@ def solver(rho, omega, nu, g, L_raft, L_domain, motor_inertia, gamma, n = 100, t
     - L_domain: length of domain (m)
     - motor_inertia: intertia of motor
     - nu: kinematic viscosity
-    - gamma: 
+    - gamma: surface tension
     - n: number of points in raft
     - N: total number of points x-direction
     - theta, zeta: treating as givens for now!
@@ -36,19 +36,19 @@ def solver(rho, omega, nu, g, L_raft, L_domain, motor_inertia, gamma, n = 100, t
     DtN = DtN_generator(n)
     N = DtN / (L_raft / n)
     
-    C11 = N
-    C12 = -N * (gamma * rho * L_c**3 * omega**2)/(rho * g * L_c * omega**2)
-    C13 = -omega**2 / (g * omega **2 * L_c)             
-    C14 = -4.0j * nu * omega * L_c**2 / (g * L_c * omega**2)
+    C11 = 1.0
+    C12 = -(gamma / (rho * L_c**3 * omega**2))/(g / (L_c * omega**2))
+    C13 = -(omega**2 * L_c / g)        
+    C14 = -(4.0j * nu / (omega * L_c**2)) / (g / (L_c * omega**2))
 
     # Equation 2 (C)
-    C21 = N
-    C22 = 1j * (zeta + theta * x) * omega
+    C21 = 1.0
+    C22 = -1j * (zeta + theta * x) * omega
 
     # Equation 3 (G)
-    C31 = 1.0j * omega
-    C32 = -2 * nu * omega / L_c**2
-    C33 = -N
+    C31 = 1.0j
+    C32 = -2 * nu / (omega * L_c**2)
+    C33 = -1.0
 
 
     # Raft Points
@@ -79,7 +79,7 @@ def solver(rho, omega, nu, g, L_raft, L_domain, motor_inertia, gamma, n = 100, t
     # [E21][E22 = 0]  [eta]
     # [E31][E32]  
 
-    E11 = C11 + C12 * d_dx**2 + C13 + C14 * d_dx**2
+    E11 = C11 + (C12 + C14) * d_dx**2 + C13
     E12 = 0
 
     E21 = C21 # figure out how to use the constant
@@ -88,13 +88,14 @@ def solver(rho, omega, nu, g, L_raft, L_domain, motor_inertia, gamma, n = 100, t
     E31 = C33
     E32 = C31 + C32 * d_dx**2
 
-    E1 = jnp.stack(E11, E12, axis = 0)
-    E2 = jnp.stack(E21, E22, axis = 0)
-    E3 = jnp.stack(E31, E32, axis = 0)
+    E1 = jnp.stack(E11, E12, axis = 1)
+    E2 = jnp.stack(E21, E22, axis = 1)
+    E3 = jnp.stack(E31, E32, axis = 1)
 
     # Concatenate
-    E = E1 + E2 + E3
+    E = jnp.stack(E1, E2, E3, axis = 0)
 
+    # assert size test, E (double check is a square)
     return A
 
 if __name__ == "__main__":
