@@ -37,7 +37,7 @@ def solver(sigma = 72.2e-3, rho = 1000., omega = 2*jnp.pi*80., nu = 1e-6, g = 9.
     - motor_inertia: inertia of the motor (kg*m^2)
     - motor_position: position of the motor (m)
     - BC: Boundary conditions, either 'dirichlet' or 'neumann'
-    - d: depth of the surferbot (m)
+    - d: depth of the surferbot (m) 
 
     Outputs:
     - U: Terminal Velocity of the raft

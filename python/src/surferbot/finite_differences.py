@@ -1,22 +1,30 @@
 import jax.numpy as jnp
-import unittest
 from DtN import DtN_generator
 import scipy.integrate as spi
 from surferbot.myDiff import Diff
 from surferbot.utils import solve_tensor_system, gaussian_load, test_solution, dispersion_k
 from integration import simpson_weights
 
-# question: do i need to be worried about motor inertia?
-def solver(rho, omega, nu, g, L_raft, L_domain, motor_inertia, gamma, n = 100):
+def solver(rho, omega, nu, g, L_raft, L_domain, motor_inertia, gamma, n = 100, theta, zeta):
     '''
     Inputs: 
-    - 
+    - rho: density of fluid
+    - omega: frequency
+    - g: gravity (m/s^2)
+    - L_raft: length of raft (m)
+    - L_domain: length of domain (m)
+    - motor_inertia: intertia of motor
+    - nu: kinematic viscosity
+    - gamma: 
+    - n: number of points in raft
+    - N: total number of points x-direction
+    - theta, zeta: treating as givens for now!
     Outputs:
     - 
     '''
 
     ## Derived dimensional Parameters (SI Units)
-    force = motor_inertia *  omega**2 # question: Unsure if this is right, also when to use t_c vs omega?
+    force = motor_inertia *  omega**2
     L_c = L_raft
 
     m_c = rho * L_c**2
@@ -24,30 +32,23 @@ def solver(rho, omega, nu, g, L_raft, L_domain, motor_inertia, gamma, n = 100):
     F_c = rho * L_c**3 / t_c**2
 
     # Equations
-    # Equation 1    (2.18b)
-    C11 = 1.0
-    C12 = -(gamma * rho * L_c**3 * omega**2)/(rho * g * L_c * omega**2)
+    # Equation 1 (B)
+    DtN = DtN_generator(n)
+    N = DtN / (L_raft / n)
+    
+    C11 = N
+    C12 = -N * (gamma * rho * L_c**3 * omega**2)/(rho * g * L_c * omega**2)
     C13 = -omega**2 / (g * omega **2 * L_c)             
     C14 = -4.0j * nu * omega * L_c**2 / (g * L_c * omega**2)
 
-    # Equation 2    (2.18c)
-    C21 = 1.0
-    C22 = 
+    # Equation 2 (C)
+    C21 = N
+    C22 = 1j * (zeta + theta * x) * omega
 
-    # Used in E4
-    k = dispersion_k(omega, g, D, nu, sigma, rho) 
-    C31 = 1.
-    C32 = 0.0 * 1.0j * k * L_c
-    
-    # Equation 4        (2.11b)
-
-    # Equation 5        (2.11c)
-
-    # Equation 6        (2.19)
-
-    # Equation 7        (2.20)
-
-    # Equation 8        (2.21)
+    # Equation 3 (G)
+    C31 = 1.0j * omega
+    C32 = -2 * nu * omega / L_c**2
+    C33 = -N
 
 
     # Raft Points
@@ -55,7 +56,6 @@ def solver(rho, omega, nu, g, L_raft, L_domain, motor_inertia, gamma, n = 100):
     L_domain_adim = jnp.floor(L_domain / L_c) - jnp.floor(L_domain/L_c) % 2 + 1 # We make it odd (for simson integration)
     N = jnp.int32(n * L_domain_adim / L_raft_adim) 
 
-    # question: why do you need if-else here
     if jnp.std(x) < 1e-5:
         grid_x = (x[left_raft_boundary] - x[left_raft_boundary-1]).item(0)
     else:
@@ -67,32 +67,33 @@ def solver(rho, omega, nu, g, L_raft, L_domain, motor_inertia, gamma, n = 100):
     assert jnp.sum(x_free) + jnp.sum(x_contact) == N-2, f"Number of free and contact points do not match the total number of points {N}." if DEBUG else None
     left_raft_boundary = (N-H)//2; right_raft_boundary = (N+H)//2
 
+    # derivative operators
     dx = (x[left_raft_boundary] - x[left_raft_boundary-1]).item(0)
     d_dx = Diff(axis=0, grid=grid_x, acc=2, shape=(N, M))
 
     x_contact = x[abs(x) <= L_c]
     x_free    = x[abs(x) >  L_c]
 
-    # question: unsure what's going on in the z-direction (and M)
-    d_dz = Diff(axis=1, grid=grid_z, acc=2, shape=(N, M))
+    # Building matrix
+    # [E11][E12 = 0]  [phi]
+    # [E21][E22 = 0]  [eta]
+    # [E31][E32]  
 
-    integral = simpson_weights(H, dx)
-    DtN = DtN_generator(n)
-    N = DtN / (L_raft / n)
+    E11 = C11 + C12 * d_dx**2 + C13 + C14 * d_dx**2
+    E12 = 0
 
+    E21 = C21 # figure out how to use the constant
+    E22 = 0
+    
+    E31 = C33
+    E32 = C31 + C32 * d_dx**2
 
-    # Building Matrix
-    E2 = (d_dx**2 + d_dz**2)      # question: for z = 0? (2.18a)
+    E1 = jnp.stack(E11, E12, axis = 0)
+    E2 = jnp.stack(E21, E22, axis = 0)
+    E3 = jnp.stack(E31, E32, axis = 0)
 
-    E3 = d_dz ;  E3[:, :-1] = 0     # (2.18e)
-
-    E4 =  E4 = jnp.zeros((N, M, N, M, 5), dtype=jnp.complex64)     # (2.18d)
-    E4 = E4.at[0 , :, 0, :, 0].set(-C32) 
-    E4 = E4.at[0 , :, 0, :, 1].set(C31) 
-    E4 = E4.at[-1, :,-1, :, 0].set(C32)
-    E4 = E4.at[-1, :,-1, :, 1].set(C31)
-
-
+    # Concatenate
+    E = E1 + E2 + E3
 
     return A
 
