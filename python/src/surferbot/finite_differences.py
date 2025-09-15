@@ -1,9 +1,9 @@
 import jax.numpy as jnp
-from DtN import DtN_generator
+from surferbot.DtN import DtN_generator
 import scipy.integrate as spi
 from surferbot.myDiff import Diff
 from surferbot.utils import solve_tensor_system, gaussian_load, test_solution, dispersion_k
-from integration import simpson_weights
+from surferbot.integration import simpson_weights
 import unittest
 
 def solver(rho, omega, nu, g, L_raft, L_domain, gamma, n = 100, theta, zeta):
