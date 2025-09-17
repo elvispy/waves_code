@@ -106,6 +106,7 @@ S2D = repmat({sparse(NM,NM)}, 2, 2);
 % ------------------------------------------------------------------------
 L = idxLeftFreeSurf; 
 [DxxFree, ~] = getNonCompactFDmatrix(nbLeft,dx,2,args.ooa);
+% (1:(end-1))
 S2D{1,1}(L(2:end-1),L) =  I_NM(L(2:end-1), L) + 4.0j/Re * DxxFree(2:end-1, :);
 S2D{1,2}(L(2:end-1),L) =  -Fr^(-2) * I_NM(L(2:end-1), L) + 1/(We * Gamma)*DxxFree(2:end-1, :);
 
@@ -204,71 +205,10 @@ end
 
 A = cell2mat(S2D);                 % (5*NM) x (5*NM) sparse
 b_sparse = reshape(b.', [], 1);    % RHS as column vector
-if whos('A').bytes > 2* 2147483648; warning('Matrix A is taking %.2g GiB of space. Consider downgrading.', whos('A')/2147483648); end
+info = whos('A');
+if info.bytes > 2* 2147483648; warning('Matrix A is taking %.2g GiB of space. Consider downgrading.', whos('A')/2147483648); end
 
-% ---------- Fast path: try sparse backslash, accept if residual is good ----------
-tol_relres = 1e-8;    % tighten/loosen to taste
+xsol = solve_system(A, b_sparse);
 
-% save previous states
-w1 = warning('query','MATLAB:nearlySingularMatrix');
-w2 = warning('query','MATLAB:singularMatrix');
 
-% turn off display, but still recorded by lastwarn
-warning('off','MATLAB:nearlySingularMatrix');
-warning('off','MATLAB:singularMatrix');
-
-lastwarn('');  % clear any old warning
-xtry = A \ b_sparse;   % attempt LU solve
-
-[warnMsg,warnId] = lastwarn;   %#ok<ASGLU>
-
-% restore previous states
-warning(w1.state,'MATLAB:nearlySingularMatrix');
-warning(w2.state,'MATLAB:singularMatrix');
-
-r  = A*xtry - b_sparse;
-relres = norm(r,inf) / ( norm(A,inf)*max(norm(xtry,inf),1) + norm(b_sparse,inf) );
-fallback_needed = ~(isfinite(relres) && relres <= tol_relres && all(isfinite(xtry)));
-
-if ~fallback_needed
-    xsol = full(xtry);
-else
-    % ---------- Robust, scalable fallback: scaling + BiCGSTAB + ILU(0) ----------
-    % (1) diagonal row/col equilibration (vector-only; no large temporaries)
-    dr = full(1 ./ max(abs(A),[],2));  dr(~isfinite(dr)) = 1;
-    dc = full(1 ./ max(abs(A),[],1));  dc(~isfinite(dc)) = 1;  dc = dc(:);
-
-    Afun = @(x) dr .* (A * (dc .* x));   % y = Dr * A * Dc * x
-    beq  = dr .* b_sparse;
-
-    % (2) memory-safe preconditioner: ILU(0) w/ MILU(row) on A
-    try
-        ilu_opts = struct('type','nofill','milu','row','udiag',1);
-        [L,U] = ilu(A, ilu_opts);
-        % Left preconditioner approximating Dr*A*Dc via Dr*(L*U)*Dc; apply without forming it
-        Mfun = @(y) ( (U \ (L \ (y ./ dr))) ./ dc );
-    catch
-        % If ILU fails, fall back to scaled Jacobi (very light)
-        dA = full(abs(diag(A))); dA(dA==0) = 1;
-        Mfun = @(y) ((y ./ dr) ./ (dc .* dA));
-    end
-
-    % (3) BiCGSTAB (fixed memory) + a bit of iterative refinement
-    maxit = 300;   % keep bounded so you don't wait forever
-    [xsc,flag,relres_bi,iter] = bicgstab(Afun, beq, tol_relres, maxit, Mfun, []);
-
-    % quick refinement (optional; cheap if preconditioner is built)
-    for k = 1:2
-        r  = beq - Afun(xsc);
-        bn = norm(A,inf)*max(norm(dc.*xsc,inf),1) + norm(b_sparse,inf);
-        if norm(r,inf) <= 1e-12*bn, break; end
-        xsc = xsc + bicgstab(Afun, r, min(1e-12, tol_relres/100), 100, Mfun, []);
-    end
-
-    xsol = full(dc .* xsc);
-    warning('FallbackIterative:Used', ...
-        'Fallback used: BiCGSTAB+ILU(0). flag=%d, relres=%.3e, it=%s (LU relres %.1e).', ...
-        flag, relres_bi, mat2str(iter), relres);
-end
-
-end
+end % end function definition
