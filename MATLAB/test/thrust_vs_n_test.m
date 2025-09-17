@@ -13,7 +13,7 @@ base = struct( ...
     'omega',2*pi*10, 'ooa', 2);
 
 % Ns to test (ensure odd, increasing)
-n_list = ensure_odd(ceil(base.n * [1, 1.5, 2]));
+n_list = ensure_odd(ceil(base.n * [1, 2, 4]));
 n_list = unique(n_list,'stable');
 
 % Preallocate with matching fields

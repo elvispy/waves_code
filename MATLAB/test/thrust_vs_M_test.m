@@ -1,5 +1,5 @@
-function S = thrust_vs_depth_test
-% Domain-depth study: vary H=domainDepth, plot |eta(x)| and thrust vs H
+function S = thrust_vs_M_test
+% M-resolution study: vary M, plot |eta(x)| per case and thrust vs M
 
 addpath('../src');
 
@@ -7,42 +7,54 @@ L_raft = 0.05;
 base = struct( ...
     'sigma',0, 'rho',1000, 'nu',0, 'g',9.81, ...
     'L_raft',L_raft, 'motor_position',0.3*L_raft/2, 'd',L_raft/2, ...
-    'EI',10, 'rho_raft',0.018*3.0, ...
+    'EI',100*3.0e9*3e-2*(9.9e-4)^3/12, 'rho_raft',0.018*3.0, ...
     'domainDepth',0.2, 'n',201, 'M',100, ...
     'motor_inertia',0.13e-3*2.5e-3, 'BC','radiative', ...
-    'omega',2*pi*10, 'ooa', 4);
+    'omega',2*pi*10, 'ooa', 2);
 
-H_list = [.5 1 2 4];
+% Ms to test 
+M_list = ceil(base.M * [1, 4, 16]);
+M_list = unique(M_list,'stable');
 
+% Preallocate with matching fields
 proto = struct('x',[],'z',[],'phi',[],'eta',[], ...
                'N_x',0,'M_z',0, ...
-               'thrust_N',NaN,'tail_flat_ratio',NaN,'disp_res',NaN, ...
-               'H',NaN);
-S = repmat(proto, 1, numel(H_list));
+               'thrust_N',NaN, 'tail_flat_ratio',NaN, 'disp_res',NaN);
+S = repmat(proto, 1, numel(M_list));
 
-for i = 1:numel(H_list)
-    p = base; 
-    p.domainDepth = base.domainDepth * H_list(i); 
-    p.M = base.M * H_list(i); 
-    S(i) = run_case(p);  % now includes H
+% Run sweep
+for i = 1:numel(M_list)
+    p = base; p.M = M_list(i);
+    S(i) = run_case(p);
 end
 
+% Plot |eta(x)| per case
 figure(1); clf; hold on;
 for i = 1:numel(S)
-    semilogy(S(i).x, abs(S(i).eta), 'DisplayName', sprintf('H=%.3g m', S(i).H));
+    semilogy(S(i).x, abs(S(i).eta), 'DisplayName', sprintf('M=%d', S(i).M_z));
 end
-xlabel('x (m)'); ylabel('|{\eta}|'); legend('show','Location','best');
-set(gca,'FontSize',14); set(gcf,'Position',[100 100 800 400]);
-title('Free-surface amplitude vs x for varying depth');
+xlabel('x (m)'); ylabel('|{\eta}|'); legend('show');
+set(gca,'FontSize',14); set(gcf, 'Position',[100 100 800 400]);
+title('Free-surface amplitude vs x for varying M');
 
+% Plot thrust vs N
 figure(2); clf;
-plot([S.H], [S.thrust_N], 'o-','MarkerSize',6,'LineWidth',1.2);
-xlabel('Depth H (m)'); ylabel('Thrust (N)'); set(gca,'FontSize',14);
-title('Thrust vs depth');
+plot([S.M_z], [S.thrust_N], 'o-','MarkerSize',6,'LineWidth',1.2);
+xlabel('N (streamwise points)'); ylabel('Thrust (N)');
+set(gca,'FontSize',14);
+title('Thrust vs N');
 
-T = table([S.H].', [S.thrust_N].', [S.tail_flat_ratio].', [S.disp_res].', ...
-    'VariableNames', {'H_m','thrust_N','tail_flat_ratio','dispersion_resid'});
-disp('=== Depth-sweep results ==='); disp(T);
+% Console table
+T = table([S.M_z].', [S.thrust_N].', [S.tail_flat_ratio].', [S.disp_res].', ...
+    'VariableNames', {'N_x','thrust_N','tail_flat_ratio','dispersion_resid'});
+disp('=== N-sweep results ==='); disp(T);
+
+end
+
+% ---- helpers ----
+function n = ensure_odd(n)
+n = n(:).';
+for k = 1:numel(n), if mod(n(k),2)==0, n(k)=n(k)+1; end, end
 end
 
 function S = run_case(p)
@@ -71,6 +83,5 @@ S = struct('x',x,'z',z,'phi',phi,'eta',eta, ...
            'N_x',args.N,'M_z',args.M, ...
            'thrust_N',args.thrust, ...
            'tail_flat_ratio',tail_ratio, ...
-           'disp_res',res, ...
-           'H', p.domainDepth);   % <-- add H here
+           'disp_res',res);
 end
