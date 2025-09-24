@@ -82,7 +82,7 @@ def rigidSolver(rho, omega, nu, g, L_raft, L_domain, gamma, x_A, F_A, n):
     left_raft_boundary = (N-H)//2
 
     # Derivative operators
-    dx = (x[left_raft_boundary] - x[left_raft_boundary-1]).item(0)
+    dx = (x[left_raft_boundary] - x[left_raft_boundary-1]).item(0) # Beware: this appears to be defined twice. See line 34.
     d_dx = Diff(axis=0, grid=grid_x, acc=2, shape=(N)) # TODO: check this line
 
     x_contact = x[abs(x) <= L_c]
