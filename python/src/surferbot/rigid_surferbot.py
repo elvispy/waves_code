@@ -1,9 +1,18 @@
 import jax
 import jax.numpy as jnp
+<<<<<<< HEAD:python/src/surferbot/rigid_surferbot.py
 from DtN import DtN_generator
 from surferbot.myDiff import Diff
 from integration import simpson_weights
 from surferbot.constants import DEBUG
+=======
+from surferbot.DtN import DtN_generator
+import scipy.integrate as spi
+from surferbot.myDiff import Diff
+from surferbot.utils import solve_tensor_system, gaussian_load, test_solution, dispersion_k
+from surferbot.integration import simpson_weights
+import unittest
+>>>>>>> 985067e5c7ef4de4d6a7bf74efcb135fee836fdd:python/src/surferbot/finite_differences.py
 
 def rigidSolver(rho, omega, nu, g, L_raft, L_domain, gamma, x_A, F_A, n):
     '''
