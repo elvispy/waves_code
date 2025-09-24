@@ -44,7 +44,7 @@ def rigidSolver(rho, omega, nu, g, L_raft, L_domain, gamma, x_A, F_A, n):
     # Equation 2 (C)
     C21 = 1.0
     C22 = -1j
-    C23 = -1j * (x / L_c)
+    C23 = -1j 
 
     # Equation 3 (G)
     C31 = 1.0j
@@ -62,8 +62,8 @@ def rigidSolver(rho, omega, nu, g, L_raft, L_domain, gamma, x_A, F_A, n):
     C51 = -(1/12) * m_c
     C52 = -(x_A / L_c) * (F_A / (rho * L_c**3 * omega**2)) # constant term
     C53 = 1.0j * x / L_c
-    C54 = (g / (omega**2 * L_c)) * (x / L_c)
-    C55 = (2 * nu / (omega * L_c**2)) * (x / L_c)
+    C54 = (g / (omega**2 * L_c)) * (x / L_c) # TODO: Fix this
+    C55 = (2 * nu / (omega * L_c**2)) * (x / L_c) # TODO: Fix this
 
     # Raft Points
     L_raft_adim = L_raft / L_c
@@ -89,11 +89,11 @@ def rigidSolver(rho, omega, nu, g, L_raft, L_domain, gamma, x_A, F_A, n):
     x_free    = x[abs(x) >  L_c]
 
     # Building matrix (Ax = b)
-    # [E11][0][0][0]      [phi]         [0]
-    # [E21][0][E23][E24]  [eta]         [0]
-    # [E31][E32][0][0]    [zeta]        [0]
-    # [E41][E42][E43][0]  [theta]       [C42]
-    # [E51][E52][0][E54]                [C52]
+    # [E11][0]  [0]   [0]   | [phi]         [0]
+    # [E21][0]  [E23] [E24] | [eta]         [0]
+    # [E31][E32][0]   [0]   | [zeta]        [0]
+    # [E41][E42][E43] [0]   | [theta]       [C42]
+    # [E51][E52][0]   [E54] |               [C52]
 
     E11 = C11 + (C12 + C14) * d_dx**2 + C13
     E12 = 0
@@ -103,7 +103,7 @@ def rigidSolver(rho, omega, nu, g, L_raft, L_domain, gamma, x_A, F_A, n):
     E21 = C21 
     E22 = 0
     E23 = C22
-    E24 = C23
+    E24 = C23 # There is something missing here...
     
     E31 = C33
     E32 = C31 + C32 * d_dx**2
@@ -115,7 +115,7 @@ def rigidSolver(rho, omega, nu, g, L_raft, L_domain, gamma, x_A, F_A, n):
     E43 = C41
     E44 = 0
 
-    E51 = integral @ (C53 + C55 * d_dx**2) 
+    E51 = integral @ x[x_contact] @ (C53 + C55 * d_dx**2) 
     E52 = C54
     E53 = 0
     E54 = C51
@@ -136,8 +136,8 @@ def rigidSolver(rho, omega, nu, g, L_raft, L_domain, gamma, x_A, F_A, n):
     solution = jax.numpy.linalg.solve(A, B)
 
     # Splitting variables
-    phi = solution[0 : N - 1]
-    eta = solution[N : N - n - 1]
+    phi = solution[0 : (N - 1)]
+    eta = solution[N : (N - n - 1)]
     zeta = solution[N - n]
     theta = solution[N - n + 1]
 
