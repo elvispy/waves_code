@@ -23,6 +23,6 @@ n = 100
 #     assert theta ==
 #     assert eta ==
 #     assert zeta == 
-def square_matrix_test(rho, omega, nu, g, L_raft, L_domain, gamma, x_A, F_A, n):
+def test_square_matrix_test(rho, omega, nu, g, L_raft, L_domain, gamma, x_A, F_A, n):
     [phi, theta, eta, zeta, r, c] = rigidSolver(rho, omega, nu, g, L_raft, L_domain,gamma, x_A, f_A, n)
     assert r == c

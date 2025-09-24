@@ -1,8 +1,8 @@
 import jax
 import jax.numpy as jnp
-from DtN import DtN_generator
+from surferbot.DtN import DtN_generator
 from surferbot.myDiff import Diff
-from integration import simpson_weights
+from surferbot.integration import simpson_weights
 from surferbot.constants import DEBUG
 
 def rigidSolver(rho, omega, nu, g, L_raft, L_domain, gamma, x_A, F_A, n):
