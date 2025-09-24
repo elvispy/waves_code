@@ -1,9 +1,10 @@
 import jax
 import jax.numpy as jnp
-from DtN import DtN_generator
+from surferbot.DtN import DtN_generator
 from surferbot.myDiff import Diff
-from integration import simpson_weights
+from surferbot.integration import simpson_weights
 from surferbot.constants import DEBUG
+
 
 def rigidSolver(rho, omega, nu, g, L_raft, L_domain, gamma, x_A, F_A, n):
     '''
@@ -30,6 +31,7 @@ def rigidSolver(rho, omega, nu, g, L_raft, L_domain, gamma, x_A, F_A, n):
 
     # Equation setup
     DtN = DtN_generator(n)
+    dx = 1/n
     N = DtN / (L_raft / n)
     integral = simpson_weights(n, dx)
 
@@ -74,7 +76,7 @@ def rigidSolver(rho, omega, nu, g, L_raft, L_domain, gamma, x_A, F_A, n):
         grid_x = jnp.round(x, 5)
         
     x = jnp.linspace(-L_domain_adim/2, L_domain_adim/2, N)
-    x_contact = abs(x) <= L_raft_adim/2; H = sum(x_contact)
+    x_contact = abs(x) <= L_raft_adim/2; H = sum(x_contact == True)
     x_free    = abs(x) >  L_raft_adim/2; x_free = x_free.at[0].set(False); x_free = x_free.at[-1].set(False)
     assert jnp.sum(x_free) + jnp.sum(x_contact) == N-2, f"Number of free and contact points do not match the total number of points {N}." if DEBUG else None
     left_raft_boundary = (N-H)//2
@@ -142,5 +144,5 @@ def rigidSolver(rho, omega, nu, g, L_raft, L_domain, gamma, x_A, F_A, n):
     return (phi, eta, zeta, theta, r, c)
 
 if __name__ == "__main__":
-    rigidSolver(1, 1, 1, 1, 100, 9.8, 10, 100)
+    rigidSolver(1000, 10, 1e-6, 9.81, 0.05, 1, 0.072, 0.02, 1, 21)
 
