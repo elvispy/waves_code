@@ -1,0 +1,13 @@
+name: surferbot
+channels:
+  - conda-forge
+dependencies:
+  - jax
+  - ipykernel
+  - findiff
+  - ca-certificates
+  - openssl
+  - pytest
+  - pytest-xdist
+  - matplotlib
+prefix: /Users/eaguerov/mambaforge/envs/surferbot
