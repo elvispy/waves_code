@@ -6,7 +6,7 @@ names = {'U', 'x', 'z', 'phi', 'eta', 'args'};
 [out{1:numel(names)}] = flexible_surferbot_v2( ...
     'sigma'         , 0*72.2e-3      , ...   % [N m?¹] surface tension
     'rho'           , 1000.0       , ...   % [kg m?³] water density
-    'omega'         , 2*pi*10      , ...   % [rad s?¹] drive frequency
+    'omega'         , 2*pi*20      , ...   % [rad s?¹] drive frequency
     'nu'            , 0*1.0e-6       , ...   % [m² s?¹] kinematic viscosity
     'g'             , 10*9.81         , ...   % [m s?²] gravity
     'L_raft'        , 0.05         , ...   % [m] raft length

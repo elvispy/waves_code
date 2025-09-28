@@ -77,8 +77,11 @@ title('Nondimensional thrust vs. frequency');
 legend({'Numerical thrust', 'LH', 'Momentum'}, 'Location','best', 'Interpreter','tex');
 
 % (optional) print a quick table to console
-fprintf('\n  f [Hz]   ω√(L/g)     M/(ρgL^2)     F_T/(ρgL^2)      LH/(ρgL^2)\n');
+fprintf('\n   f [Hz]     w*       M/(rho*g*L^2)   FT/(rho*g*L^2)   LH/(rho*g*L^2)\n');
+fprintf('------------------------------------------------------------------------\n');
+
 for i = 1:numel(f_values)
-    fprintf('%7.2f   %7.3g    %12.4e    %10.4e   %12.4e\n', ...
+    fprintf('%8.2f   %8.3g   %14.4e   %14.4e   %14.4e\n', ...
         f_values(i), omega_star(i), mom_star(i), thrust_star(i), LH_star(i));
 end
+

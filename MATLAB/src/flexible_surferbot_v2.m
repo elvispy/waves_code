@@ -20,10 +20,11 @@ function [U, x, z, phi, eta, args] = flexible_surferbot_v2(varargin)
     addParameter(p, 'L_domain', nan);               % [m] total length of the simulation domain
     addParameter(p, 'domainDepth', 0.1);            % [m] depth of the simulation domain (second dimention, y-direction)
 
-    % --- Discretization parameters ---
-    addParameter(p, 'n', 201);                      % [unitless] number of grid points in x in the raft
-    addParameter(p, 'M', 100);                      % [unitless] number of grid points in z
+    % --- Solver settings ---
+    addParameter(p, 'n', 401);                      % [unitless] number of grid points in x in the raft
+    addParameter(p, 'M', 200);                      % [unitless] number of grid points in z
     addParameter(p, 'ooa', 2);                      % [unitless] finite difference order accuracy
+    addParameter(p, 'test', false);                 % [boolean]  whether to run self-diagnostic tests
     % --- Motor parameters ---
     addParameter(p, 'motor_inertia', 0.13e-3 * 2.5e-3);  % [kg/m^2] motor rotational inertia
     addParameter(p, 'forcing_width', 0.05);             % [fraction of L_raft] width of Gaussian forcing
@@ -35,7 +36,7 @@ function [U, x, z, phi, eta, args] = flexible_surferbot_v2(varargin)
     parse(p, varargin{:});
     args = p.Results;
     %args.ooa = 4; % Define finite difference accuracy in space
-    args.test = false;
+    
     if isnan(args.L_domain); args.L_domain = args.L_raft * 10; end
 
     % Derived parameters
@@ -116,4 +117,5 @@ function [U, x, z, phi, eta, args] = flexible_surferbot_v2(varargin)
     args.k = k; args.power = power; args.thrust = thrust;
     phi = full(reshape(phi * L_c^2 / t_c, M, N));
     args.phi_z = full(reshape(phi_z * L_c / t_c, M, N));
+    
 end

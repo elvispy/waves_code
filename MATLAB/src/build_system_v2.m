@@ -14,32 +14,31 @@ function [xsol, A, b] = build_system_v2(N, M, dx, dz, x_free, ...
 % The system accounts for fluid?structure coupling, raft bending stiffness,
 % motor actuation, and surface tension effects. It is discretized on a 2D
 % grid with finite differences.
-%
 % -------------------------
 % Inputs:
-%   N              [int] number of grid points in x-direction
-%   M              [int] number of grid points in z-direction
-%   dx             [m] horizontal grid spacing
-%   dz             [m] vertical grid spacing
-%   x_free         [logical N�1] mask for free-surface regions (true where surface is free)
-%   x_contact      [logical N�1] mask for raft-contact regions (true where surface contacts raft)
-%   motor_weights  [N�1] vector of distributed motor force weights over raft region
+%   N              [int]    number of grid points in x-direction
+%   M              [int]    number of grid points in z-direction
+%   dx             [m]      horizontal grid spacing
+%   dz             [m]      vertical grid spacing
+%   x_free         [logical N x 1] mask for free-surface regions (true where surface is free)
+%   x_contact      [logical N x 1] mask for raft-contact regions (true where surface contacts raft)
+%   motor_weights  [N x 1]    vector of distributed motor force weights over raft region
 %   args           [struct] parameters structure (see flexible_surferbot) including:
-%                     .sigma         [N/m] surface tension
-%                     .rho           [kg/m^3] fluid density
-%                     .omega         [rad/s] actuation frequency
-%                     .EI            [N�m^2] bending stiffness of raft
-%                     .rho_raft      [kg/m] linear density of raft
-%                     .motor_inertia [kg�m^2] motor rotational inertia
-%                     .BC            boundary condition type ('radiative', etc.)
+%                   .sigma         [N/m]    surface tension
+%                   .rho           [kg/m^3] fluid density
+%                   .omega         [rad/s]  actuation frequency
+%                   .EI            [N*m^2]  bending stiffness of raft
+%                   .rho_raft      [kg/m]   linear density of raft
+%                   .motor_inertia [kg*m^2] motor rotational inertia
+%                   .BC            boundary condition type ('radiative', etc.)
 %
 % -------------------------
 % Outputs:
-%   xsol  [5NM � 1] solution vector ordering:
-%              [phi; eta = phi_z]
-%   A     [5NM � 5NM] sparse matrix, left-hand side of linear system
-%   b     [5NM � 1] right-hand side vector
-%
+%   xsol  [5NM x 1]      solution vector ordering:
+%                        [phi; eta = phi_z]
+%   A     [5NM x 5NM]    sparse matrix, left-hand side of linear system
+%   b     [5NM x 1]      right-hand side vector
+
 % -------------------------
 % Notes:
 % - The PDEs include potential flow equations (Laplace + kinematic/dynamic BC),
@@ -68,8 +67,6 @@ I_NM = speye(NM);
 % ------------------------------------------------------------------------
 % 1.  Finite-difference operators (1-D ? 2-D via Kronecker) 
 % ------------------------------------------------------------------------
-[Dx,  Dz] = getNonCompactFDmatrix2D(N,M,dx,dz,1,args.ooa); % ?/?x, ?/?z
-[Dxx, ~]  = getNonCompactFDmatrix2D(N,M,dx,dz,2,args.ooa); % ?2/?x2
 
 
 % ------------------------------------------------------------------------
@@ -100,48 +97,61 @@ idxRightEdge  = find(rightEdgeMask);
 % 3.  Initialise 5�5 sparse cell container
 % ------------------------------------------------------------------------
 S2D = repmat({sparse(NM,NM)}, 2, 2);
+%S2D{i, j} refers to the block of equations i, and j = 1 correspond to the
+%variable phi, whle j=2 corresponds to the variable phi_z
 
 % ------------------------------------------------------------------------
 % 4.  Equation 1: Bernoulli on free surface  
 % ------------------------------------------------------------------------
 L = idxLeftFreeSurf; 
-[DxxFree, ~] = getNonCompactFDmatrix(nbLeft,dx,2,args.ooa);
+[DxxFree, ~] = getNonCompactFDmatrix(nbLeft,1,2,args.ooa);
 % (1:(end-1))
-S2D{1,1}(L(2:end-1),L) =  I_NM(L(2:end-1), L) + 4.0j/Re * DxxFree(2:end-1, :);
-S2D{1,2}(L(2:end-1),L) =  -Fr^(-2) * I_NM(L(2:end-1), L) + 1/(We * Gamma)*DxxFree(2:end-1, :);
+S2D{1,1}(L(2:end-1),L) =  I_NM(L(2:end-1), L) * dx^2 + 4.0j/Re * DxxFree(2:end-1, :);
+S2D{1,2}(L(2:end-1),L) =  -dx^2/Fr^2 * I_NM(L(2:end-1), L) + 1/(We * Gamma)*DxxFree(2:end-1, :);
 
 R = idxRightFreeSurf;
-S2D{1,1}(R(2:end-1),R) =  I_NM(R(2:end-1), R) + 4.0j/Re *DxxFree(2:end-1, :);
-S2D{1,2}(R(2:end-1),R) =  -1/Fr^2 * I_NM(R(2:end-1), R) + 1/(We * Gamma) * DxxFree(2:end-1, :);
+S2D{1,1}(R(2:end-1),R) =  dx^2 * I_NM(R(2:end-1), R) + 4.0j/Re * DxxFree(2:end-1, :);
+S2D{1,2}(R(2:end-1),R) =  -dx^2/Fr^2 * I_NM(R(2:end-1), R) + 1/(We * Gamma) * DxxFree(2:end-1, :);
 
 % ------------------------------------------------------------------------
 % 4b.  Euler-beam equations inside raft  (rows = rowRaft)
 %       overwrite the rows that were zeroed out above
 % ------------------------------------------------------------------------
 CC = idxContact;
-[DxxRaft, ~] = getNonCompactFDmatrix(sum(x_contact),dx,2,args.ooa);
-[Dx4Raft, ~] = getNonCompactFDmatrix(sum(x_contact),1 ,4,args.ooa);
+[DxRaft,  ~] = getNonCompactFDmatrix(sum(x_contact),1,1,args.ooa);
+[Dx2Raft, ~] = getNonCompactFDmatrix(sum(x_contact),1,2,args.ooa);
+[Dx3Raft, ~] = getNonCompactFDmatrix(10            ,1,3,args.ooa);
+[Dx4Raft, ~] = getNonCompactFDmatrix(sum(x_contact),1,4,args.ooa);
+
 S2D{1, 1}(idxContact(1), :) = 0; S2D{1, 1}(idxContact(end), :) = 0;
 S2D{1, 2}(idxContact(1), :) = 0; S2D{1, 2}(idxContact(end), :) = 0;
-S2D{1, 1}(CC, CC) = -2*Gamma*Lambda / Re * DxxRaft + 1.0i * Lambda * Gamma * I_NM(CC, CC);
-S2D{1, 2}(CC, CC) = (1.0i - 1.0i * Gamma * Lambda/Fr^2) * I_NM(CC, CC) + (-1.0i * kappa/dx^4) * Dx4Raft;
+S2D{1, 1}(CC, CC) = -2*Gamma*Lambda / Re * Dx2Raft + 1.0i * Lambda * Gamma * dx^2 * I_NM(CC, CC);
+S2D{1, 2}(CC, CC) = (1.0i - 1.0i * Gamma * Lambda/Fr^2) * dx^2 * I_NM(CC, CC) + (-1.0i * kappa/dx^2) * Dx4Raft;
+% Boundary conditions: No bending moment
+S2D{1, 2}(idxContact(2), CC)     = Dx2Raft(1, :);
+S2D{1, 2}(idxContact(end-1), CC) = Dx2Raft(end, :);
+% Boundary conditions: No stress on end
+S2D{1, 2}(idxContact(1), CC(1:10))   = Dx3Raft(1, :) ...
+    - Lambda / (kappa * We) * DxRaft(1, 1:10) * dx^2;
+S2D{1, 2}(idxContact(end), CC(1:10)) = Dx3Raft(end, :) ...
+    - Lambda / (kappa * We) * DxRaft(end, 1:10) * dx^2;
 
 % ------------------------------------------------------------------------
 % 4c.  Surface-tension corner corrections
 % ------------------------------------------------------------------------
 %   right raft boundary, x > 0
-rightBdry = find(contactMask, 1, 'last');      % right edge of raft
+%rightBdry = find(contactMask, 1, 'last');      % right edge of raft
 
 % right raft corner contribution
-S2D{1,2}(rightBdry, idxRightFreeSurf) = ...
-      S2D{1,2}(rightBdry, idxRightFreeSurf) ...
-    + (1.0i * Lambda / (We*dx)) * (I_NM(rightBdry+M, idxRightFreeSurf) - I_NM(rightBdry, idxRightFreeSurf))/dx;
+%S2D{1,2}(rightBdry, idxRightFreeSurf) = ...
+%      S2D{1,2}(rightBdry, idxRightFreeSurf) ...
+%    + (1.0i * Lambda / (We*dx)) * (I_NM(rightBdry+M, idxRightFreeSurf) - I_NM(rightBdry, idxRightFreeSurf))/dx;
 
 % left raft corner contribution
-leftBdry  = find(contactMask, 1, 'first');     % left  edge of raft
-S2D{1,2}(leftBdry, idxLeftFreeSurf) = ...
-    S2D{1,2}(leftBdry, idxLeftFreeSurf) ...
-  + (1.0i * Lambda / (We*dx)) * (I_NM(leftBdry, idxLeftFreeSurf) - I_NM(leftBdry-M, idxLeftFreeSurf))/dx;
+%leftBdry  = find(contactMask, 1, 'first');     % left  edge of raft
+%S2D{1,2}(leftBdry, idxLeftFreeSurf) = ...
+%    S2D{1,2}(leftBdry, idxLeftFreeSurf) ...
+%  + (1.0i * Lambda / (We*dx)) * (I_NM(leftBdry, idxLeftFreeSurf) - I_NM(leftBdry-M, idxLeftFreeSurf))/dx;
 
 
 if args.test == true % Dirichlet BC conditions for testing
@@ -155,8 +165,11 @@ end
 % ------------------------------------------------------------------------
 % 5.  Equation 2:  Laplace in the bulk  
 % ------------------------------------------------------------------------
-S2D{1,1}(idxBulk,:)  = Dxx(idxBulk,:);
-S2D{1,2}(idxBulk, :) = Dz(idxBulk, :);
+[Dx,  Dz] = getNonCompactFDmatrix2D(N,M,1,1,1,args.ooa); % ?/?x, ?/?z
+[Dxx, Dzz]  = getNonCompactFDmatrix2D(N,M,1,1,2,args.ooa); % ?2/?x2
+
+S2D{1,1}(idxBulk,:)  = Dxx(idxBulk,:) + Dzz(idxBulk,:) * (dx/dz)^2;
+%S2D{1,2}(idxBulk, :) = Dz(idxBulk, :);
 
 % ------------------------------------------------------------------------
 % 6.  Equation 3:  bottom impermeability  
@@ -172,14 +185,14 @@ if startsWith(BCtype,'n','IgnoreCase',true)
     S2D{1,1}(idxLeftEdge,:)  = Dx(idxLeftEdge, :);
     S2D{1,1}(idxRightEdge,:) = Dx(idxRightEdge, :);
 elseif startsWith(BCtype,'r','IgnoreCase',true)
-    S2D{1,1}(idxLeftEdge,:)  = -1.0i * args.k * args.L_raft*I_NM(idxLeftEdge,:)  + Dx(idxLeftEdge, :);
-    S2D{1,1}(idxRightEdge,:) =  1.0i * args.k * args.L_raft*I_NM(idxRightEdge,:) + Dx(idxRightEdge, :);
+    S2D{1,1}(idxLeftEdge,:)  = -1.0i * args.k * args.L_raft*I_NM(idxLeftEdge,:)  * dx + Dx(idxLeftEdge, :);
+    S2D{1,1}(idxRightEdge,:) =  1.0i * args.k * args.L_raft*I_NM(idxRightEdge,:) * dx + Dx(idxRightEdge, :);
 end
 % ------------------------------------------------------------------------
 % 8.  Derivative constraints
 % ------------------------------------------------------------------------
 % row-2:  phi_z  - Dz phi   = 0
-S2D{2,1} = Dz;      S2D{2,2} = -I_NM;
+S2D{2,1} = Dz;      S2D{2,2} = - dz *I_NM;
 
 
 % ------------------------------------------------------------------------
@@ -189,12 +202,15 @@ b = zeros(2*NM, 1);
 if args.test == true
     b(idxContact) = -0.01; 
 else
-    b(idxContact) = - motor_weights(:).';   % only on raft contact nodes
+    b(idxContact) = - dx^2 * motor_weights(:).';   % only on raft contact nodes
+    b(idxContact(1:2)) = 0;
+    b(idxContact((end-1):end)) = 0;
 end
 
 % ------------------------------------------------------------------------
-% 10.  Optional boundary trimming  (Dirichlet vs Neumann)
+% 10.  Boundary conditions 
 % ------------------------------------------------------------------------
+% 
 if startsWith(BCtype,'d','IgnoreCase',true)         % Dirichlet in x
     keep = ~edgeMask(:);
     S2D  = cellfun(@(A) A(keep,keep), S2D,'UniformOutput',false);

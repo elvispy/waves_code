@@ -66,10 +66,10 @@ L_raft = 0.05;
 base = struct( ...
     'sigma',0, 'rho',1000, 'nu',0, 'g',9.81, ...
     'L_raft',L_raft, 'motor_position',0.3*L_raft/2, 'd',L_raft/2, ...
-    'EI',1e-5, 'rho_raft',0.018*3.0, ...
-    'domainDepth',0.5, 'n',401, 'M',200, ...
+    'EI',1e-1, 'rho_raft',0.018*3.0, ...
+    'domainDepth',0.5, 'n',201, 'M',200, ...
     'motor_inertia',0.13e-3*2.5e-3, 'BC','radiative', ...
-    'omega',2*pi*10, 'ooa', 2, 'forcing_width', 0.01);
+    'omega',2*pi*5, 'ooa', 4, 'forcing_width', 0.01);
 
 S = run_case(base);
 
@@ -86,7 +86,7 @@ vals = [S.lapl_norm, S.bernoulli_norm, S.beam_norm, S.no_pen_norm, S.bc_left_nor
 bar(vals); set(gca,'YScale','log','XTickLabelRotation',20);
 set(gca,'XTick',1:6,'XTickLabel',{'lapl','bernoulli','beam','no\_pen','bc\_left','bc\_right'});
 ylabel('Residual norm'); grid on; set(gca,'FontSize',12);
-set(gcf,'Position',[120 500 800 350]);
+set(gcf,'Position',[120 500 800 350]); ylim([1e-16, 1]);
 title('PDE and BC residuals');
 
 % Summary table
@@ -105,8 +105,8 @@ function S = run_case(p)
 
 ooa  = args.ooa;
 [Dx, Dz] = getNonCompactFDmatrix2D(args.N, args.M, args.dx, args.dz, 1, ooa);
-[Dxx, ~] = getNonCompactFDmatrix2D(args.N, args.M, args.dx, args.dz, 2, ooa);
-Lapl     = Dxx + Dz*Dz;
+[Dxx, Dzz] = getNonCompactFDmatrix2D(args.N, args.M, args.dx, args.dz, 2, ooa);
+Lapl     = Dxx + Dzz;
 
 % Bulk Laplacian ||?²?|| on interior
 bulkMask = false(args.M, args.N); bulkMask(2:end-1, 2:end-1) = true;

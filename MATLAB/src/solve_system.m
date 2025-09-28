@@ -32,10 +32,20 @@ end
 Ap  = As(:,p);
 bp  = beq;
 
+lastwarn('');              % reset warning state
+
+
 % Solve scaled-permuted system, then unpermute and unscale
 yp      = Ap \ bp;                      % fast path solve
 y       = zeros(n,1);  y(p) = yp;       % undo column permutation
 xtry    = Dc * y;                       % map back to original variables
+
+[msg,~] = lastwarn;       % capture last warning
+
+if isempty(msg)
+    xsol = full(xtry);
+    return;
+end
 
 % ---------- Certification on ORIGINAL A,b (componentwise + ??·?_c) ----------
 % componentwise backward error

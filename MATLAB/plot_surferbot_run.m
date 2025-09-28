@@ -114,7 +114,7 @@ function plot_surferbot_run(run_dir)
     quiver(x(args.x_contact),real(eta(args.x_contact).')*scaleY , ...
            zeros(1,nnz(args.x_contact)), args.loads.'/5e4*scaleY ,0, ...
            'MaxHeadSize',1e-6);
-    xlabel('x (m)'); ylabel('y (μm)'); set(gca,'FontSize',16)
+    xlabel('x (m)'); ylabel('y (um)'); set(gca,'FontSize',16)
     title(sprintf('Surface deflection   U = %.3f mm/s',U*1e3))
     saveas(f1, fullfile(run_dir,'eta_t0.png'));
     savefig(f1, fullfile(run_dir,'eta_t0.fig'));
