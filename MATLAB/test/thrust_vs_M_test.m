@@ -1,7 +1,9 @@
 function S = thrust_vs_M_test
 % M-resolution study: vary M, plot |eta(x)| per case and thrust vs M
 
+
 addpath('../src');
+
 
 L_raft = 0.05;
 base = struct( ...
