@@ -138,7 +138,8 @@ beam_res = ...
   + args.g/(1i*args.omega) * (eta(args.x_contact) * (1i*args.omega)) ...
   - 2*args.nu * Dx2c * phi(beamEqnIdx).' ) ...
   - args.motor_inertia * args.omega^2 * args.loads;
-beam_norm = norm(beam_res, 2);
+beam_norm = norm(beam_res(3:(end-2)), 2);
+figure; plot(beam_res)
 
 % Bottom no-penetration ||?z ?|| at z = -H (interior x)
 bottomMask = false(args.M, args.N); bottomMask(1, 2:end-1) = true;
