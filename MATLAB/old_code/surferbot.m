@@ -23,13 +23,13 @@ raftLength = 5e-2;      % Length of the raft (m)
 raftWidth = 0.03;       % Width of the raft (m)
 gravity = 9.81;         % Gravitational acceleration (m/s^2)
 fluidDensity = 1000;    % Density of water (kg/m^3)
-oscillationFreq = 80;   % Oscillation frequency (Hz)
+oscillationFreq = 5;   % Oscillation frequency (Hz)
 angularFreq = 2 * pi * oscillationFreq; % Angular frequency (rad/s)
-surfaceTension = 0.073; % Surface tension of water (N/m)
-kinematicViscosity = 1e-6; % Kinematic viscosity (m^2/s)
-raftMass = 2.6e-3;      % Mass of SurferBot (kg)
-motorPosition = -0.003; % Position of motor relative to raft center (m)
-oscillationAmp = 152e-6;% Amplitude of oscillations (m)
+surfaceTension = 0*0.073; % Surface tension of water (N/m)
+kinematicViscosity = 0*1e-6; % Kinematic viscosity (m^2/s)
+raftMass = 0.009;      % Mass of SurferBot (kg)
+motorPosition = -0.3*raftLength/3; % Position of motor relative to raft center (m)
+oscillationAmp = 100*0.13e-3 * 2.5e-3;% Amplitude of oscillations (m)
 
 
 
@@ -47,7 +47,7 @@ solverOptions = optimset('display', 'iter'); % Solver display options
 gridSize = 300; % Number of grid points
 initialGuess = [1; 1] * 1e-4; % Initial guess for raftAngle and raftDisplacement
 domainWidth = 3; domainDepth = 1; % Domain size (scaled by raftLength)
-domainWidth = 0.75; domainDepth = 0.25; % Domain size (scaled by raftLength)
+domainWidth = 10; domainDepth = 10; % Domain size (scaled by raftLength)
 
 %% Find Raft Motion Parameters using Newton Solver
 solverFunction = @(motionParams) solver(motionParams, dimlessForceZ, dimlessMotorPos, dimlessOscillationFreq, dimlessViscosity, dimlessSurfaceTension, gridSize, dimlessMass, domainWidth, domainDepth);

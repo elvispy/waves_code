@@ -21,9 +21,9 @@ function [U, x, z, phi, eta, args] = flexible_surferbot_v2(varargin)
     addParameter(p, 'domainDepth', 0.1);            % [m] depth of the simulation domain (second dimention, y-direction)
 
     % --- Solver settings ---
-    addParameter(p, 'n', 401);                      % [unitless] number of grid points in x in the raft
-    addParameter(p, 'M', 200);                      % [unitless] number of grid points in z
-    addParameter(p, 'ooa', 2);                      % [unitless] finite difference order accuracy
+    addParameter(p, 'n', 51);                      % [unitless] number of grid points in x in the raft
+    addParameter(p, 'M', 400);                      % [unitless] number of grid points in z
+    addParameter(p, 'ooa', 4);                      % [unitless] finite difference order accuracy
     addParameter(p, 'test', false);                 % [boolean]  whether to run self-diagnostic tests
     % --- Motor parameters ---
     addParameter(p, 'motor_inertia', 0.13e-3 * 2.5e-3);  % [kg/m^2] motor rotational inertia

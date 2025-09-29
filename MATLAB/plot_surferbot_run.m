@@ -46,8 +46,8 @@ function plot_surferbot_run(run_dir)
 
     elseif isstruct(run_dir)
         % User passed the loaded data directly
-        S = run_dir;                 % treat input as S
-        run_dir = pwd;               % save outputs to current folder
+        S = run_dir;                         % treat input as S
+        run_dir = fullfile(pwd, 'figures');  % save outputs to current folder
         fprintf('Using provided struct S; saving outputs in: %s\n', run_dir);
     end
     
@@ -71,7 +71,7 @@ function plot_surferbot_run(run_dir)
     %% --- 2.  Quick MP4 of η(t,x) ---------------------------------------
     vidFile = fullfile(run_dir,'waves.mp4');
     vid     = VideoWriter(vidFile,'MPEG-4');
-    vid.FrameRate = args.omega/(2*pi);
+    vid.FrameRate = 10*args.omega/(2*pi);
     open(vid);
     
     omega  = args.omega;

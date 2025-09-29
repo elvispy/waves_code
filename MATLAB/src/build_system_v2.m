@@ -123,8 +123,8 @@ CC = idxContact;
 [Dx3Raft, ~] = getNonCompactFDmatrix(10            ,1,3,args.ooa);
 [Dx4Raft, ~] = getNonCompactFDmatrix(sum(x_contact),1,4,args.ooa);
 
-S2D{1, 1}(idxContact(1), :) = 0; S2D{1, 1}(idxContact(end), :) = 0;
-S2D{1, 2}(idxContact(1), :) = 0; S2D{1, 2}(idxContact(end), :) = 0;
+S2D{1, 1}(idxContact([1 2 end-1 end]), :) = 0; %S2D{1, 1}(idxContact(end), :) = 0;
+S2D{1, 2}(idxContact([1 2 end-1 end]), :) = 0; %S2D{1, 2}(idxContact(end), :) = 0;
 S2D{1, 1}(CC, CC) = -2*Gamma*Lambda / Re * Dx2Raft + 1.0i * Lambda * Gamma * dx^2 * I_NM(CC, CC);
 S2D{1, 2}(CC, CC) = (1.0i - 1.0i * Gamma * Lambda/Fr^2) * dx^2 * I_NM(CC, CC) + (-1.0i * kappa/dx^2) * Dx4Raft;
 % Boundary conditions: No bending moment
