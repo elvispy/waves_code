@@ -104,6 +104,7 @@ S2D = repmat({sparse(NM,NM)}, 2, 2);
 % 4.  Equation 1: Bernoulli on free surface  
 % ------------------------------------------------------------------------
 L = idxLeftFreeSurf; 
+[DxFree,  ~] = getNonCompactFDmatrix(nbLeft,1,1,args.ooa);
 [DxxFree, ~] = getNonCompactFDmatrix(nbLeft,1,2,args.ooa);
 % (1:(end-1))
 S2D{1,1}(L(2:end-1),L) =  I_NM(L(2:end-1), L) * dx^2 + 4.0j/Re * DxxFree(2:end-1, :);
@@ -118,9 +119,9 @@ S2D{1,2}(R(2:end-1),R) =  -dx^2/Fr^2 * I_NM(R(2:end-1), R) + 1/(We * Gamma) * Dx
 %       overwrite the rows that were zeroed out above
 % ------------------------------------------------------------------------
 CC = idxContact;
-[DxRaft,  ~] = getNonCompactFDmatrix(sum(x_contact),1,1,args.ooa);
+%[DxRaft,  ~] = getNonCompactFDmatrix(sum(x_contact),1,1,args.ooa);
 [Dx2Raft, ~] = getNonCompactFDmatrix(sum(x_contact),1,2,args.ooa);
-[Dx3Raft, ~] = getNonCompactFDmatrix(10            ,1,3,args.ooa);
+[Dx3Raft, ~] = getNonCompactFDmatrix(sum(x_contact),1,3,args.ooa);
 [Dx4Raft, ~] = getNonCompactFDmatrix(sum(x_contact),1,4,args.ooa);
 
 S2D{1, 1}(idxContact([1 2 end-1 end]), :) = 0; %S2D{1, 1}(idxContact(end), :) = 0;
@@ -131,10 +132,13 @@ S2D{1, 2}(CC, CC) = (1.0i - 1.0i * Gamma * Lambda/Fr^2) * dx^2 * I_NM(CC, CC) + 
 S2D{1, 2}(idxContact(2), CC)     = Dx2Raft(1, :);
 S2D{1, 2}(idxContact(end-1), CC) = Dx2Raft(end, :);
 % Boundary conditions: No stress on end
-S2D{1, 2}(idxContact(1), CC(1:10))   = Dx3Raft(1, :) ...
-    - Lambda / (kappa * We) * DxRaft(1, 1:10) * dx^2;
-S2D{1, 2}(idxContact(end), CC(1:10)) = Dx3Raft(end, :) ...
-    - Lambda / (kappa * We) * DxRaft(end, 1:10) * dx^2;
+S2D{1, 2}(idxContact(1), CC)  = Dx3Raft(1, :); 
+S2D{1, 2}(idxContact(1), L)   = S2D{1, 2}(idxContact(1), L) ...
+    + Lambda / (kappa * We) * DxFree(end, :) * dx^2;
+
+S2D{1, 2}(idxContact(end), CC) = Dx3Raft(end, :);
+S2D{1, 2}(idxContact(end), R)   = S2D{1, 2}(idxContact(end), R) ...
+        - Lambda / (kappa * We) * DxFree(1, :) * dx^2;
 
 % ------------------------------------------------------------------------
 % 4c.  Surface-tension corner corrections
@@ -165,8 +169,8 @@ end
 % ------------------------------------------------------------------------
 % 5.  Equation 2:  Laplace in the bulk  
 % ------------------------------------------------------------------------
-[Dx,  Dz] = getNonCompactFDmatrix2D(N,M,1,1,1,args.ooa); % ?/?x, ?/?z
-[Dxx, Dzz]  = getNonCompactFDmatrix2D(N,M,1,1,2,args.ooa); % ?2/?x2
+[Dx,  Dz] = getNonCompactFDmatrix2D(N,M,1,1,1,args.ooa); 
+[Dxx, Dzz]  = getNonCompactFDmatrix2D(N,M,1,1,2,args.ooa);
 
 S2D{1,1}(idxBulk,:)  = Dxx(idxBulk,:) + Dzz(idxBulk,:) * (dx/dz)^2;
 %S2D{1,2}(idxBulk, :) = Dz(idxBulk, :);
@@ -202,7 +206,11 @@ b = zeros(2*NM, 1);
 if args.test == true
     b(idxContact) = -0.01; 
 else
-    b(idxContact) = - dx^2 * motor_weights(:).';   % only on raft contact nodes
+    % OBS: Because sum(motor_weights) = force / F_c, to have units of 
+    % N/m we would need to input motor_weights/dx. But we are multiplying
+    % this whole equation by dx^2, with an overall contribution of dx. 
+    % WE WILL ADD THIS dx after solving for x. 
+    b(idxContact) = -  dx *motor_weights(:).';   % only on raft contact nodes
     b(idxContact(1:2)) = 0;
     b(idxContact((end-1):end)) = 0;
 end
@@ -222,8 +230,10 @@ end
 A = cell2mat(S2D);                 % (5*NM) x (5*NM) sparse
 b_sparse = reshape(b.', [], 1);    % RHS as column vector
 info = whos('A');
-if info.bytes > 2* 2147483648; warning('Matrix A is taking %.2g GiB of space. Consider downgrading.', whos('A')/2147483648); end
+if info.bytes > 2* 2147483648; warning('Matrix A is taking %.2g GiB of space. Consider downgrading.', info.bytes/2147483648); end
 
+% WE ADD THIS dx because it was rescaled on the motor weights. 
+% See lines 205-208
 xsol = solve_system(A, b_sparse);
 
 
