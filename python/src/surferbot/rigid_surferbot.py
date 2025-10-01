@@ -33,12 +33,14 @@ def rigidSolver(rho, omega, nu, g, L_raft, L_domain, gamma, x_A, F_A, n):
     DtN = DtN_generator(n)
     dx = 1/n
     N = DtN / (L_raft / n)
+    print(len(N))
     integral = simpson_weights(n, dx)
+    
 
     # Equation 1 (B)
     C11 = 1.0
     C12 = -(gamma / (rho * L_c**3 * omega**2))/(g / (L_c * omega**2))
-    C13 = -(omega**2 * L_c / g)        
+    C13 = -(omega**2 * L_c / g)      
     C14 = -(4.0j * nu / (omega * L_c**2)) / (g / (L_c * omega**2))
 
     # Equation 2 (C)
@@ -61,32 +63,29 @@ def rigidSolver(rho, omega, nu, g, L_raft, L_domain, gamma, x_A, F_A, n):
     # Equation 5 (2.11c)
     C51 = -(1/12) * m_c
     C52 = -(x_A / L_c) * (F_A / (rho * L_c**3 * omega**2)) # constant term
-    C53 = 1.0j * x / L_c
-    C54 = (g / (omega**2 * L_c)) * (x / L_c) # TODO: Fix this
-    C55 = (2 * nu / (omega * L_c**2)) * (x / L_c) # TODO: Fix this
+    C53 = 1.0j
+    C54 = (g / (omega**2 * L_c))
+    C55 = (2 * nu / (omega * L_c**2))
 
     # Raft Points
     L_raft_adim = L_raft / L_c
     L_domain_adim = jnp.floor(L_domain / L_c) - jnp.floor(L_domain/L_c) % 2 + 1 # We make it odd (for simpson integration)
     N = jnp.int32(n * L_domain_adim / L_raft_adim) 
-
+        
+    x = jnp.linspace(-L_domain_adim/2, L_domain_adim/2, N)
+    x_contact = abs(x) <= L_raft_adim/2; H = sum(x_contact == True)    # debugging: double check x_contact
+    x_free    = abs(x) >  L_raft_adim/2; x_free = x_free.at[0].set(False); x_free = x_free.at[-1].set(False)
+    assert jnp.sum(x_free) + jnp.sum(x_contact) == N-2, f"Number of free and contact points do not match the total number of points {N}." if DEBUG else None
+    left_raft_boundary = (N-H)//2
+    
     if jnp.std(x) < 1e-5:
         grid_x = (x[left_raft_boundary] - x[left_raft_boundary-1]).item(0)
     else:
         grid_x = jnp.round(x, 5)
-        
-    x = jnp.linspace(-L_domain_adim/2, L_domain_adim/2, N)
-    x_contact = abs(x) <= L_raft_adim/2; H = sum(x_contact == True)
-    x_free    = abs(x) >  L_raft_adim/2; x_free = x_free.at[0].set(False); x_free = x_free.at[-1].set(False)
-    assert jnp.sum(x_free) + jnp.sum(x_contact) == N-2, f"Number of free and contact points do not match the total number of points {N}." if DEBUG else None
-    left_raft_boundary = (N-H)//2
 
+ 
     # Derivative operators
-    dx = (x[left_raft_boundary] - x[left_raft_boundary-1]).item(0) # Beware: this appears to be defined twice. See line 34.
-    d_dx = Diff(axis=0, grid=grid_x, acc=2, shape=(N)) # TODO: check this line
-
-    x_contact = x[abs(x) <= L_c]
-    x_free    = x[abs(x) >  L_c]
+    d_dx = Diff(axis=0, grid=grid_x, acc=2, shape=(N,)) # TODO: check shape
 
     # Building matrix (Ax = b)
     # [E11][0]  [0]   [0]   | [phi]         [0]
@@ -96,6 +95,7 @@ def rigidSolver(rho, omega, nu, g, L_raft, L_domain, gamma, x_A, F_A, n):
     # [E51][E52][0]   [E54] |               [C52]
 
     E11 = C11 + (C12 + C14) * d_dx**2 + C13
+    print(f"E11: {(d_dx**2).shape}")
     E12 = 0
     E13 = 0
     E14 = 0
@@ -103,18 +103,25 @@ def rigidSolver(rho, omega, nu, g, L_raft, L_domain, gamma, x_A, F_A, n):
     E21 = C21 
     E22 = 0
     E23 = C22
-    E24 = C23 # There is something missing here...
+    E24 = C23 * x[x_contact]
+    print(f"E24: {(C23 * x[x_contact]).shape}")
     
     E31 = C33
+    print(f"E32: {(C31 + C32 * d_dx**2).shape}")
     E32 = C31 + C32 * d_dx**2
     E33 = 0
     E34 = 0
+
+    print(f"integral shape: {integral.shape}")  # debugging -> (21, )
+    print(f"E41: {(C43 + C45 * d_dx**2).shape}") 
 
     E41 = integral @ (C43 + C45 * d_dx**2)
     E42 = C44
     E43 = C41
     E44 = 0
 
+    print(f"integral shape: {integral.shape}") # debugging
+    print(f"E5: {(x[x_contact] @ (C53 + C55 * d_dx**2)).shape}")
     E51 = integral @ x[x_contact] @ (C53 + C55 * d_dx**2) 
     E52 = C54
     E53 = 0
@@ -128,7 +135,7 @@ def rigidSolver(rho, omega, nu, g, L_raft, L_domain, gamma, x_A, F_A, n):
 
     # Concatenate 
     A = jnp.stack(E1, E2, E3, E4, E5, axis = 0)
-    B = jnp.stack(0, 0, 0, C42, C52, axis = 1)
+    B = jnp.stack(0, 0, 0, C42, C52, axis = 0)
 
     # Testing E is a square matrix
     [r,c] = A.shape()
