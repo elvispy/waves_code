@@ -6,14 +6,14 @@ addpath('../src');
 L_raft = 0.05;
 base = struct( ...
     'sigma',72.2e-3, 'rho',1000, 'nu',0, 'g',9.81, ...
-    'L_raft',L_raft, 'motor_position',0.3*L_raft/2, 'd',L_raft/2, ...
+    'L_raft',L_raft, 'motor_position',0.35*L_raft/2, 'd',L_raft/2, ...
     'EI',3.0e9*3e-2*(9.9e-4)^3/12, 'rho_raft',0.018*10.0, ...
-    'domainDepth',0.5, 'n',51, 'M',400, ...
+    'domainDepth',0.5, 'n',100, 'M',200, ...
     'motor_inertia',0.13e-3*2.5e-3, 'BC','radiative', ...
-    'omega',2*pi*5, 'ooa', 4);
+    'omega',2*pi*10, 'ooa', 2);
 
 % Ns to test (ensure odd, increasing)
-n_list = ensure_odd(ceil(base.n * [1, 2, 4]));
+n_list = ensure_odd(ceil(base.n * [1, 2, 4, 8]));
 n_list = unique(n_list,'stable');
 
 % Preallocate with matching fields
@@ -25,9 +25,9 @@ proto = struct('x',[],'z',[],'phi',[],'eta',[], ...
 S = repmat(proto, 1, numel(n_list));
 
 % Run sweep
-for i = 1:numel(n_list)
-    p = base; p.n = n_list(i);
-    S(i) = run_case(p);
+for ii = 1:numel(n_list)
+    p = base; p.n = n_list(ii); %p.M = p.M * 2^(ii-1);
+    S(ii) = run_case(p);
 end
 
 % Plot |eta(x)| per case
@@ -80,6 +80,36 @@ plot([S.N_x], [S.thrust_N], 'o-','MarkerSize',6,'LineWidth',1.2);
 xlabel('N (streamwise points)'); ylabel('Thrust (N)');
 set(gca,'FontSize',14);
 title('Thrust vs N');
+
+% Plot successive ratio |eta^{(i+1)}| / |eta^{(i)}|
+figure(3); clf;
+ax = axes('Position',[0.1 0.12 0.8 0.8]); hold(ax,'on');
+
+for i = 1:numel(S)-1
+    x0 = S(i).x;
+    x1 = S(i+1).x;
+    eta0 = abs(S(i).eta(:));
+    eta1 = abs(S(i+1).eta(:));
+
+    % Interpolate to coarser grid
+    if ~isequal(x0, x1)
+        eta1_interp = interp1(x1(:), eta1, x0(:), 'linear', NaN);
+    else
+        eta1_interp = eta1;
+    end
+
+    % Ratio
+    ratio = eta1_interp ./ eta0;
+
+    % Plot, using 'line' to avoid NaN-based segmentation and legend explosion
+    h = plot(x0, ratio, 'LineWidth', 1.5);
+    h.DisplayName = sprintf('# %d / # %d', S(i+1).N_x, S(i).N_x);
+end
+
+xlabel('x (m)'); ylabel('|?^{(i+1)}(x)| / |?^{(i)}(x)|');
+title('Convergence check: ratio of successive free-surface amplitudes');
+legend('show','Location','best'); grid on; set(gca,'FontSize',14);
+
 
 % Console table
 T = table([S.N_x].', [S.thrust_N].', [S.tail_flat_ratio].', [S.disp_res].', ...

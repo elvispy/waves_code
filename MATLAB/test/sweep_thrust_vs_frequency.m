@@ -22,8 +22,8 @@ for i = 1:numel(omega_values)
 
     % Run simulation (defaults elsewhere)
     [~, x, z, phi, eta, args] = flexible_surferbot_v2('omega', omega, ...
-        'sigma', 0, 'nu', 0, 'domainDepth', 1.5, 'L_raft', 0.5, ...
-        'motor_position', 0.5 * 0.3, 'EI', 100, 'g', 9.81);
+        'sigma', 72.2e-3, 'nu', 0, 'domainDepth', 0.5, 'L_raft', 0.05, ...
+        'motor_position', 0.05/2 * 0.3, 'EI', 0.01, 'g', 9.81, 'rho_raft', 0.018*10.0);
 
     % Thrust from solver
     thrust_values(i) = args.thrust;
@@ -34,7 +34,7 @@ for i = 1:numel(omega_values)
     sigma = args.sigma;
     k     = real(args.k);
     
-    %Sxx_values(i) = (rho*g/4 + 3/4*sigma*k^2) * (abs(eta(1))^2 - abs(eta(end))^2);
+    Sxx_values(i) = (rho*g/4 + 3/4*sigma*k^2) * (abs(eta(1))^2 - abs(eta(end))^2);
     LH_values(i)  = 1/4 * rho * omega^2 / k *   (abs(eta(2))^2 - abs(eta(end-1))^2);
 
     % Calculate velocity as gradient of potential
@@ -57,7 +57,7 @@ g     = args.g;
 omega_star  = omega_values .* sqrt(L/g);     % ω √(L/g)
 F_scale     = rho * g * L^2;                 % ρ g L^2
 thrust_star = thrust_values   ./ F_scale;
-%Sxx_star    = Sxx_values      ./ F_scale;
+Sxx_star    = Sxx_values      ./ F_scale;
 LH_star     = LH_values       ./ F_scale;
 mom_star    = momentum_values ./ F_scale;
 % --- Plot (log–log) ---
@@ -65,7 +65,7 @@ figure(1); clf;
 semilogx(omega_star, thrust_star, 'k-',  'LineWidth', 2); hold on;   % numerical thrust
 semilogx(omega_star, LH_star,     'b--', 'LineWidth', 2); hold on;
 semilogx(omega_star, mom_star,    'r--', 'LineWidth', 2); hold off;
-%semilogx(omega_star, Sxx_star,   'r--', 'LineWidth', 2); hold off;
+semilogx(omega_star, Sxx_star,    'r--', 'LineWidth', 2); hold off;
 
 
 grid on; set(gca, 'Box','on', 'TickDir','out');
@@ -77,11 +77,11 @@ title('Nondimensional thrust vs. frequency');
 legend({'Numerical thrust', 'LH', 'Momentum'}, 'Location','best', 'Interpreter','tex');
 
 % (optional) print a quick table to console
-fprintf('\n   f [Hz]     w*       M/(rho*g*L^2)   FT/(rho*g*L^2)   LH/(rho*g*L^2)\n');
+fprintf('\n   f [Hz]     w*       M/(rho*g*L^2)   FT/(rho*g*L^2)  Sxx/(rho*g*L^2)\n');
 fprintf('------------------------------------------------------------------------\n');
 
 for i = 1:numel(f_values)
     fprintf('%8.2f   %8.3g   %14.4e   %14.4e   %14.4e\n', ...
-        f_values(i), omega_star(i), mom_star(i), thrust_star(i), LH_star(i));
+        f_values(i), omega_star(i), mom_star(i), thrust_star(i), Sxx_star(i));
 end
 

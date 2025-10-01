@@ -27,7 +27,7 @@ function [U, x, z, phi, eta, args] = flexible_surferbot_v2(varargin)
     addParameter(p, 'test', false);                 % [boolean]  whether to run self-diagnostic tests
     % --- Motor parameters ---
     addParameter(p, 'motor_inertia', 0.13e-3 * 2.5e-3);  % [kg/m^2] motor rotational inertia
-    addParameter(p, 'forcing_width', 0.05);             % [fraction of L_raft] width of Gaussian forcing
+    addParameter(p, 'forcing_width', 0.02);             % [fraction of L_raft] width of Gaussian forcing
 
     % --- Boundary condition ---
     addParameter(p, 'BC', 'radiative');             % Boundary condition type (radiative, Neuman, Dirichlet)
@@ -37,7 +37,7 @@ function [U, x, z, phi, eta, args] = flexible_surferbot_v2(varargin)
     args = p.Results;
     %args.ooa = 4; % Define finite difference accuracy in space
     
-    if isnan(args.L_domain); args.L_domain = args.L_raft * 10; end
+    
 
     % Derived parameters
     force = args.motor_inertia * args.omega^2;
@@ -69,11 +69,14 @@ function [U, x, z, phi, eta, args] = flexible_surferbot_v2(varargin)
     k = dispersion_k(args.omega, args.g, args.domainDepth, args.nu, args.sigma, args.rho);
     args.k = k;
     if tanh(args.k * args.domainDepth) < 0.95; warning('Domain depth not enough for dispersison relation'); end
-    if 2*pi/k / (args.L_raft / args.n) <= 10 
+    if 2*pi/real(k) / (args.L_raft / args.n) <= 50 
         
-        args.n = ceil(10 / (2*pi/k) * args.L_raft);
+        args.n = ceil(50 / (2*pi/real(k)) * args.L_raft);
         args.n = args.n + mod(args.n, 2) + 1;
         warning('Number of points in x direction too small. Changing n to %d', args.n); 
+    end
+    if isnan(args.L_domain) || args.L_domain <= 10 * 2*pi/k 
+        args.L_domain = max(args.L_raft * 3, round(10*2*pi/real(k), 2, 'significant')); 
     end
     % Grid
     L_domain_adim = ceil(args.L_domain / L_c);
@@ -97,6 +100,7 @@ function [U, x, z, phi, eta, args] = flexible_surferbot_v2(varargin)
 
     % Loads at which the motor applies a force to the raft
     loads = force / F_c * gaussian_load(args.motor_position/L_c, args.forcing_width, x(x_contact));
+    assert(abs(sum(loads) - force/F_c) < 1e-12);
 
     % Solve system
     solution = build_system_v2(N, M, dx, dz, x_free, x_contact, loads, args);
@@ -108,7 +112,7 @@ function [U, x, z, phi, eta, args] = flexible_surferbot_v2(varargin)
     x = x * L_c;
     z = z * L_c;    
     args.x_contact = x_contact;
-    args.loads = loads;
+    args.loads = loads * F_c;
     args.N = N; args.M = M; args.dx = dx * L_c; args.dz = dz * L_c;
     args.t_c = t_c; args.L_c = L_c; args.m_c = m_c;
 
