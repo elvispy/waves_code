@@ -16,6 +16,7 @@ if isempty(msg0)
     return
 end
 
+warning('Normal solver couldnt find a solution. Trying Iterative-based methods instead');
 % ---------- 1) Diagonal equilibration + column reordering ----------
 n = size(A,1);
 row_max = full(max(abs(A),[],2));  row_max(~isfinite(row_max) | row_max==0) = 1;
