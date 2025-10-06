@@ -53,14 +53,14 @@ function [xsol, A, b] = build_system_v2(N, M, dx, dz, x_free, ...
 
 % 0.  House-keeping
 % ------------------------------------------------------------------------
-NM   = N*M;
+NM     = N*M;
 BCtype = args.BC;
-Fr = args.nd_groups.Fr;
-Gamma = args.nd_groups.Gamma;
-We = args.nd_groups.We;
-kappa = args.nd_groups.kappa;
+Fr     = args.nd_groups.Fr;
+Gamma  = args.nd_groups.Gamma;
+We     = args.nd_groups.We;
+kappa  = args.nd_groups.kappa;
 Lambda = args.nd_groups.Lambda;
-Re = args.nd_groups.Re;
+Re     = args.nd_groups.Re;
 
 I_NM = speye(NM);
 
@@ -72,14 +72,14 @@ I_NM = speye(NM);
 % ------------------------------------------------------------------------
 % 2.  Logical masks  ?  row-index vectors
 % ------------------------------------------------------------------------
-topMask       = false(M,N); topMask(end, 2:N-1)       = true;
+topMask       = false(M,N); topMask(end, 2:N-1)    = true;
 freeMask      = repmat(x_free, M, 1)  & topMask;
 contactMask   = repmat(x_contact,M,1) & topMask;
 
-bottomMask    = false(M,N); bottomMask(1, 2:N-1)      = true;
-rightEdgeMask = false(M,N); rightEdgeMask(:, end)     = true;
-leftEdgeMask  = false(M,N); leftEdgeMask(:, 1)        = true;
-bulkMask      = false(M,N); bulkMask(2:M-1, 2:N-1)    = true;
+bottomMask    = false(M,N); bottomMask(1, 2:N-1)   = true;
+rightEdgeMask = false(M,N); rightEdgeMask(:, end)  = true;
+leftEdgeMask  = false(M,N); leftEdgeMask(:, 1)     = true;
+bulkMask      = false(M,N); bulkMask(2:M-1, 2:N-1) = true;
 
 idxFreeSurf     = find(freeMask);
 idxLeftFreeSurf = [M; idxFreeSurf(1:(end/2)); find(contactMask, 1, 'first')]; %idxLeftFreeSurf = idxLeftFreeSurf(1:(end-1));
@@ -124,21 +124,21 @@ CC = idxContact;
 [Dx3Raft, ~] = getNonCompactFDmatrix(sum(x_contact),1,3,args.ooa);
 [Dx4Raft, ~] = getNonCompactFDmatrix(sum(x_contact),1,4,args.ooa);
 
-S2D{1, 1}(idxContact([1 2 end-1 end]), :) = 0; %S2D{1, 1}(idxContact(end), :) = 0;
-S2D{1, 2}(idxContact([1 2 end-1 end]), :) = 0; %S2D{1, 2}(idxContact(end), :) = 0;
+S2D{1, 1}(idxContact([1 2 end-1 end]), :) = 0; 
+S2D{1, 2}(idxContact([1 2 end-1 end]), :) = 0; 
 S2D{1, 1}(CC, CC) = -2*Gamma*Lambda / Re * Dx2Raft + 1.0i * Lambda * Gamma * dx^2 * I_NM(CC, CC);
-S2D{1, 2}(CC, CC) = (1.0i - 1.0i * Gamma * Lambda/Fr^2) * dx^2 * I_NM(CC, CC) + (-1.0i * kappa/dx^2) * Dx4Raft;
+S2D{1, 2}(CC, CC) = (1i - 1.0i * Gamma * Lambda/Fr^2) * dx^2 * I_NM(CC, CC) + (-1.0i * kappa/dx^2) * Dx4Raft;
 % Boundary conditions: No bending moment
 S2D{1, 2}(idxContact(2), CC)     = Dx2Raft(1, :);
 S2D{1, 2}(idxContact(end-1), CC) = Dx2Raft(end, :);
 % Boundary conditions: No stress on end
-S2D{1, 2}(idxContact(1), CC)  = Dx3Raft(1, :); 
+S2D{1, 2}(idxContact(1), CC)  = Dx3Raft(1, :)/dx^2; 
 S2D{1, 2}(idxContact(1), L)   = S2D{1, 2}(idxContact(1), L) ...
-    + Lambda / (kappa * We) * DxFree(end, :) * dx^2;
+    + Lambda / (kappa * We) * DxFree(end, :);
 
-S2D{1, 2}(idxContact(end), CC) = Dx3Raft(end, :);
+S2D{1, 2}(idxContact(end), CC) = Dx3Raft(end, :)/dx^2;
 S2D{1, 2}(idxContact(end), R)   = S2D{1, 2}(idxContact(end), R) ...
-        - Lambda / (kappa * We) * DxFree(1, :) * dx^2;
+        - Lambda / (kappa * We) * DxFree(1, :);
 
 % ------------------------------------------------------------------------
 % 4c.  Surface-tension corner corrections
@@ -169,8 +169,8 @@ end
 % ------------------------------------------------------------------------
 % 5.  Equation 2:  Laplace in the bulk  
 % ------------------------------------------------------------------------
-[Dx,  Dz] = getNonCompactFDmatrix2D(N,M,1,1,1,args.ooa); 
-[Dxx, Dzz]  = getNonCompactFDmatrix2D(N,M,1,1,2,args.ooa);
+[Dx,  Dz]  = getNonCompactFDmatrix2D(N,M,1,1,1,args.ooa); 
+[Dxx, Dzz] = getNonCompactFDmatrix2D(N,M,1,1,2,args.ooa);
 
 S2D{1,1}(idxBulk,:)  = Dxx(idxBulk,:) + Dzz(idxBulk,:) * (dx/dz)^2;
 %S2D{1,2}(idxBulk, :) = Dz(idxBulk, :);
@@ -210,7 +210,7 @@ else
     % N/m we would need to input motor_weights/dx. But we are multiplying
     % this whole equation by dx^2, with an overall contribution of dx. 
     % WE WILL ADD THIS dx after solving for x. 
-    b(idxContact) = -  dx *motor_weights(:).';   % only on raft contact nodes
+    b(idxContact) = - dx^2 * motor_weights(:).';   % only on raft contact nodes
     b(idxContact(1:2)) = 0;
     b(idxContact((end-1):end)) = 0;
 end

@@ -27,7 +27,7 @@ function [U, x, z, phi, eta, args] = flexible_surferbot_v2(varargin)
     addParameter(p, 'test', false);                 % [boolean]  whether to run self-diagnostic tests
     % --- Motor parameters ---
     addParameter(p, 'motor_inertia', 0.13e-3 * 2.5e-3);  % [kg/m^2] motor rotational inertia
-    addParameter(p, 'forcing_width', 0.02);             % [fraction of L_raft] width of Gaussian forcing
+    addParameter(p, 'forcing_width', 0.05);             % [fraction of L_raft] width of Gaussian forcing
 
     % --- Boundary condition ---
     addParameter(p, 'BC', 'radiative');             % Boundary condition type (radiative, Neuman, Dirichlet)
@@ -83,7 +83,7 @@ function [U, x, z, phi, eta, args] = flexible_surferbot_v2(varargin)
     if mod(L_domain_adim, 2) == 0
         L_domain_adim = L_domain_adim + 1;
     end
-    N = round(args.n * L_domain_adim / (args.L_raft / L_c));
+    N = round((args.n-1) * L_domain_adim / (args.L_raft / L_c))+1;
     M = args.M;
 
     x = linspace(-L_domain_adim/2, L_domain_adim/2, N);
@@ -100,8 +100,10 @@ function [U, x, z, phi, eta, args] = flexible_surferbot_v2(varargin)
 
     % Loads at which the motor applies a force to the raft
     loads = force / F_c * gaussian_load(args.motor_position/L_c, args.forcing_width, x(x_contact));
-    assert(abs(sum(loads) - force/F_c) < 1e-12);
-
+    if args.test
+        assert(abs(sum(dx * loads) - force/F_c) < 1e-12);
+    end
+    
     % Solve system
     solution = build_system_v2(N, M, dx, dz, x_free, x_contact, loads, args);
     
@@ -112,7 +114,8 @@ function [U, x, z, phi, eta, args] = flexible_surferbot_v2(varargin)
     x = x * L_c;
     z = z * L_c;    
     args.x_contact = x_contact;
-    args.loads = loads * F_c;
+    args.loads = loads * F_c/L_c;
+    %figure(5); semilogy(x(x_contact), args.loads); hold on;
     args.N = N; args.M = M; args.dx = dx * L_c; args.dz = dz * L_c;
     args.t_c = t_c; args.L_c = L_c; args.m_c = m_c;
 
