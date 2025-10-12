@@ -24,7 +24,6 @@ def rigidSolver(rho, omega, nu, g, L_raft, L_domain, gamma, x_A, F_A, n):
     '''
 
     ## Derived dimensional Parameters (SI Units)
-    # TODO: Fix these to be dimensional? - > fix wherever you use them as well
     L_c = L_raft
     m_c = rho * L_c**2
     t_c = 1/omega
@@ -76,9 +75,9 @@ def rigidSolver(rho, omega, nu, g, L_raft, L_domain, gamma, x_A, F_A, n):
         
     x = jnp.linspace(-L_domain_adim/2, L_domain_adim/2, p)
     x_contact = abs(x) <= L_raft_adim/2; H = sum(x_contact == True) 
-    x_free    = abs(x) >  L_raft_adim/2; x_free = x_free.at[0].set(False); x_free = x_free.at[-1].set(False)
-    assert jnp.sum(x_free) + jnp.sum(x_contact) == p-2, f"Number of free and contact points do not match the total number of points {N}." if DEBUG else None
-    left_raft_boundary = (p-H)//2; right_raft_boundary = (p+H)//2
+    x_free    = abs(x) >  L_raft_adim/2; # x_free = x_free.at[0].set(False); x_free = x_free.at[-1].set(False)
+    # assert jnp.sum(x_free) + jnp.sum(x_contact) == p-2, f"Number of free and contact points do not match the total number of points {N}." if DEBUG else None
+    left_raft_boundary = (p-H)//2; right_raft_boundary = left_raft_boundary + H
     
     if jnp.std(x) < 1e-5:
         grid_x = (x[left_raft_boundary] - x[left_raft_boundary-1]).item(0)
@@ -97,13 +96,22 @@ def rigidSolver(rho, omega, nu, g, L_raft, L_domain, gamma, x_A, F_A, n):
     d_dx_raft = Diff(axis=0, grid=grid_x[left_raft_boundary:right_raft_boundary], acc=2, shape=(H,))
 
     # Building matrix (Ax = b)
-    # [E11][0]  [0]   [0]   | [phi]         [0]
-    # [E21][0]  [E23] [E24] | [eta]         [0]
-    # [E31][E32][0]   [0]   | [zeta]        [0]
-    # [E41][E42][E43] [0]   | [theta]       [C42]
-    # [E51][E52][0]   [E54] |               [C52]
+    # [E11L][0]  [0]   [0]   [0]  [0]   [0]  [0]         | [phi_left]         [0]
+    # [0]   [0]  [E11R][0]   [0]  [0]   [0]  [0]         | [phi_center]       [0]
+    # [0]   [E21][0]   [0]   [0]  [0]   [E23][E24]       | [phi_right]        [0]
+    # [E31] [0]  [0]   [E32L][0]  [0]   [0]  [0]         | [eta_left]         [0]
+    # [0]   [0]  [E31] [0]   [0]  [E32R][0]  [0]         | [eta_center]       [0]
+    # [0]   [E41][0]   [0]   [E42][0]   [E43][0]         | [eta_right]        [0]
+    # [0]   [E51][0]   [0]   [E52][0]   [0]  [E54]       | [zeta]             [C42]
+    #                                                    | [theta]            [C52]
+    # Checking square dimensions: 
+    # E11: p-n equations, E21: n equations, E31: p-n equations, E41: 1 equation, E51: 1 equation
+    # Total equations: 2p - n + 2
+    # phi_left + phi_center + phi_right = p unknowns, eta_left + eta_center + eta_right = p-n unknowns, zeta = 1 unknown, theta = 1 unknown
+    # Total unknowns: 2p - n + 2
 
     # follow equations.md
+    # TODO: Rename variables to match
 
     E11_left = C11 + (C12 + C14) * d_dx_left**2 + C13
     E11_right = C11 + (C12 + C14) * d_dx_right**2 + C13
@@ -140,19 +148,25 @@ def rigidSolver(rho, omega, nu, g, L_raft, L_domain, gamma, x_A, F_A, n):
     E53 = 0
     E54 = C51
 
+    # boundary conditions
+
     # building equation blocks
-    E1_left = jnp.stack(E11_left, E12, E13, E14, axis = 1)
-    E1_right = jnp.stack(E11_right, E12, E13, E14, axis = 1)
-    E1 = jnp.stack(E1_left, E1_right, axis = 0) # combine left and right parts
+    # E1 Left and E1 Right
+    E1_left = jnp.stack(E11_left, E12, E13, E14, 0, 0, 0, 0, axis = 1)
+    E1_right = jnp.stack(0, 0, E11_right, E12, E13, E14, 0, 0, axis = 1)
+    E1 = jnp.stack(E1_left, E1_right, axis = 0) # stacking left and right parts
 
-    E2 = jnp.stack(E21, E22, E23, E24, axis = 1)
+    # E2
+    E2 = jnp.stack(0, E21, 0, 0, 0, 0, E23, E24, axis = 1)
 
-    E3_left = jnp.stack(E31, E32_left, E33, E34, axis = 1)
-    E3_right = jnp.stack(E31, E32_right, E33, E34, axis = 1)
-    E3 = jnp.stack(E3_left, E3_right, axis = 0) # combine left and right parts
+    # E3 Left and E3 Right
+    E3_left = jnp.stack(E31, 0, 0, E32_left, 0, 0, 0, 0, axis = 1)
+    E3_right = jnp.stack(0, 0, E31, 0, 0, E32_right, 0, 0, axis = 1)
+    E3 = jnp.stack(E3_left, E3_right, axis = 0) # stacking left and right parts
 
-    E4 = jnp.stack(E41, E42, E43, E44, axis = 1)
-    E5 = jnp.stack(E51, E52, E53, E54, axis = 1)
+    # E4, E5
+    E4 = jnp.stack(0, E41, 0, 0, E42, 0, E43, 0, axis = 1)
+    E5 = jnp.stack(0, E51, 0, 0, E52, 0, 0, E54, axis = 1)
 
     # Concatenate 
     A = jnp.stack(E1, E2, E3, E4, E5, axis = 0)
@@ -164,14 +178,12 @@ def rigidSolver(rho, omega, nu, g, L_raft, L_domain, gamma, x_A, F_A, n):
     solution = jax.numpy.linalg.solve(A, B)
 
     # Splitting variables
-    # TODO: check splicing for phi specifically
-    phi_left = solution[0 : (N - 1)/2]
-    phi_right = solution[(N - 1)/2 : N]
-    eta = solution[N : (N - n - 1)]
-    zeta = solution[N - n]
-    theta = solution[N - n + 1]
+    phi = solution[0 : p]
+    eta = solution[p : p - n]
+    zeta = solution[p - n]
+    theta = solution[p - n + 1]
 
-    return (phi_left, phi_right, eta, zeta, theta, r, c)
+    return (phi, eta, zeta, theta, r, c)
 
 if __name__ == "__main__":
     rigidSolver(1000, 10, 1e-6, 9.81, 0.05, 1, 0.072, 0.02, 1, 21)
