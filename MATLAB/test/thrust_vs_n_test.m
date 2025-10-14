@@ -2,18 +2,18 @@ function thrust_vs_n_test
 % n-resolution study: vary N, plot |eta(x)| per case and thrust vs N
 
 addpath('../src');
-
-L_raft = 0.05;
+close all;
+L_raft = 0.5;
 base = struct( ...
-    'sigma',72.2e-3, 'rho',1000, 'nu',0, 'g',9.81, ...
-    'L_raft',L_raft, 'motor_position',0.35*L_raft/2, 'd',L_raft/2, ...
-    'EI',3.0e9*3e-2*(9.9e-4)^3/12, 'rho_raft',0.018*10.0, ...
-    'domainDepth',0.5, 'n',100, 'M',200, ...
+    'sigma',72.2e-3, 'rho',1000, 'nu',0*1e-6, 'g',9.81, ...
+    'L_raft',L_raft, 'motor_position',0.4*L_raft/2, 'd',L_raft/2, ...
+    'EI', 100*3.0e9*3e-2*(9.9e-4)^3/12, 'rho_raft',0.018*10.0, ...
+    'domainDepth',0.5,'L_domain', 3*L_raft, 'n',500, 'M',200, ...
     'motor_inertia',0.13e-3*2.5e-3, 'BC','radiative', ...
-    'omega',2*pi*10, 'ooa', 2);
+    'omega',2*pi*7, 'ooa', 4);
 
 % Ns to test (ensure odd, increasing)
-n_list = ensure_odd(ceil(base.n * [1, 2, 4, 8]));
+n_list = ensure_odd(ceil(base.n * [1, 2, 4]));
 n_list = unique(n_list,'stable');
 
 % Preallocate with matching fields
@@ -26,7 +26,7 @@ S = repmat(proto, 1, numel(n_list));
 
 % Run sweep
 for ii = 1:numel(n_list)
-    p = base; p.n = n_list(ii); %p.M = p.M * 2^(ii-1);
+    p = base; p.n = n_list(ii); %p.motor_inertia = p.motor_inertia * 2^(ii-1);
     S(ii) = run_case(p);
 end
 
@@ -35,15 +35,18 @@ end
 A = S(1).args;  % constants
 
 figure(1); clf;
-set(gcf,'Units','pixels','Position',[80 80 1200 500]);  % wide
+set(gcf,'Units','pixels','Position',[1 1 1200 500]);  % wide
 
 % left plot (~75% width)
 ax = axes('Position',[0.07 0.12 0.68 0.80]); hold(ax,'on');
 for i = 1:numel(S)
-    % FIX: was 'S(i).args.dxS(i).args.k' and said 'dx/k'. Use k*dx like other sweeps.
-    semilogy(ax, S(i).x, abs(S(i).eta), ...
+    
+    semilogy(ax, S(i).x, abs(S(i).eta), 'o-', 'MarkerSize', 4, ...
         'DisplayName', sprintf('N=%d | k*dx=%.2g', S(i).N_x, S(i).args.k*S(i).args.dx));
 end
+
+
+%xline(-L_raft/2); xline(L_raft/2);
 xlabel(ax,'x (m)'); ylabel(ax,'|{\eta}(x)|');
 legend(ax,'show','Location','best'); grid(ax,'on'); set(ax,'FontSize',14);
 title(ax,'Free-surface amplitude vs x for varying N');
@@ -75,15 +78,18 @@ annotation('textbox',[0.78 0.12 0.20 0.80], ...
     'VerticalAlignment','top','FontSize',16,'FontName','FixedWidth');
 
 % Plot thrust vs N
-figure(2); clf;
+figure(2); clf; set(gcf,'Position',[1284 52 560 420]);
 plot([S.N_x], [S.thrust_N], 'o-','MarkerSize',6,'LineWidth',1.2);
 xlabel('N (streamwise points)'); ylabel('Thrust (N)');
 set(gca,'FontSize',14);
 title('Thrust vs N');
 
 % Plot successive ratio |eta^{(i+1)}| / |eta^{(i)}|
-figure(3); clf;
+figure(3); clf; set(gcf,'Position',[1278 557 560 420]);
 ax = axes('Position',[0.1 0.12 0.8 0.8]); hold(ax,'on');
+
+
+
 
 for i = 1:numel(S)-1
     x0 = S(i).x;
@@ -109,6 +115,32 @@ end
 xlabel('x (m)'); ylabel('|?^{(i+1)}(x)| / |?^{(i)}(x)|');
 title('Convergence check: ratio of successive free-surface amplitudes');
 legend('show','Location','best'); grid on; set(gca,'FontSize',14);
+
+
+
+% --- Pressure profiles along raft for all N ---
+figure(4); clf;
+set(gcf,'Units','pixels','Position',[1 571 1000 400]);
+
+subplot(1,2,1); hold on;
+title('Real(p) along raft');
+xlabel('x (m)'); ylabel('Re(p) (Pa)');
+for i = 1:numel(S)
+    plot(S(i).x(S(i).args.x_contact), real(S(i).args.pressure), 'DisplayName', ...
+        sprintf('N=%d', S(i).N_x));
+end
+legend('show','Location','best'); grid on; set(gca,'FontSize',14);
+
+subplot(1,2,2); hold on;
+title('Imag(p) along raft');
+xlabel('x (m)'); ylabel('Im(p) (Pa)');
+for i = 1:numel(S)
+    plot(S(i).x(S(i).args.x_contact), imag(S(i).args.pressure), 'DisplayName', ...
+        sprintf('N=%d', S(i).N_x));
+end
+legend('show','Location','best'); grid on; set(gca,'FontSize',14);
+
+sgtitle('Pressure along raft vs resolution (N)');
 
 
 % Console table

@@ -95,7 +95,7 @@ function plot_surferbot_run(run_dir)
         
         ylim([-y_limit_microns, y_limit_microns]);
         xlim([-0.1 0.1]*scaleX);
-        xlabel('x (cm)'); ylabel('y (μm)');
+        xlabel('x (cm)'); ylabel('y (um)');
         title(sprintf('t = %.5f s',tvec(k)));
         set(gca,'FontSize',16);
         
