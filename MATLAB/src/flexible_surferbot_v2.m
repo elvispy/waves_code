@@ -27,6 +27,7 @@ function [U, x, z, phi, eta, args] = flexible_surferbot_v2(varargin)
     addParameter(p, 'test', false);                 % [boolean]  whether to run self-diagnostic tests
     % --- Motor parameters ---
     addParameter(p, 'motor_inertia', 0.13e-3 * 2.5e-3);  % [kg/m^2] motor rotational inertia
+    addParameter(p, 'motor_force'  , nan);              % [N] Strength of the motor force if not provided by intertia
     addParameter(p, 'forcing_width', 0.05);             % [fraction of L_raft] width of Gaussian forcing
 
     % --- Boundary condition ---
@@ -40,7 +41,11 @@ function [U, x, z, phi, eta, args] = flexible_surferbot_v2(varargin)
     
 
     % Derived parameters
-    force = args.motor_inertia * args.omega^2;
+    if isnan(args.motor_force)
+        force = args.motor_inertia * args.omega^2;
+    else
+        force = args.motor_force;
+    end
     L_c   = args.L_raft;
     t_c   = 1 / args.omega;
     m_c   = args.rho_raft * L_c;
@@ -68,15 +73,16 @@ function [U, x, z, phi, eta, args] = flexible_surferbot_v2(varargin)
     % Wavenumber
     k = dispersion_k(args.omega, args.g, args.domainDepth, args.nu, args.sigma, args.rho);
     args.k = k;
+    
     if tanh(args.k * args.domainDepth) < 0.95; warning('Domain depth not enough for dispersison relation'); end
-    if 2*pi/real(k) / (args.L_raft / args.n) <= 50 
-        
-        args.n = ceil(50 / (2*pi/real(k)) * args.L_raft);
+    
+    if 2*pi/real(k) / (args.L_raft / args.n) <= 20     
+        args.n = ceil(20 / (2*pi/real(k)) * args.L_raft);
         args.n = args.n + mod(args.n, 2) + 1;
         warning('Number of points in x direction too small. Changing n to %d', args.n); 
     end
     if isnan(args.L_domain) || args.L_domain <= 10 * 2*pi/k 
-        args.L_domain = max(args.L_raft * 3, round(10*2*pi/real(k), 2, 'significant')); 
+        args.L_domain = max(args.L_raft/2 * 3, round(10*2*pi/real(k), 2, 'significant')); 
     end
     % Grid
     L_domain_adim = ceil(args.L_domain / L_c);
@@ -119,8 +125,9 @@ function [U, x, z, phi, eta, args] = flexible_surferbot_v2(varargin)
     args.N = N; args.M = M; args.dx = dx * L_c; args.dz = dz * L_c;
     args.t_c = t_c; args.L_c = L_c; args.m_c = m_c;
 
-    [U, power, thrust, eta] = calculate_surferbot_outputs(args, phi, phi_z);
+    [U, power, thrust, eta, p] = calculate_surferbot_outputs(args, phi, phi_z);
     
+    args.pressure = p;
     args.k = k; args.power = power; args.thrust = thrust;
     phi = full(reshape(phi * L_c^2 / t_c, M, N));
     args.phi_z = full(reshape(phi_z * L_c / t_c, M, N));
