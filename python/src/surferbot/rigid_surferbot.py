@@ -43,12 +43,12 @@ def rigidSolver(rho, omega, nu, g, L_raft, L_domain, sigma, x_A, F_A, n):
     C14 = -(4.0j * nu / (omega * L_c**2)) / (g / (L_c * omega**2))
 
     # Kinematic boundary conditions
-    # Equation 2 (inside the raft) # TODO: check coefficients
-    C21 = 1.0
+    # Equation 2 (inside the raft) 
+    C21 = 1.0   # N operator accounted for in equation building
     C22 = -1.0j
     C23 = -1.0j 
 
-    # Equation 3 (outside the raft) # TODO: check coefficients
+    # Equation 3 (outside the raft) 
     C31 = 1.0j
     C32 = -2 * nu / (omega * L_c**2)
     C33 = -1.0
@@ -110,9 +110,9 @@ def rigidSolver(rho, omega, nu, g, L_raft, L_domain, sigma, x_A, F_A, n):
     # Total unknowns: 2p - n + 2
 
     # Equation 1
-    E11_L = C11 + (C12 + C14) * d_dx_left**2 + C13 # phi_left
+    E11_L = C11 * N + (C12 * N + C14) * d_dx_left**2 + C13 # phi_left
     print(f"E11_1L: {E11_L.shape}")
-    E11_R = C11 + (C12 + C14) * d_dx_right**2 + C13 # phi_right
+    E11_R = C11 * N + (C12 * N + C14) * d_dx_right**2 + C13 # phi_right
 
     # Equation 2
     E21_C = C21 * N # phi_center
@@ -123,6 +123,7 @@ def rigidSolver(rho, omega, nu, g, L_raft, L_domain, sigma, x_A, F_A, n):
 
     # Equation 3
     E31_L = E31_R = C33 * N # phi_left, phi_right
+    print(f"E31_L: {E31_L.shape}") # TODO: debugging, current shape is (21,21), should be (210,210)
     E32_L = C31 + C32 * d_dx_left**2 # eta_left
     E32_R = C31 + C32 * d_dx_right**2 # eta_right
 
@@ -133,7 +134,7 @@ def rigidSolver(rho, omega, nu, g, L_raft, L_domain, sigma, x_A, F_A, n):
     E42_C = C44 * integral # eta_center
     E43 = C41 # theta
 
-    print(f"integral shape: {integral.shape}") # debugging
+    print(f"integral shape: {integral.shape}")
     print(f"E5: {(x[x_contact] @ (C53 + C55 * d_dx_raft**2)).shape}")
     # Equation 5
     E51_C = integral @ (x[x_contact] @ (C53 + C55 * d_dx_raft**2)) # phi_center
@@ -141,26 +142,30 @@ def rigidSolver(rho, omega, nu, g, L_raft, L_domain, sigma, x_A, F_A, n):
     E54 = C51 # zeta
 
     # Stacking equations
+    # zero matrices of different shapes
+    O_PN = jnp.zeros(((p - n)//2, n))         # zero matrix of size (p-n) x (n)
+    O_NP = jnp.zeros((n, (p - n)//2))         # zero matrix of size (n) x (p-n)
+    O_PP = jnp.zeros(((p - n)//2, (p - n)//2)) # zero matrix of size (p-n)/2 x (p-n)/2
+    O_NN = jnp.zeros((n, n))                 # zero matrix of size (n) x (n)
+    O_P1 = jnp.zeros(((p - n)//2, 1))         # zero matrix of size (p-n)/2 x 1
+    O_1P = jnp.zeros((1, (p - n)//2))         # zero matrix of size 1 x (p-n)/2
+
     # E1
-    z_vec = jnp.zeros_like(E11_L) # not sure if this is right, fix later
     print(f"E1 shape check: {E11_L.shape}, {E11_R.shape}") # debugging
-    print(f"z_vec shape check: {z_vec.shape}")
-    E1_L = jnp.stack([E11_L, z_vec, z_vec, z_vec, z_vec, z_vec, z_vec, z_vec], axis = 1)
-    E1_R = jnp.stack([z_vec, z_vec, E11_R, z_vec, z_vec, z_vec, z_vec, z_vec], axis = 1)
+    print(f"z_vec shape check: {O_PN.shape}")
+    E1_L = jnp.hstack([E11_L, O_PN, O_PP, O_PP, O_PN, O_PP, O_P1, O_P1])
+    E1_R = jnp.hstack([O_PP, O_PN, E11_R, O_PP, O_PN, O_PP, O_P1, O_P1])
     E1 = jnp.stack([E1_L, E1_R], axis = 0) # stacking left and right parts
 
-    # E2 # TODO: need to change zeros shape
-    E2 = jnp.stack([0, E21_C, 0, 0, 0, 0, E23, E24], axis = 1)
+    # E2 
+    E2 = jnp.hstack([O_NP, E21_C, O_NP, O_NP, O_NN, O_NP, E23, E24])
 
     # E3
-    E3_L = jnp.stack([E31_L, 0, 0, E32_L, 0, 0, 0, 0], axis = 1)
-    E3_R = jnp.stack([0, 0, E31_R, 0, 0, E32_R, 0, 0], axis = 1)
+    E3_L = jnp.hstack([E31_L, O_PN, O_PP, E32_L, O_PN, O_PP, O_P1, O_P1])
+    E3_R = jnp.hstack([O_PN, O_PN, E31_R, O_PN, O_PN, E32_R, O_P1, O_P1])
     
     # Boundary conditions # TODO: check this block
     k = dispersion_k(omega, g, 0, nu, sigma, rho) # Complex wavenumber 
-    
-    E3_L = E3_L.loc(0).set(jnp.zeros(E3_L.shape[1])) # TODO: idk if this is acc necessary
-    E3_R = E3_R.loc(0).set(jnp.zeros(E3_L.shape[1]))
 
     # radiative boundary conditions TODO: check indexing
     E3_L = E3_L.at[0, 0].set(1.0)
@@ -175,8 +180,8 @@ def rigidSolver(rho, omega, nu, g, L_raft, L_domain, sigma, x_A, F_A, n):
     E3 = jnp.stack([E3_L, E3_R], axis = 0) # stacking left and right parts
 
     # E4, E5
-    E4 = jnp.stack([0, E41_C, 0, 0, E42_C, 0, E43, 0], axis = 1)
-    E5 = jnp.stack([0, E51_C, 0, 0, E52_C, 0, 0, E54], axis = 1)
+    E4 = jnp.hstack([O_1P, E41_C, O_1P, O_1P, E42_C, O_1P, E43, 0])
+    E5 = jnp.hstack([O_1P, E51_C, O_1P, O_1P, E52_C, O_1P, 0, E54])
 
     # Concatenate 
     A = jnp.stack([E1, E2, E3, E4, E5], axis = 0)
