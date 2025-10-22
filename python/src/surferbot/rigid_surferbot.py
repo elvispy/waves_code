@@ -30,10 +30,11 @@ def rigidSolver(rho, omega, nu, g, L_raft, L_domain, sigma, x_A, F_A, n):
     t_c = 1/omega
 
     # Equation setup
-    DtN = DtN_generator(n)
+    DtN_n = DtN_generator(n)
     dx = 1/n
-    N = DtN / (L_raft / n) # operator
-    print(len(N))
+    N = DtN_n / (L_raft / n) # operator
+    print(f"N shape: {N.shape}") if DEBUG else None
+
     integral = simpson_weights(n, dx)
 
     # Equation 1 (Bernoulli equation)
@@ -73,6 +74,10 @@ def rigidSolver(rho, omega, nu, g, L_raft, L_domain, sigma, x_A, F_A, n):
     L_domain_adim = jnp.floor(L_domain / L_c) - jnp.floor(L_domain/L_c) % 2 + 1 # We make it odd (for simpson integration)
     p = jnp.int32(n * L_domain_adim / L_raft_adim) # total number of points in the domain
     print(f"Total number of points in the domain: {p}")
+
+    DtN_np = DtN_generator((p-n)//2)
+    N_p = DtN_np / (L_raft / n) # operator for outside raft?
+
         
     x = jnp.linspace(-L_domain_adim/2, L_domain_adim/2, p)
     x_contact = abs(x) <= L_raft_adim/2; H = sum(x_contact == True) 
@@ -94,9 +99,10 @@ def rigidSolver(rho, omega, nu, g, L_raft, L_domain, sigma, x_A, F_A, n):
     # Used for E4, E5
     d_dx_raft = Diff(axis=0, grid=grid_x[left_raft_boundary:right_raft_boundary], acc=2, shape=(H,))
 
+    # TODO: at some point you mixed up thetas and zetas....
     # Building matrix (Ax = b)
-    # [E11_L][0]    [0]     [0]     [0]    [0]     [0]  [0]          | [phi_left]         [0]
-    # [0]     [0]    [E11_R][0]     [0]    [0]     [0]  [0]          | [phi_center]       [0]
+    # [E11_L] [0]    [0]     [0]     [0]    [0]     [0]  [0]         | [phi_left]         [0]
+    # [0]     [0]    [E11_R] [0]     [0]    [0]     [0]  [0]         | [phi_center]       [0]
     # [0]     [E21_C][0]     [0]     [0]    [0]     [E23][E24]       | [phi_right]        [0]
     # [E31_1L][0]    [0]     [E32_1L][0]    [0]     [0]  [0]         | [eta_left]         [0]
     # [0]     [0]    [E31_2R][0]     [0]    [E32_2R][0]  [0]         | [eta_center]       [0]
@@ -110,19 +116,19 @@ def rigidSolver(rho, omega, nu, g, L_raft, L_domain, sigma, x_A, F_A, n):
     # Total unknowns: 2p - n + 2
 
     # Equation 1
-    E11_L = C11 * N + (C12 * N + C14) * d_dx_left**2 + C13 # phi_left
+    E11_L = C11 * N_p + (C12 * N_p + C14) * d_dx_left**2 + C13 # phi_left
     print(f"E11_1L: {E11_L.shape}")
-    E11_R = C11 * N + (C12 * N + C14) * d_dx_right**2 + C13 # phi_right
+    E11_R = C11 * N_p + (C12 * N_p + C14) * d_dx_right**2 + C13 # phi_right
 
     # Equation 2
     E21_C = C21 * N # phi_center
     print(f"E21_C: {E21_C.shape}")
-    E23 = C22 # theta
+    E23 = C22 
     E24 = C23 * x[x_contact] # zeta
     print(f"E24: {(C23 * x[x_contact]).shape}")
 
     # Equation 3
-    E31_L = E31_R = C33 * N # phi_left, phi_right
+    E31_L = E31_R = C33 * N_p # phi_left, phi_right
     print(f"E31_L: {E31_L.shape}") # TODO: debugging, current shape is (21,21), should be (210,210)
     E32_L = C31 + C32 * d_dx_left**2 # eta_left
     E32_R = C31 + C32 * d_dx_right**2 # eta_right
@@ -176,6 +182,7 @@ def rigidSolver(rho, omega, nu, g, L_raft, L_domain, sigma, x_A, F_A, n):
     # raft fluid boundary conditions
     E3_L = E3_L.at[0, p].set(1) # TODO: unsure what this is supposed to set to
     E3_R = E3_R.at[-1, 2*p-n-1].set(1)
+    print(f"E3_L shape: {E3_L.shape}, E3_R shape: {E3_R.shape}") # debugging
 
     E3 = jnp.stack([E3_L, E3_R], axis = 0) # stacking left and right parts
 
