@@ -126,8 +126,8 @@ CC = idxContact;
 
 S2D{1, 1}(idxContact([1 2 end-1 end]), :) = 0; 
 S2D{1, 2}(idxContact([1 2 end-1 end]), :) = 0; 
-S2D{1, 1}(CC, CC) = -2*Gamma*Lambda / Re * Dx2Raft + 1.0i * Lambda * Gamma * dx^2 * I_NM(CC, CC);
-S2D{1, 2}(CC, CC) = (1i - 1.0i * Gamma * Lambda/Fr^2) * dx^2 * I_NM(CC, CC) + (-1.0i * kappa/dx^2) * Dx4Raft;
+S2D{1, 1}(CC, CC) = 1.0i * Lambda * Gamma * dx^2 * I_NM(CC, CC) + 2*Gamma*Lambda / Re * Dx2Raft;
+S2D{1, 2}(CC, CC) = (1.0i - 1.0i * Gamma * Lambda/Fr^2) * dx^2 * I_NM(CC, CC) + (-1.0i * kappa/dx^2) * Dx4Raft;
 % Boundary conditions: No bending moment
 S2D{1, 2}(idxContact(2), CC)     = Dx2Raft(1, :);
 S2D{1, 2}(idxContact(end-1), CC) = Dx2Raft(end, :);
@@ -211,6 +211,7 @@ else
     % this whole equation by dx^2, with an overall contribution of dx. 
     % WE WILL ADD THIS dx after solving for x. 
     b(idxContact) = - dx^2 * motor_weights(:).';   % only on raft contact nodes
+    % THe next two equations are boundary conditions:
     b(idxContact(1:2)) = 0;
     b(idxContact((end-1):end)) = 0;
 end
