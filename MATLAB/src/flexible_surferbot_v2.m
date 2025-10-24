@@ -81,7 +81,7 @@ function [U, x, z, phi, eta, args] = flexible_surferbot_v2(varargin)
         args.n = args.n + mod(args.n, 2) + 1;
         warning('Number of points in x direction too small. Changing n to %d', args.n); 
     end
-    if isnan(args.L_domain) || args.L_domain <= 10 * 2*pi/k 
+    if isnan(args.L_domain) || args.L_domain <= 5 * 2*pi/k 
         args.L_domain = max(args.L_raft/2 * 3, round(10*2*pi/real(k), 2, 'significant')); 
     end
     % Grid

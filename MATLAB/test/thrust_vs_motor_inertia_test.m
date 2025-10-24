@@ -8,15 +8,16 @@ addpath('../src');
 L_raft = 0.05;
 base = struct( ...
     'sigma',72.2e-3, 'rho',1000, 'nu',0, 'g',9.81, ...
-    'L_raft',L_raft, 'motor_position',0.3*L_raft/2, 'd',L_raft/2, ...
-    'EI',3.0e9*3e-2*(9.9e-4)^3/12, 'rho_raft',0.018*10.0, ...
-    'domainDepth',0.5, 'n',51, 'M',400, ...
+    'L_raft',L_raft, 'motor_position',0.4*L_raft/2, 'd',L_raft/2, ...
+    'EI',100*3.0e9*3e-2*(9.9e-4)^3/12, 'rho_raft',0.018*10.0, ...
+    'domainDepth',0.5, 'L_domain', 3*L_raft, 'n',101, 'M',200, ...
     'motor_inertia',0.13e-3*2.5e-3, 'BC','radiative', ...
-    'omega',2*pi*5, 'ooa', 4);
+    'omega',2*pi*2, 'ooa', 4);
+
 
 % --- sweep in J ---
-J_list = base.motor_inertia * [1 2 4];
-proto = struct('x',[],'eta',[],'J',NaN,'thrust_N',NaN, 'args', struct());
+J_list = base.motor_inertia * [1/4 1/2 1 2 4 8 16];
+proto = struct('x',[],'eta',[],'J',NaN,'thrust_N',NaN, 'args', struct(), 'LH', nan);
 S = repmat(proto,1,numel(J_list));
 for i = 1:numel(J_list)
     p = base; p.motor_inertia = J_list(i);
@@ -94,9 +95,10 @@ title('\alpha vs expected scaling');
 
 % Thrust vs J (diagnostic)
 figure(3); clf;
-plot(J_list, [S.thrust_N], 'o-','LineWidth',1.2);
-xlabel('Motor inertia J (kg·m^2)'); ylabel('Thrust (N)'); set(gca,'FontSize',13);
-title('Thrust vs motor inertia');
+plot(J_list, [S.thrust_N], 'o-','LineWidth',1.2, 'DisplayName', 'FT'); hold on;
+plot(J_list, [S.LH],       'x-','LineWidth',1.8, 'DisplayName', 'LH'); 
+xlabel('Motor inertia J (kg * m^2)'); ylabel('Thrust (N)'); set(gca,'FontSize',13);
+title('Thrust vs motor inertia'); legend('show','Location','best');
 
 % --- console summary ---
 T = table(J_list.', alpha.', propErr.', scaleErr.', [S.thrust_N].', ...
@@ -117,6 +119,7 @@ function S = run_case_eta_only(p)
     'n',p.n,'M',p.M,'motor_inertia',p.motor_inertia,'BC',p.BC);
 
 S = struct('x',x,'eta',eta,'J',p.motor_inertia, ...
-           'thrust_N',args.thrust,'args',args);
+           'thrust_N',args.thrust,'args',args, ...
+           'LH', 1/4 * p.rho * p.omega^2 / args.k * (abs(eta(1))^2 - abs(eta(end))^2));
 end
 

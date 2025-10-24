@@ -29,8 +29,8 @@ function [U, power, thrust, eta, p] = calculate_surferbot_outputs(args, phi, phi
     end
 
     % ---- Raft-only derivatives on the surface ----
-    mask = args.x_contact(:);                 % length-N logical
-    Nr   = sum(mask);
+    contact_mask = args.x_contact(:);                 % length-N logical
+    Nr   = sum(contact_mask);
 
     % 1D FD operators on the raft grid only (scale by actual spacing)
     [D1r, ~] = getNonCompactFDmatrix(Nr, 1, 1, args.ooa);   % d/dx
@@ -40,12 +40,12 @@ function [U, power, thrust, eta, p] = calculate_surferbot_outputs(args, phi, phi
 
     % Surface elevation ? and ?_x restricted to raft
     eta_adim = (1/(1i*args.omega*args.t_c)) * phi_z(end,:).';  % length-N
-    eta_r    = eta_adim(mask);                                  % length-Nr
+    eta_r    = eta_adim(contact_mask);                                  % length-Nr
     eta_x_r  = D1r * eta_r;
 
     % Surface potential restricted to raft
     phi_s   = phi(end,:).';           % length-N
-    phi_s_r = phi_s(mask);            % length-Nr
+    phi_s_r = phi_s(contact_mask);            % length-Nr
 
     % Pressure on raft
     P1_r   = (1i*args.nd_groups.Gamma) * phi_s_r ...

@@ -80,9 +80,10 @@ function plot_surferbot_run(run_dir)
     scaleY = 1e6;  % µm
     
     % --- DYNAMIC Y-LIMITS ---
-    sc = max(abs(eta),[],'all');
+    sy = max(abs(eta),[],'all');
+    sx = max(abs(x(args.x_contact)), [], 'all');
     plot_buffer = 1.4; 
-    y_limit_microns = sc * scaleY * plot_buffer;
+    y_limit_microns = sy * scaleY * plot_buffer;
     
     fig = figure('Visible','on','Position',[200 200 900 240]);
     
@@ -94,7 +95,7 @@ function plot_surferbot_run(run_dir)
              'r','LineWidth',3);
         
         ylim([-y_limit_microns, y_limit_microns]);
-        xlim([-0.1 0.1]*scaleX);
+        xlim([-sx, sx]*scaleX * 5);
         xlabel('x (cm)'); ylabel('y (um)');
         title(sprintf('t = %.5f s',tvec(k)));
         set(gca,'FontSize',16);

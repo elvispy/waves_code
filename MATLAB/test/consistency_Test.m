@@ -7,7 +7,7 @@
 addpath '../src/'
 
 % Frequency range (Hz)
-f_values     = 1;
+f_values     = 5;
 omega_values = 2*pi*f_values;
 
 % Preallocate
@@ -21,7 +21,7 @@ for ii = 1:numel(omega_values)
     omega = omega_values(ii);
 
     % Run simulation (defaults elsewhere)
-    L_raft = 0.1; %(meters)
+    L_raft = 0.05; %(meters)
     [~, x, z, phi, eta, args] = flexible_surferbot_v2( ...
         'sigma'         , 72.2e-3      , ...   % [N m?¹] surface tension
         'rho'           , 1000.0       , ...   % [kg m?³] water density
