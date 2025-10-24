@@ -7,9 +7,9 @@
 
 addpath '../src/'
 % Frequency range (Hz)
-f_values     = 3:.2:8;
+f_values     = 2:3;
 omega_values = 2*pi*f_values;
-L_raft       = 0.5;
+L_raft       = 0.1;
 
 % Preallocate
 thrust_values   = zeros(size(omega_values));
@@ -22,11 +22,11 @@ for ii = 1:numel(omega_values)
     omega = omega_values(ii);
 
     % Run simulation (defaults elsewhere)
-    [~, x, z, phi, eta, args] = flexible_surferbot_v2('sigma',72.2e-3, 'rho',1000, 'nu',0*1e-6, 'g',9.81, ...
+    [~, x, z, phi, eta, args] = flexible_surferbot_v2('sigma',72.2e-3, 'rho',1000, 'nu',1e-6, 'g',9.81, ...
             'L_raft',L_raft, 'motor_position',0.4*L_raft/2, 'd',L_raft/2, ...
             'EI',100*3.0e9*3e-2*(9.9e-4)^3/12, 'rho_raft',0.018*10.0, ...
-            'domainDepth',0.5, 'L_domain', 3*L_raft, 'n',1001, 'M',200, ...
-            'motor_inertia',0.13e-3*2.5e-3, 'BC','radiative', ...
+            'domainDepth',0.5, 'L_domain', 3*L_raft, 'n',101, 'M',200, ...
+            'motor_inertia',0.5*0.13e-3*2.5e-3, 'BC','radiative', ...
             'omega',omega, 'ooa', 4);
     
     % Thrust from solver
@@ -38,14 +38,18 @@ for ii = 1:numel(omega_values)
     sigma = args.sigma;
     k     = real(args.k);
     
-    Sxx_values(ii) = (rho*g/4 + 3/4*sigma*k^2) * (abs(eta(1))^2 - abs(eta(end))^2);
-    LH_values(ii)  = 1/4 * rho * omega^2 / k *   (abs(eta(1))^2 - abs(eta(end))^2);
+    
 
     % Calculate velocity as gradient of potential
     dx = abs(x(1) - x(2)); dz = abs(z(1) - z(2));
-    [Dx, ~] = getNonCompactFDmatrix2D(args.M,args.N,dx,dz,1,args.ooa);
+    [Dx, ~] = getNonCompactFDmatrix2D(args.N,args.M,dx,dz,1,args.ooa);
     u = reshape(Dx * reshape(phi, args.M * args.N, 1), args.M, args.N); 
 
+    
+    Sxx_values(ii) = (rho*g/4 + 3/4*sigma*k^2) * (abs(eta(1))^2 - abs(eta(end))^2);
+    % For gravity waves
+    LH_values(ii)  = 1/4 * rho * omega^2 / k *   (abs(eta(1))^2 - abs(eta(end))^2);
+    % Integrating the z velocity
     momentum_values(ii) =  rho/2 * trapz(z, abs(u(:, 1)).^2 - abs(u(:, end)).^2);
     
     % We add surface tension contributions
@@ -66,34 +70,34 @@ L     = args.L_raft;
 rho   = args.rho;
 g     = args.g;
 
-omega_star  = omega_values .* sqrt(L/g);     
-Fm_scale    = rho * g * L;                 
+omega_star  = omega_values/(2*pi) ; %.* sqrt(L/g);     
+Fm_scale    = 1; %rho * g * L;                 
 thrust_star = thrust_values   ./ Fm_scale;
 Sxx_star    = Sxx_values      ./ Fm_scale;
 LH_star     = LH_values       ./ Fm_scale;
 mom_star    = momentum_values ./ Fm_scale;
 % --- Plot (loglog) ---
-figure(1); clf;
+figure(1); %clf;
 semilogx(omega_star, thrust_star, 'k-',  'LineWidth', 2); hold on;   % numerical thrust
 semilogx(omega_star, LH_star,     'b--', 'LineWidth', 2); hold on;
 semilogx(omega_star, mom_star,    'r--', 'LineWidth', 2); hold on;
-semilogx(omega_star, Sxx_star,    'g--', 'LineWidth', 2); hold off;
+semilogx(omega_star, Sxx_star,    'g--', 'LineWidth', 2); %hold off;
 
 
 grid on; set(gca, 'Box','on', 'TickDir','out');
 set(gca, 'FontSize', 16)
-xlabel('$\omega \sqrt{L/g}$', 'Interpreter','Latex');
-ylabel('$F /\rho g L^2$', 'Interpreter','Latex');
+xlabel('$f$', 'Interpreter','Latex');
+ylabel('$F/m$', 'Interpreter','Latex');
 title('Nondimensional thrust vs. frequency');
 
 legend({'Numerical thrust', 'LH', 'Momentum', 'Radiation Stress'}, 'Location','best', 'Interpreter','tex');
 
 
-fprintf('\n   f [Hz]     w*       M/(rho*g*L^2)   FT/(rho*g*L^2)  Sxx/(rho*g*L^2)\n');
+fprintf('\n   f [Hz]     w*          M (N/m)       FT(N/m)        LH (N/m)\n');
 fprintf('------------------------------------------------------------------------\n');
 
 for ii = 1:numel(f_values)
     fprintf('%8.2f   %8.3g   %14.4e   %14.4e   %14.4e\n', ...
-        f_values(ii), omega_star(ii), mom_star(ii), thrust_star(ii), Sxx_star(ii));
+        f_values(ii), omega_star(ii), mom_star(ii), thrust_star(ii), LH_star(ii));
 end
 
