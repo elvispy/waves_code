@@ -19,7 +19,7 @@ def rigidSolver(rho, omega, nu, g, L_raft, L_domain, sigma, x_A, F_A, n):
     - nu: kinematic viscosity (m^2/s)
     - sigma: surface tension (N)
     - n: number of points in raft
-    - p: total number of points in domain (x-direction) #TODO: probably change this to not get mixed up with the other p in type-up
+    - p: total number of points in domain (x-direction) # TODO: probably change this to not get mixed up with the other p in type-up
     Outputs:
     - 
     '''
@@ -29,12 +29,31 @@ def rigidSolver(rho, omega, nu, g, L_raft, L_domain, sigma, x_A, F_A, n):
     m_c = rho * L_c**2
     t_c = 1/omega
 
-    # Equation setup
-    DtN_n = DtN_generator(n)
-    dx = 1/n
-    N = DtN_n / (L_raft / n) # operator
-    print(f"N shape: {N.shape}") if DEBUG else None
+    # Raft Points
+    L_raft_adim = L_raft / L_c
+    L_domain_adim = jnp.floor(L_domain / L_c) - jnp.floor(L_domain/L_c) % 2 + 1 # We make it odd (for simpson integration)
+    p = jnp.int32(n * L_domain_adim / L_raft_adim) # total number of points in the domain
+    print(f"Total number of points in the domain: {p}")
 
+    # Equation setup
+    DtN = DtN_generator(p)
+    dx = 1/n
+    N = DtN / (L_raft / n) # operator
+    print(f"N shape: {N.shape}")
+
+    # Splitting N 
+    N11 = N[0 : (p - n)//2, 0 : (p - n)//2]
+    N12 = N[0 : (p - n)//2, (p - n)//2 : (p - n)//2 + n]
+    N13 = N[0 : (p - n)//2, (p - n)//2 + n : p]
+
+    N21 = N[(p - n)//2 : (p - n)//2 + n, 0 : (p - n)//2]
+    N22 = N[(p - n)//2 : (p - n)//2 + n, (p - n)//2 : (p - n)//2 + n]
+    N23 = N[(p - n)//2 : (p - n)//2 + n, (p - n)//2 + n : p]
+    
+    N31 = N[(p - n)//2 + n : p, 0 : (p - n)//2]
+    N32 = N[(p - n)//2 + n : p, (p - n)//2 : (p - n)//2 + n]
+    N33 = N[(p - n)//2 + n : p, (p - n)//2 + n : p]
+            
     integral = simpson_weights(n, dx)
 
     # Equation 1 (Bernoulli equation)
@@ -59,26 +78,19 @@ def rigidSolver(rho, omega, nu, g, L_raft, L_domain, sigma, x_A, F_A, n):
     C41 = -m_c
     C42 = -F_A / (rho * L_c**3 * omega**2) # constant term
     C43 = 1.0j
-    C44 = g / (omega**2 * L_c)
-    C45 = 2 * nu / (omega * L_c**2)
+    C44 = g / (omega**2 * L_c) 
+    C45 = 0.5 * g / (omega**2 * L_c)
+    C46 = 2 * nu / (omega * L_c**2)
 
     # Equation 5 
     C51 = -(1/12) * m_c
     C52 = -(x_A / L_c) * (F_A / (rho * L_c**3 * omega**2)) # constant term
     C53 = 1.0j
     C54 = (g / (omega**2 * L_c))
-    C55 = (2 * nu / (omega * L_c**2))
+    C55 = 0.5 * (g / (omega**2 * L_c))
+    C56 = (2 * nu / (omega * L_c**2))
 
-    # Raft Points
-    L_raft_adim = L_raft / L_c
-    L_domain_adim = jnp.floor(L_domain / L_c) - jnp.floor(L_domain/L_c) % 2 + 1 # We make it odd (for simpson integration)
-    p = jnp.int32(n * L_domain_adim / L_raft_adim) # total number of points in the domain
-    print(f"Total number of points in the domain: {p}")
-
-    DtN_np = DtN_generator((p-n)//2)
-    N_p = DtN_np / (L_raft / n) # operator for outside raft?
-
-        
+    # Grid setup
     x = jnp.linspace(-L_domain_adim/2, L_domain_adim/2, p)
     x_contact = abs(x) <= L_raft_adim/2; H = sum(x_contact == True) 
     x_free    = abs(x) >  L_raft_adim/2
@@ -99,16 +111,15 @@ def rigidSolver(rho, omega, nu, g, L_raft, L_domain, sigma, x_A, F_A, n):
     # Used for E4, E5
     d_dx_raft = Diff(axis=0, grid=grid_x[left_raft_boundary:right_raft_boundary], acc=2, shape=(H,))
 
-    # TODO: at some point you mixed up thetas and zetas....
     # Building matrix (Ax = b)
-    # [E11_L] [0]    [0]     [0]     [0]    [0]     [0]  [0]         | [phi_left]         [0]
-    # [0]     [0]    [E11_R] [0]     [0]    [0]     [0]  [0]         | [phi_center]       [0]
-    # [0]     [E21_C][0]     [0]     [0]    [0]     [E23][E24]       | [phi_right]        [0]
-    # [E31_1L][0]    [0]     [E32_1L][0]    [0]     [0]  [0]         | [eta_left]         [0]
-    # [0]     [0]    [E31_2R][0]     [0]    [E32_2R][0]  [0]         | [eta_center]       [0]
-    # [0]     [E41_C][0]     [0]     [E42_C][0]     [E43][0]         | [eta_right]        [0]
-    # [0]     [E51_C][0]     [0]     [E52_C][0]     [0]  [E54]       | [zeta]             [C42]
-    #                                                                | [theta]            [C52]
+    # [E11_L] [0]    [0]     [0]     [0]     [0]  [0]         | [phi_left]         [0]
+    # [0]     [0]    [E11_R] [0]     [0]     [0]  [0]         | [phi_center]       [0]
+    # [0]     [E21_C][0]     [0]     [0]     [E23][E24]       | [phi_right]        [0]
+    # [E31_1L][0]    [0]     [E32_1L][0]     [0]  [0]         | [eta_left]         [0]
+    # [0]     [0]    [E31_2R][0]     [E32_2R][0]  [0]         | [eta_center]       [0]
+    # [0]     [E41_C][0]     [0]     [0]     [0]  [E44]       | [eta_right]        [0]
+    # [0]     [E51_C][0]     [0]     [0]     [E53]  [0]       | [theta]            [C42]
+    #                                                         | [zeta]             [C52]
     # Checking square dimensions: 
     # E1: p-n equations, E2: n equations, E: p-n equations, E4: 1 equation, E5: 1 equation
     # Total equations: 2p - n + 2
@@ -116,90 +127,85 @@ def rigidSolver(rho, omega, nu, g, L_raft, L_domain, sigma, x_A, F_A, n):
     # Total unknowns: 2p - n + 2
 
     # Equation 1
-    E11_L = C11 * N_p + (C12 * N_p + C14) * d_dx_left**2 + C13 # phi_left
+    E11_L = C11 * N11 + d_dx_left**2 * (C12 * N11 + C14) + C13 # phi_left
     print(f"E11_1L: {E11_L.shape}")
-    E11_R = C11 * N_p + (C12 * N_p + C14) * d_dx_right**2 + C13 # phi_right
+    E11_R = C11 * N11 + d_dx_right**2 * (C12 * N11 + C14) + C13 # phi_right
 
     # Equation 2
-    E21_C = C21 * N # phi_center
+    E21_C = C21 * N22 # phi_center
     print(f"E21_C: {E21_C.shape}")
     E23 = C22 
     E24 = C23 * x[x_contact] # zeta
     print(f"E24: {(C23 * x[x_contact]).shape}")
 
     # Equation 3
-    E31_L = E31_R = C33 * N_p # phi_left, phi_right
-    print(f"E31_L: {E31_L.shape}") # TODO: debugging, current shape is (21,21), should be (210,210)
+    E31_L = C31 * N31 # phi_left
+    E31_R = C33 * N33 # phi_left, phi_right
+    print(f"E31_L: {E31_L.shape}") 
     E32_L = C31 + C32 * d_dx_left**2 # eta_left
     E32_R = C31 + C32 * d_dx_right**2 # eta_right
 
     print(f"integral shape: {integral.shape}")
-    print(f"E41: {(C43 + C45 * d_dx**2).shape}") 
+    print(f"E41: {(C43 + C46 * d_dx**2).shape}") 
     # Equation 4
-    E41_C = integral @ (C43 + C45 * d_dx_raft**2) # phi_center
-    E42_C = C44 * integral # eta_center
-    E43 = C41 # theta
+    E41_C = integral @ (C43 + C46 * d_dx_raft**2) # phi_center
+    E43 = integral @ (C45 * x[x_contact]) # theta
+    E44 = C41 + C44 # zeta # TODO: took out integral here because i think you can just pull this out regardless
 
     print(f"integral shape: {integral.shape}")
-    print(f"E5: {(x[x_contact] @ (C53 + C55 * d_dx_raft**2)).shape}")
+    print(f"E5: {(x[x_contact] @ (C53 + C56 * d_dx_raft**2)).shape}")
     # Equation 5
-    E51_C = integral @ (x[x_contact] @ (C53 + C55 * d_dx_raft**2)) # phi_center
-    E52_C = C54 * integral # eta_center
-    E54 = C51 # zeta
+    E51_C = integral @ (x[x_contact] @ (C53 + C56 * d_dx_raft**2)) # phi_center
+    E53 = C51 + integral @ (x[x_contact] @ (C55 * x[x_contact])) # theta # TODO: check this @ or * not sure
+    E54 = integral @ (x[x_contact] * C54) # zeta
 
     # Stacking equations
-    # zero matrices of different shapes
-    O_PN = jnp.zeros(((p - n)//2, n))         # zero matrix of size (p-n) x (n)
-    O_NP = jnp.zeros((n, (p - n)//2))         # zero matrix of size (n) x (p-n)
+    # Zero matrices
+    O_PN = jnp.zeros(((p - n)//2, n))          # zero matrix of size (p-n) x (n)
+    O_NP = jnp.zeros((n, (p - n)//2))          # zero matrix of size (n) x (p-n)
     O_PP = jnp.zeros(((p - n)//2, (p - n)//2)) # zero matrix of size (p-n)/2 x (p-n)/2
-    O_NN = jnp.zeros((n, n))                 # zero matrix of size (n) x (n)
-    O_P1 = jnp.zeros(((p - n)//2, 1))         # zero matrix of size (p-n)/2 x 1
-    O_1P = jnp.zeros((1, (p - n)//2))         # zero matrix of size 1 x (p-n)/2
+    O_NN = jnp.zeros((n, n))                   # zero matrix of size (n) x (n)
+    O_P1 = jnp.zeros(((p - n)//2, 1))          # zero matrix of size (p-n)/2 x 1
+    O_1P = jnp.zeros((1, (p - n)//2))          # zero matrix of size 1 x (p-n)/2
 
     # E1
     print(f"E1 shape check: {E11_L.shape}, {E11_R.shape}") # debugging
     print(f"z_vec shape check: {O_PN.shape}")
-    E1_L = jnp.hstack([E11_L, O_PN, O_PP, O_PP, O_PN, O_PP, O_P1, O_P1])
-    E1_R = jnp.hstack([O_PP, O_PN, E11_R, O_PP, O_PN, O_PP, O_P1, O_P1])
+    E1_L = jnp.hstack([E11_L, N12, N13, O_PP, O_PP, O_P1, O_P1])
+    E1_R = jnp.hstack([N11, N12, E11_R, O_PP, O_PP, O_P1, O_P1])
     E1 = jnp.stack([E1_L, E1_R], axis = 0) # stacking left and right parts
 
     # E2 
-    E2 = jnp.hstack([O_NP, E21_C, O_NP, O_NP, O_NN, O_NP, E23, E24])
+    E2 = jnp.hstack([N21, E21_C, N23, O_NP, O_NP, E23, E24])
 
     # E3
-    E3_L = jnp.hstack([E31_L, O_PN, O_PP, E32_L, O_PN, O_PP, O_P1, O_P1])
-    E3_R = jnp.hstack([O_PN, O_PN, E31_R, O_PN, O_PN, E32_R, O_P1, O_P1])
+    E3_L = jnp.hstack([E31_L, N32, N33, E32_L, O_PP, O_P1, O_P1])
+    E3_R = jnp.hstack([N31, N32, E31_R, O_PN, E32_R, O_P1, O_P1])
     
-    # Boundary conditions # TODO: check this block
+    # Boundary conditions
     k = dispersion_k(omega, g, 0, nu, sigma, rho) # Complex wavenumber 
 
-    # radiative boundary conditions TODO: check indexing
-    E3_L = E3_L.at[0, 0].set(1.0)
-    E3_L = E3_L.at[0, 1].set(-1.0j*k)
-    E3_R = E3_R.at[-1, -2].set(1.0)
-    E3_R = E3_R.at[-1, -1].set(1.0j*k)
+    E3_L[0] = jnp.zeros(2 * p - n + 2) # Zeroing first row
+    E3_R[0] = jnp.zeros(2 * p - n + 2) # Zeroing last row
 
-    # raft fluid boundary conditions
-    E3_L = E3_L.at[0, p].set(1) # TODO: unsure what this is supposed to set to
-    E3_R = E3_R.at[-1, 2*p-n-1].set(1)
-    print(f"E3_L shape: {E3_L.shape}, E3_R shape: {E3_R.shape}") # debugging
+    E3_L = E3_L.at[0, 0].set(1.0 / dx)
+    E3_L = E3_L.at[0, 1].set(-1.0j*k - (1.0 / dx))
+    E3_R = E3_R.at[-1, -2].set(1.0 / dx)
+    E3_R = E3_R.at[-1, -1].set(1.0j*k - (1.0 / dx))
 
     E3 = jnp.stack([E3_L, E3_R], axis = 0) # stacking left and right parts
 
     # E4, E5
-    E4 = jnp.hstack([O_1P, E41_C, O_1P, O_1P, E42_C, O_1P, E43, 0])
-    E5 = jnp.hstack([O_1P, E51_C, O_1P, O_1P, E52_C, O_1P, 0, E54])
+    E4 = jnp.hstack([O_1P, E41_C, O_1P, O_1P, O_1P, E43, E44])
+    E5 = jnp.hstack([O_1P, E51_C, O_1P, O_1P, O_1P, E53, E54])
 
     # Concatenate 
     A = jnp.stack([E1, E2, E3, E4, E5], axis = 0)
-    B = jnp.stack([0, 0, 0, 0, 0, 0, C42, C52], axis = 0)
-    # Boundary conditions
-    B = B.at[p].set(0)
-    B = B.at[2*p-n].set(0)
+    b = jnp.stack([0, 0, 0, 0, 0, 0, C42, C52], axis = 0)
 
     [r,c] = A.shape() # debugging
 
-    solution = jax.numpy.linalg.solve(A, B)
+    solution = jax.numpy.linalg.solve(A, b)
 
     # Splitting variables
     phi = solution[0 : p]
