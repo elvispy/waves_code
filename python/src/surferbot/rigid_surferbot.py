@@ -54,7 +54,7 @@ def rigidSolver(rho, omega, nu, g, L_raft, L_domain, sigma, x_A, F_A, n):
     N32 = N[(p - n)//2 + n : p, (p - n)//2 : (p - n)//2 + n]
     N33 = N[(p - n)//2 + n : p, (p - n)//2 + n : p]
             
-    integral = simpson_weights(n, dx)
+    integral = simpson_weights(n, dx).reshape(1, n)  # Ensure integral is a row vector
 
     # Equation 1 (Bernoulli equation)
     C11 = 1.0
@@ -134,75 +134,90 @@ def rigidSolver(rho, omega, nu, g, L_raft, L_domain, sigma, x_A, F_A, n):
     # Equation 2
     E21_C = C21 * N22 # phi_center
     print(f"E21_C: {E21_C.shape}")
-    E23 = C22 
-    E24 = C23 * x[x_contact] # zeta
-    print(f"E24: {(C23 * x[x_contact]).shape}")
+    # TODO: check if doing this explicitly is right...
+    E23 = (C23 * x[x_contact]).reshape((n, 1)) # theta
+    E24 = jnp.full((n, 1), C22) # zeta # TODO: check if this is right
 
     # Equation 3
     E31_L = C31 * N31 # phi_left
     E31_R = C33 * N33 # phi_left, phi_right
     print(f"E31_L: {E31_L.shape}") 
-    E32_L = C31 + C32 * d_dx_left**2 # eta_left
-    E32_R = C31 + C32 * d_dx_right**2 # eta_right
+    E32_L = C31 + d_dx_left**2 * C32 # eta_left
+    E32_R = C31 + d_dx_right**2 * C32 # eta_right
 
-    print(f"integral shape: {integral.shape}")
-    print(f"E41: {(C43 + C46 * d_dx**2).shape}") 
     # Equation 4
-    E41_C = integral @ (C43 + C46 * d_dx_raft**2) # phi_center
-    E43 = integral @ (C45 * x[x_contact]) # theta
-    E44 = C41 + integral * C44 # zeta # TODO: * vs @?
+    E41_C = integral @ (C43 + d_dx_raft**2 * C46) # phi_center
+    print(f"integral shape: {integral.shape}")
+    print(f"other shape E41C: {(C43 + d_dx_raft**2 * C46).shape}")
+
+    E43 = (integral @ (C45 * x[x_contact])).reshape(1,1) # theta
+    E44 = C41 + integral @ (jnp.full((n, 1), C44)) # zeta # TODO: check this
 
     print(f"integral shape: {integral.shape}")
-    print(f"E5: {(x[x_contact] @ (C53 + C56 * d_dx_raft**2)).shape}")
+    print(f"other shape E51C: {(x[x_contact] * (C53 + d_dx_raft**2 * C56)).shape}")
     # Equation 5
-    E51_C = integral @ (x[x_contact] @ (C53 + C56 * d_dx_raft**2)) # phi_center
-    E53 = C51 + integral @ (x[x_contact] @ (C55 * x[x_contact])) # theta # TODO: check this @ or * not sure
-    E54 = integral @ (x[x_contact] * C54) # zeta
+    E51_C = integral @ (x[x_contact] * (C53 + d_dx_raft**2 * C56)) # phi_center
+    E53 = (C51 + integral @ (x[x_contact] * (C55 * x[x_contact]))).reshape(1,1) # theta # TODO: check this @ or * not sure
+    E54 = (integral @ (x[x_contact] * C54)).reshape(1,1) # zeta
 
     # Stacking equations
     # Zero matrices
-    O_PN = jnp.zeros(((p - n)//2, n))          # zero matrix of size (p-n) x (n)
     O_NP = jnp.zeros((n, (p - n)//2))          # zero matrix of size (n) x (p-n)
     O_PP = jnp.zeros(((p - n)//2, (p - n)//2)) # zero matrix of size (p-n)/2 x (p-n)/2
     O_P1 = jnp.zeros(((p - n)//2, 1))          # zero matrix of size (p-n)/2 x 1
+    O_N1 = jnp.zeros((n, 1))                   # zero matrix of size (n) x 1
     O_1P = jnp.zeros((1, (p - n)//2))          # zero matrix of size 1 x (p-n)/2
 
     # E1
-    print(f"E1 shape check: {E11_L.shape}, {E11_R.shape}") # debugging
-    print(f"z_vec shape check: {O_PN.shape}")
+    print(f"E1 shape check: {E11_L.shape}, {E11_R.shape}") 
     E1_L = jnp.hstack([E11_L, N12, N13, O_PP, O_PP, O_P1, O_P1])
     E1_R = jnp.hstack([N11, N12, E11_R, O_PP, O_PP, O_P1, O_P1])
-    E1 = jnp.stack([E1_L, E1_R], axis = 0) # stacking left and right parts
 
     # E2 
     E2 = jnp.hstack([N21, E21_C, N23, O_NP, O_NP, E23, E24])
 
     # E3
     E3_L = jnp.hstack([E31_L, N32, N33, E32_L, O_PP, O_P1, O_P1])
-    E3_R = jnp.hstack([N31, N32, E31_R, O_PN, E32_R, O_P1, O_P1])
-    
+    E3_R = jnp.hstack([N31, N32, E31_R, O_PP, E32_R, O_P1, O_P1])
+
     # Boundary conditions
     k = dispersion_k(omega, g, 0, nu, sigma, rho) # Complex wavenumber 
 
-    E3_L[0] = jnp.zeros(2 * p - n + 2) # Zeroing first row
-    E3_R[0] = jnp.zeros(2 * p - n + 2) # Zeroing last row
+    E3_L = E3_L.at[0].set(jnp.zeros(2 * p - n + 2)) # Zeroing last row
+    E3_R = E3_R.at[-1].set(jnp.zeros(2 * p - n + 2)) # Zeroing last row
 
-    E3_L = E3_L.at[0, 0].set(1.0 / dx)
-    E3_L = E3_L.at[0, 1].set(-1.0j*k - (1.0 / dx))
-    E3_R = E3_R.at[-1, -2].set(1.0 / dx)
-    E3_R = E3_R.at[-1, -1].set(1.0j*k - (1.0 / dx))
-
-    E3 = jnp.stack([E3_L, E3_R], axis = 0) # stacking left and right parts
+    E3_L = E3_L.at[0, 0].set(-1.0j*k - (1.0 / dx))
+    E3_L = E3_L.at[0, 1].set(1.0 / dx)
+    E3_R = E3_R.at[-1, -2].set(-1.0j*k + (1.0 / dx)) # TODO: Not sure if this and the condition below should be swapped...
+    E3_R = E3_R.at[-1, -1].set(1.0 / dx)
 
     # E4, E5
     E4 = jnp.hstack([O_1P, E41_C, O_1P, O_1P, O_1P, E43, E44])
     E5 = jnp.hstack([O_1P, E51_C, O_1P, O_1P, O_1P, E53, E54])
 
-    # Concatenate 
-    A = jnp.stack([E1, E2, E3, E4, E5], axis = 0)
-    b = jnp.stack([0, 0, 0, 0, 0, 0, C42, C52], axis = 0)
+    print(f"E1_L shape: {E1_L.shape}")
+    print(f"E1_R shape: {E1_R.shape}")
+    print(f"E2 shape: {E2.shape}")
+    print(f"E3_L shape: {E3_L.shape}")
+    print(f"E3_R shape: {E3_R.shape}")
+    print(f"E4 shape: {E4.shape}")
+    print(f"E5 shape: {E5.shape}")  
 
-    [r,c] = A.shape() # debugging
+    # Concatenate 
+    A = jnp.vstack([E1_L, E1_R, E2, E3_L, E3_R, E4, E5])
+    b = jnp.vstack([O_P1, O_N1, O_P1, O_P1, O_P1, C42, C52])
+
+    print(f"A shape: {A.shape}")
+    print(f"b shape: {b.shape}")
+
+    print(f"Determinant of A: {jnp.linalg.det(A)}")
+    print("Any zero rows:", jnp.any(jnp.all(A == 0, axis=1)))
+    print("Any zero columns:", jnp.any(jnp.all(A == 0, axis=0)))
+
+    print("Rank of matrix:", jnp.linalg.matrix_rank(A))
+    print("Shape of matrix:", A.shape)
+    if jnp.linalg.matrix_rank(A) < min(A.shape):
+        print("Matrix has linearly dependent rows or columns.")
 
     solution = jax.numpy.linalg.solve(A, b)
 
@@ -212,8 +227,11 @@ def rigidSolver(rho, omega, nu, g, L_raft, L_domain, sigma, x_A, F_A, n):
     zeta = solution[p - n]
     theta = solution[p - n + 1]
 
-    return (phi, eta, zeta, theta, r, c)
+    return (phi, eta, zeta, theta)
 
 if __name__ == "__main__":
-    rigidSolver(1000, 10, 1e-6, 9.81, 0.05, 1, 0.072, 0.02, 1, 21)
-
+    A = rigidSolver(1000, 10, 1e-6, 9.81, 0.05, 1, 0.072, 0.02, 1, 21)
+    print(A[0])
+    print(A[1])
+    print(A[2])
+    print(A[3])
