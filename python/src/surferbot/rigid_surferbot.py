@@ -150,7 +150,7 @@ def rigidSolver(rho, omega, nu, g, L_raft, L_domain, sigma, x_A, F_A, n):
     # Equation 4
     E41_C = integral @ (C43 + C46 * d_dx_raft**2) # phi_center
     E43 = integral @ (C45 * x[x_contact]) # theta
-    E44 = C41 + C44 # zeta # TODO: took out integral here because i think you can just pull this out regardless
+    E44 = C41 + integral * C44 # zeta # TODO: * vs @?
 
     print(f"integral shape: {integral.shape}")
     print(f"E5: {(x[x_contact] @ (C53 + C56 * d_dx_raft**2)).shape}")
@@ -164,7 +164,6 @@ def rigidSolver(rho, omega, nu, g, L_raft, L_domain, sigma, x_A, F_A, n):
     O_PN = jnp.zeros(((p - n)//2, n))          # zero matrix of size (p-n) x (n)
     O_NP = jnp.zeros((n, (p - n)//2))          # zero matrix of size (n) x (p-n)
     O_PP = jnp.zeros(((p - n)//2, (p - n)//2)) # zero matrix of size (p-n)/2 x (p-n)/2
-    O_NN = jnp.zeros((n, n))                   # zero matrix of size (n) x (n)
     O_P1 = jnp.zeros(((p - n)//2, 1))          # zero matrix of size (p-n)/2 x 1
     O_1P = jnp.zeros((1, (p - n)//2))          # zero matrix of size 1 x (p-n)/2
 
