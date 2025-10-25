@@ -46,8 +46,8 @@ function plot_surferbot_run(run_dir)
 
     elseif isstruct(run_dir)
         % User passed the loaded data directly
-        S = run_dir;                 % treat input as S
-        run_dir = pwd;               % save outputs to current folder
+        S = run_dir;                         % treat input as S
+        run_dir = fullfile(pwd, 'figures');  % save outputs to current folder
         fprintf('Using provided struct S; saving outputs in: %s\n', run_dir);
     end
     
@@ -71,7 +71,7 @@ function plot_surferbot_run(run_dir)
     %% --- 2.  Quick MP4 of η(t,x) ---------------------------------------
     vidFile = fullfile(run_dir,'waves.mp4');
     vid     = VideoWriter(vidFile,'MPEG-4');
-    vid.FrameRate = args.omega/(2*pi);
+    vid.FrameRate = 10*args.omega/(2*pi);
     open(vid);
     
     omega  = args.omega;
@@ -80,9 +80,10 @@ function plot_surferbot_run(run_dir)
     scaleY = 1e6;  % µm
     
     % --- DYNAMIC Y-LIMITS ---
-    sc = max(abs(eta),[],'all');
+    sy = max(abs(eta),[],'all');
+    sx = max(abs(x(args.x_contact)), [], 'all');
     plot_buffer = 1.4; 
-    y_limit_microns = sc * scaleY * plot_buffer;
+    y_limit_microns = sy * scaleY * plot_buffer;
     
     fig = figure('Visible','on','Position',[200 200 900 240]);
     
@@ -94,8 +95,8 @@ function plot_surferbot_run(run_dir)
              'r','LineWidth',3);
         
         ylim([-y_limit_microns, y_limit_microns]);
-        xlim([-0.1 0.1]*scaleX);
-        xlabel('x (cm)'); ylabel('y (μm)');
+        xlim([-sx, sx]*scaleX * 5);
+        xlabel('x (cm)'); ylabel('y (um)');
         title(sprintf('t = %.5f s',tvec(k)));
         set(gca,'FontSize',16);
         
@@ -114,7 +115,7 @@ function plot_surferbot_run(run_dir)
     quiver(x(args.x_contact),real(eta(args.x_contact).')*scaleY , ...
            zeros(1,nnz(args.x_contact)), args.loads.'/5e4*scaleY ,0, ...
            'MaxHeadSize',1e-6);
-    xlabel('x (m)'); ylabel('y (μm)'); set(gca,'FontSize',16)
+    xlabel('x (m)'); ylabel('y (um)'); set(gca,'FontSize',16)
     title(sprintf('Surface deflection   U = %.3f mm/s',U*1e3))
     saveas(f1, fullfile(run_dir,'eta_t0.png'));
     savefig(f1, fullfile(run_dir,'eta_t0.fig'));

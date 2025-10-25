@@ -60,22 +60,23 @@ function S = pde_residual_single_test
 % AUTHOR: [Author name]
 % DATE: [Date]
 
-addpath('../src');
+addpath('../src'); close all;
 
-L_raft = 0.05;
+L_raft = 0.5;
 base = struct( ...
-    'sigma',0, 'rho',1000, 'nu',0, 'g',9.81, ...
+    'sigma',0*72.2e-3, 'rho',1000, 'nu',0*1e-6, 'g',9.81, ...
     'L_raft',L_raft, 'motor_position',0.3*L_raft/2, 'd',L_raft/2, ...
-    'EI',1e-5, 'rho_raft',0.018*3.0, ...
-    'domainDepth',0.5, 'n',401, 'M',200, ...
+    'L_domain', 2 * L_raft, ...
+    'EI',1000*3.0e9*3e-2*(9.9e-4)^3/12, 'rho_raft',0.018*10.0, ...
+    'domainDepth',0.5, 'n',101, 'M',200, ...
     'motor_inertia',0.13e-3*2.5e-3, 'BC','radiative', ...
-    'omega',2*pi*10, 'ooa', 2, 'forcing_width', 0.01);
+    'omega',2*pi*5, 'ooa', 4);
 
 S = run_case(base);
 
 % Plot |eta|
-figure(1); clf; semilogy(S.x, abs(S.eta), 'k-','LineWidth',1.2);
-hold on; semilogy(S.x(S.args.x_contact), abs(S.eta((S.args.x_contact))), 'r','LineWidth',1.5);
+figure(1); clf; plot(S.x, abs(S.eta), 'k-','LineWidth',1.2);
+hold on; plot(S.x(S.args.x_contact), abs(S.eta((S.args.x_contact))), 'r','LineWidth',1.5);
 xlabel('x (m)'); ylabel('|{\eta}|'); grid on;
 set(gca,'FontSize',14); set(gcf,'Position',[100 100 800 350]);
 title('Free-surface amplitude');
@@ -86,7 +87,7 @@ vals = [S.lapl_norm, S.bernoulli_norm, S.beam_norm, S.no_pen_norm, S.bc_left_nor
 bar(vals); set(gca,'YScale','log','XTickLabelRotation',20);
 set(gca,'XTick',1:6,'XTickLabel',{'lapl','bernoulli','beam','no\_pen','bc\_left','bc\_right'});
 ylabel('Residual norm'); grid on; set(gca,'FontSize',12);
-set(gcf,'Position',[120 500 800 350]);
+set(gcf,'Position',[120 500 800 350]); ylim([1e-16, 1]);
 title('PDE and BC residuals');
 
 % Summary table
@@ -105,8 +106,8 @@ function S = run_case(p)
 
 ooa  = args.ooa;
 [Dx, Dz] = getNonCompactFDmatrix2D(args.N, args.M, args.dx, args.dz, 1, ooa);
-[Dxx, ~] = getNonCompactFDmatrix2D(args.N, args.M, args.dx, args.dz, 2, ooa);
-Lapl     = Dxx + Dz*Dz;
+[Dxx, Dzz] = getNonCompactFDmatrix2D(args.N, args.M, args.dx, args.dz, 2, ooa);
+Lapl     = Dxx + Dzz;
 
 % Bulk Laplacian ||?²?|| on interior
 bulkMask = false(args.M, args.N); bulkMask(2:end-1, 2:end-1) = true;
@@ -122,8 +123,9 @@ bern_fun = @(ph, phz) phz - args.sigma/(args.rho*args.g) * Dx2FS * phz ...
                     - 4i*args.nu*args.omega/args.g * Dx2FS * ph;
 ph_L  = phi(end, 1:xfreeNb).';      ph_R  = phi(end, end-xfreeNb+1:end).';
 phz_L = phi_z(end, 1:xfreeNb).';    phz_R = phi_z(end, end-xfreeNb+1:end).';
-bern  = [bern_fun(ph_L, phz_L); bern_fun(ph_R, phz_R)];
+bern  = [bern_fun(ph_R, phz_R); bern_fun(ph_L, phz_L);];
 bernoulli_norm = norm(bern(2:end-1));
+%semilogy(abs(bern(2:(end-1))));
 
 % Beam balance on contact
 nc = sum(args.x_contact);
@@ -136,8 +138,9 @@ beam_res = ...
   + args.rho * args.d * ( 1i*args.omega * phi(beamEqnIdx).' ...
   + args.g/(1i*args.omega) * (eta(args.x_contact) * (1i*args.omega)) ...
   - 2*args.nu * Dx2c * phi(beamEqnIdx).' ) ...
-  - args.motor_inertia * args.omega^2 * args.loads;
-beam_norm = norm(beam_res, 2);
+  + args.loads;
+beam_norm = norm(beam_res(3:(end-2)), 1);
+%figure(3); semilogy(abs(beam_res)); hold on; plot(args.loads);
 
 % Bottom no-penetration ||?z ?|| at z = -H (interior x)
 bottomMask = false(args.M, args.N); bottomMask(1, 2:end-1) = true;
