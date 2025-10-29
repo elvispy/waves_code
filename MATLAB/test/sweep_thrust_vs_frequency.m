@@ -7,9 +7,9 @@
 
 addpath '../src/'
 % Frequency range (Hz)
-f_values     = 2:3;
+f_values     = 80:5:80;
 omega_values = 2*pi*f_values;
-L_raft       = 0.1;
+L_raft       = 0.05;
 
 % Preallocate
 thrust_values   = zeros(size(omega_values));
@@ -22,11 +22,11 @@ for ii = 1:numel(omega_values)
     omega = omega_values(ii);
 
     % Run simulation (defaults elsewhere)
-    [~, x, z, phi, eta, args] = flexible_surferbot_v2('sigma',72.2e-3, 'rho',1000, 'nu',1e-6, 'g',9.81, ...
-            'L_raft',L_raft, 'motor_position',0.4*L_raft/2, 'd',L_raft/2, ...
-            'EI',100*3.0e9*3e-2*(9.9e-4)^3/12, 'rho_raft',0.018*10.0, ...
-            'domainDepth',0.5, 'L_domain', 3*L_raft, 'n',101, 'M',200, ...
-            'motor_inertia',0.5*0.13e-3*2.5e-3, 'BC','radiative', ...
+    [~, x, z, phi, eta, args] = flexible_surferbot_v2('sigma',72.2e-3, 'rho',1000, 'nu',0*1e-6, 'g',9.81, ...
+            'L_raft',L_raft, 'motor_position',0.24*L_raft/2, 'd',0.03, ...
+            'EI',100*3.0e9*3e-2*(9.9e-4)^3/12, 'rho_raft',0.018, ...
+            'domainDepth',0.5, 'L_domain', 1.1*L_raft, 'n',1201, 'M',800, ...
+            'motor_inertia',0.13e-3*2.5e-3, 'BC','radiative', ...
             'omega',omega, 'ooa', 4);
     
     % Thrust from solver
@@ -93,11 +93,11 @@ title('Nondimensional thrust vs. frequency');
 legend({'Numerical thrust', 'LH', 'Momentum', 'Radiation Stress'}, 'Location','best', 'Interpreter','tex');
 
 
-fprintf('\n   f [Hz]     w*          M (N/m)       FT(N/m)        LH (N/m)\n');
+fprintf('\n   f [Hz]     w*          M (N/m)          FT(N/m)        LH (N/m)         Sxx (N/m)\n');
 fprintf('------------------------------------------------------------------------\n');
 
 for ii = 1:numel(f_values)
-    fprintf('%8.2f   %8.3g   %14.4e   %14.4e   %14.4e\n', ...
-        f_values(ii), omega_star(ii), mom_star(ii), thrust_star(ii), LH_star(ii));
+    fprintf('%8.2f   %8.3g   %14.4e   %14.4e   %14.4e   %14.4e\n', ...
+        f_values(ii), omega_star(ii), mom_star(ii), thrust_star(ii), LH_star(ii), Sxx_star(ii));
 end
 
