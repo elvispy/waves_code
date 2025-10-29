@@ -1,5 +1,7 @@
 function thrust_vs_n_undersample(save_path)
-% Save only when coarse (x,z) are subsets of fine (x,z). No interpolation.
+% Runs two raft simulations with different spatial resolutions (n_pair)
+% Checks that the coarse grid (x,z) points exist within the fine grid
+% Extracts fine data on coarse grid (no interpolation), saves results and L2 error
 
 addpath('../src');
 

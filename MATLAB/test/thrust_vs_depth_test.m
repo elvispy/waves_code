@@ -1,5 +1,7 @@
 function S = thrust_vs_depth_test
-% Domain-depth study: vary H=domainDepth, plot |eta(x)| and thrust vs H
+% Runs a depth sweep: scales domainDepth (and M proportionally), simulates each case, stores fields and diagnostics.
+% Plots |eta(x)| for each H with a constants textbox, and plots thrust versus depth H.
+% Prints a console table of H, thrust, tail_flat_ratio, and dispersion residual.
 
 addpath('../src');
 
