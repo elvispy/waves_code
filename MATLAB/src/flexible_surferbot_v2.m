@@ -21,8 +21,8 @@ function [U, x, z, phi, eta, args] = flexible_surferbot_v2(varargin)
     addParameter(p, 'domainDepth', 0.1);            % [m] depth of the simulation domain (second dimention, y-direction)
 
     % --- Solver settings ---
-    addParameter(p, 'n', 51);                      % [unitless] number of grid points in x in the raft
-    addParameter(p, 'M', 400);                      % [unitless] number of grid points in z
+    addParameter(p, 'n', nan);                      % [unitless] number of grid points in x in the raft
+    addParameter(p, 'M', nan);                      % [unitless] number of grid points in z
     addParameter(p, 'ooa', 4);                      % [unitless] finite difference order accuracy
     addParameter(p, 'test', false);                 % [boolean]  whether to run self-diagnostic tests
     % --- Motor parameters ---
@@ -76,10 +76,14 @@ function [U, x, z, phi, eta, args] = flexible_surferbot_v2(varargin)
     
     if tanh(args.k * args.domainDepth) < 0.95; warning('Domain depth not enough for dispersison relation'); end
     
-    if 2*pi/real(k) / (args.L_raft / args.n) <= 20     
+    if isnan(args.n) || 2*pi/real(k) / (args.L_raft / args.n) <= 20     
         args.n = ceil(20 / (2*pi/real(k)) * args.L_raft);
         args.n = args.n + mod(args.n, 2) + 1;
         warning('Number of points in x direction too small. Changing n to %d', args.n); 
+    end
+    if isnan(args.M) || 2*pi/real(k) / (args.L_raft / args.M) <= 20     
+        args.M = ceil(20 / (2*pi/real(k)) * args.L_raft);
+        warning('Number of points in z direction too small. Changing M to %d', args.M); 
     end
     if isnan(args.L_domain) || args.L_domain <= 5 * 2*pi/k 
         args.L_domain = max(args.L_raft/2 * 3, round(10*2*pi/real(k), 2, 'significant')); 
