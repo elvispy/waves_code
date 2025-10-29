@@ -89,11 +89,12 @@ function [U, x, z, phi, eta, args] = flexible_surferbot_v2(varargin)
         args.L_domain = max(args.L_raft/2 * 3, round(10*2*pi/real(k), 2, 'significant')); 
     end
     % Grid
-    L_domain_adim = ceil(args.L_domain / L_c);
-    if mod(L_domain_adim, 2) == 0
-        L_domain_adim = L_domain_adim + 1;
-    end
-    N = round((args.n-1) * L_domain_adim / (args.L_raft / L_c))+1;
+    %L_domain_adim = ceil(args.L_domain / L_c);
+    %if mod(L_domain_adim, 2) == 0
+    %    L_domain_adim = L_domain_adim + 1;
+    %end
+    N = round((args.n-1) * L_domain / args.L_raft)+1;
+    L_domain_adim = N / args.n; 
     M = args.M;
 
     x = linspace(-L_domain_adim/2, L_domain_adim/2, N);
