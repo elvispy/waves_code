@@ -20,6 +20,7 @@ function [U, power, thrust, eta, p] = calculate_surferbot_outputs(args, phi, phi
     dx_adim = args.dx / args.L_c; % Use non-dimensional dx from the run
     dz_adim = args.dz / args.L_c; % Use non-dimensional dz from the run
     F_c = args.m_c * args.L_c / args.t_c^2;
+    f_adim = 0*args.loads; % (Motor force loads already adimensional!)
     
     % --- Main Calculations ---
         % ---- Ensure phi_z is available (backward compatible) ----
@@ -39,18 +40,21 @@ function [U, power, thrust, eta, p] = calculate_surferbot_outputs(args, phi, phi
     D2r = D2r / dx_adim^2;
 
     % Surface elevation ? and ?_x restricted to raft
-    eta_adim = (1/(1i*args.omega*args.t_c)) * phi_z(end,:).';  % length-N
-    eta_r    = eta_adim(contact_mask);                                  % length-Nr
-    eta_x_r  = D1r * eta_r;
+    eta_adim     = (1/(1i*args.omega*args.t_c)) * phi_z(end,:).';  % length-N
+    eta_raft     = eta_adim(contact_mask);                                  % length-Nr
+    eta_x_raft   = D1r * eta_raft;
+    xL = find(args.x_contact, 1); xR = find(args.x_contact, 1, 'last');
+    eta_x_surf_L = D1r(end, (end-9):end) * eta_adim((xL - 9):xL);
+    eta_x_surf_R = D1r(1,   1:10        ) * eta_adim(xR     :(xR+9));
 
     % Surface potential restricted to raft
-    phi_s   = phi(end,:).';           % length-N
-    phi_s_r = phi_s(contact_mask);            % length-Nr
+    phi_surf   = phi(end,:).';           % length-N
+    phi_raft = phi_surf(contact_mask);            % length-Nr
 
     % Pressure on raft
-    P1_r   = (1i*args.nd_groups.Gamma) * phi_s_r ...
-           - (2*args.nd_groups.Gamma/args.nd_groups.Re) * (D2r * phi_s_r);
-    p_adim = -1i*args.nd_groups.Gamma/args.nd_groups.Fr^2 * eta_r + P1_r;
+    P1_r   = (1i*args.nd_groups.Gamma) * phi_raft ...
+           - (2*args.nd_groups.Gamma/args.nd_groups.Re) * (D2r * phi_raft);
+    p_adim = -1i*args.nd_groups.Gamma/args.nd_groups.Fr^2 * eta_raft + P1_r;
 
     % Raft-only quadrature
     w_r         = simpson_weights(Nr, dx_adim);
@@ -67,7 +71,7 @@ function [U, power, thrust, eta, p] = calculate_surferbot_outputs(args, phi, phi
 
     % Power (loads already raft-only)
     power = -(0.5 * args.omega * args.L_c * F_c) * w_r * ...
-            (imag(eta_r) .* (-args.loads(:)));
+            (imag(eta_raft) .* (-args.loads(:)));
 
     % Outputs
     eta = full(eta_adim * args.L_c);
