@@ -56,14 +56,20 @@ function [U, power, thrust, eta, p] = calculate_surferbot_outputs(args, phi, phi
            - (2*args.nd_groups.Gamma/args.nd_groups.Re) * (D2r * phi_raft);
     p_adim = -1i*args.nd_groups.Gamma/args.nd_groups.Fr^2 * eta_raft + P1_r;
 
-    % Raft-only quadrature
-    w_r         = simpson_weights(Nr, dx_adim);
+    
     % Minus because of sign convention: if the right of the raft has higher
-    % amplitude, the raft moves to the left (negative sign)
-    thrust_adim = - (args.d/args.L_c) * (w_r * (-0.5 * real(p_adim .* eta_x_r))); 
+    % amplitude, the raft moves to the left (negative sign). Also, beware
+    % of the game of "thrust force applied to the body" and "thrust force
+    % as felt by the body"
+    w_r         = simpson_weights(Nr, dx_adim);
+    Q_adim      = f_adim - args.d / args.L_c * p_adim; % Total load applied on the raft
+    thrust_adim = ( - w_r * (real(Q_adim) .* real(eta_x_raft) + imag(Q_adim) .* imag(eta_x_raft))/2); 
     %disp(trapz(real(p_adim .* eta_x_r))* dx_adim);
     %figure(7); plot(linspace(0, 1, Nr), real(p_adim .* eta_x_r)); hold on;
-    thrust      = real(thrust_adim * F_c);
+    
+    thrust_adim = thrust_adim ...
+        + args.sigma * args.d / F_c/4 * (abs(eta_x_surf_L)^2 - abs(eta_x_surf_R)^2); 
+    thrust      = thrust_adim * F_c;
     
     % Final Velocity (U) 
     thrust_factor = 4/9 * args.nu * (args.rho * args.d)^2 * args.L_raft; 
