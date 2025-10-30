@@ -7,7 +7,7 @@
 
 addpath '../src/'
 % Frequency range (Hz)
-f_values     = 80:5:80;
+f_values     = 80:80;
 omega_values = 2*pi*f_values;
 L_raft       = 0.05;
 
@@ -24,10 +24,12 @@ for ii = 1:numel(omega_values)
     % Run simulation (defaults elsewhere)
     [~, x, z, phi, eta, args] = flexible_surferbot_v2('sigma',72.2e-3, 'rho',1000, 'nu',0*1e-6, 'g',9.81, ...
             'L_raft',L_raft, 'motor_position',0.24*L_raft/2, 'd',0.03, ...
-            'EI',100*3.0e9*3e-2*(9.9e-4)^3/12, 'rho_raft',0.018, ...
+            'EI',10*3.0e9*3e-2*(9.9e-4)^3/12, 'rho_raft',0.018, ...
             'domainDepth',0.5, 'L_domain', 1.1*L_raft, 'n',1201, 'M',800, ...
             'motor_inertia',0.13e-3*2.5e-3, 'BC','radiative', ...
             'omega',omega, 'ooa', 4);
+        
+        
     
     % Thrust from solver
     thrust_values(ii) = args.thrust/args.d; % To compare it to other methods
@@ -58,7 +60,7 @@ for ii = 1:numel(omega_values)
     sf_radiation = args.sigma/4 * ( abs(eta_x_end(end))^2 - abs(eta_x_1(1))^2);
     
     momentum_values(ii) = momentum_values(ii) + sf_radiation;
-    thrust_values(ii)   = thrust_values(ii)   + sf_radiation;
+    %thrust_values(ii)   = thrust_values(ii);
 
     fprintf("%d, %.2e; ", ii, args.omega^2 - k * g);
 
