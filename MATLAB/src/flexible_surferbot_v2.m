@@ -125,7 +125,7 @@ function [U, x, z, phi, eta, args] = flexible_surferbot_v2(varargin)
 
     x = x * L_c;
     z = z * L_c;    
-    args.x_contact = x_contact;
+    args.x_contact = x_contact; args.x = x;
     args.loads = loads * F_c/L_c;
     %figure(5); semilogy(x(x_contact), args.loads); hold on;
     args.N = N; args.M = M; args.dx = dx * L_c; args.dz = dz * L_c;
