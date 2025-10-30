@@ -61,9 +61,10 @@ function [U, power, thrust, eta, p] = calculate_surferbot_outputs(args, phi, phi
     % amplitude, the raft moves to the left (negative sign). Also, beware
     % of the game of "thrust force applied to the body" and "thrust force
     % as felt by the body"
-    w_r         = simpson_weights(Nr, dx_adim);
+    %w_r         = simpson_weights(Nr, dx_adim);
     Q_adim      = f_adim - args.d / args.L_c * p_adim; % Total load applied on the raft
-    thrust_adim = ( - w_r * (real(Q_adim) .* real(eta_x_raft) + imag(Q_adim) .* imag(eta_x_raft))/2); 
+    thrust_adim =  - trapz(args.x(args.x_contact)/args.L_c, ...
+        real(Q_adim) .* real(eta_x_raft) + imag(Q_adim) .* imag(eta_x_raft))/2; 
     %disp(trapz(real(p_adim .* eta_x_r))* dx_adim);
     %figure(7); plot(linspace(0, 1, Nr), real(p_adim .* eta_x_r)); hold on;
     
@@ -76,8 +77,8 @@ function [U, power, thrust, eta, p] = calculate_surferbot_outputs(args, phi, phi
     U = (thrust^2 / thrust_factor)^(1/3);
 
     % Power (loads already raft-only)
-    power = -(0.5 * args.omega * args.L_c * F_c) * w_r * ...
-            (imag(eta_raft) .* (-args.loads(:)));
+    power = -(0.5 * args.omega * args.L_c * F_c) * trapz(args.x(args.x_contact)/args.L_c,  ...
+            (imag(eta_raft) .* (-args.loads(:))));
 
     % Outputs
     eta = full(eta_adim * args.L_c);
