@@ -26,6 +26,7 @@ function [U, x, z, phi, eta, args] = flexible_surferbot_v2(varargin)
     addParameter(p, 'ooa', 4);                      % [unitless] finite difference order accuracy
     addParameter(p, 'test', false);                 % [boolean]  whether to run self-diagnostic tests
     % --- Motor parameters ---
+    addParameter(p, 'loads', nan);
     addParameter(p, 'motor_inertia', 0.13e-3 * 2.5e-3);  % [kg/m^2] motor rotational inertia
     addParameter(p, 'motor_force'  , nan);              % [N] Strength of the motor force if not provided by intertia
     addParameter(p, 'forcing_width', 0.05);             % [fraction of L_raft] width of Gaussian forcing
