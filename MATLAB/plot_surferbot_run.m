@@ -71,7 +71,7 @@ function plot_surferbot_run(run_dir)
     %% --- 2.  Quick MP4 of η(t,x) ---------------------------------------
     vidFile = fullfile(run_dir,'waves.mp4');
     vid     = VideoWriter(vidFile,'MPEG-4');
-    vid.FrameRate = 10*args.omega/(2*pi);
+    vid.FrameRate = 2*args.omega/(2*pi);
     open(vid);
     
     omega  = args.omega;
@@ -89,13 +89,16 @@ function plot_surferbot_run(run_dir)
     
     for k = 1:numel(tvec)
         yy = real(eta .* exp(1i*omega*tvec(k)));
+        pp = real(args.pressure .* exp(1i*omega*tvec(k)));
         
         plot(x*scaleX , yy*scaleY ,'b','LineWidth',2); hold on
         plot(x(args.x_contact)*scaleX , yy(args.x_contact)*scaleY , ...
              'r','LineWidth',3);
+         
+        %quiver(x*scaleX , yy*scaleY, zeros(size(x)), pp); 
         
         ylim([-y_limit_microns, y_limit_microns]);
-        xlim([-sx, sx]*scaleX * 5);
+        xlim([-sx, sx]*scaleX * 20);
         xlabel('x (cm)'); ylabel('y (um)');
         title(sprintf('t = %.5f s',tvec(k)));
         set(gca,'FontSize',16);
