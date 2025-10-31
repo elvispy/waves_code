@@ -97,8 +97,8 @@ k    = real(args.k);
 res  = abs(args.omega^2 - args.g*k);
 
 % Optional interior-tail flatness metric
-idx0 = max(1, ceil(0.15*numel(eta)));
-tail = abs(eta(idx0:end));
+idx0 = max(1, ceil(0.05*numel(eta)));
+tail = abs(eta(1:idx0));
 tail_ratio = std(tail) / max(eps, mean(tail));
 
 Sxx = (args.rho*args.g/4 + 3/4*args.sigma*args.k^2) ...
