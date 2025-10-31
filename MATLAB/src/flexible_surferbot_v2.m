@@ -123,7 +123,11 @@ function [U, x, z, phi, eta, args] = flexible_surferbot_v2(varargin)
     x_free(1) = false; x_free(end) = false;
 
     % Loads at which the motor applies a force to the raft
-    loads_adim = force / F_c * gaussian_load(args.motor_position/L_c, args.forcing_width, x(x_contact));
+    if isnan(args.loads)
+        loads_adim = force / F_c * gaussian_load(args.motor_position/L_c, args.forcing_width, x(x_contact));
+    else
+        loads_adim = args.loads * L_c / F_c;
+    end
     if args.test
         assert(abs(sum(dx * loads_adim) - force/F_c) < 1e-12);
     end
