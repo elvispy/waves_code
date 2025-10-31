@@ -88,16 +88,17 @@ function [U, x, z, phi, eta, args] = flexible_surferbot_v2(varargin)
     % if tanh(args.k * args.domainDepth) < 0.95; warning('Domain depth not enough for dispersison relation'); end
     
     res = 80; % Minimal resolution per unit 
-    if isnan(args.n) || 2*pi/real(k) / (args.L_raft / args.n) <= res     
+    if isnan(args.n) 
         args.n = ceil(res / (2*pi/real(k)) * args.L_raft);
         args.n = args.n + mod(args.n, 2) + 1;
-        warning('Number of points in x direction too small. Changing n to %d', args.n); 
     end
-    if isnan(args.M) || 2*pi/real(k) / (args.L_raft / args.M) <= res     
+    if 2*pi/real(k) / (args.L_raft / args.n) < res; warning('Number of points in x direction too small. Consider changing n to %d', ceil(res / (2*pi/real(k)) * args.L_raft)); end
+    if isnan(args.M) 
         args.M = ceil(res / (2*pi/real(k)) * args.L_raft);
-        warning('Number of points in z direction too small. Changing M to %d', args.M); 
     end
-    if isnan(args.L_domain) || args.L_domain < 10 * 2*pi/k 
+    if 2*pi/real(k) / (args.L_raft / args.M) < res; warning('Number of points in z direction too small. Consider changing M to %d', ceil(res / (2*pi/real(k)) * args.L_raft)); end
+    
+    if isnan(args.L_domain) %|| args.L_domain < 10 * 2*pi/k 
         args.L_domain = max(args.L_raft/2 * 3, round(10*2*pi/real(k), 2, 'significant')); 
     end
     % Grid
