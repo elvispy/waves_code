@@ -62,7 +62,7 @@ function [U, power, thrust, eta, p] = calculate_surferbot_outputs(args, phi, phi
     % of the game of "thrust force applied to the body" and "thrust force
     % as felt by the body"
     %w_r         = simpson_weights(Nr, dx_adim);
-    Q_adim      = f_adim - args.d / args.L_c * p_adim; % Total load applied on the raft
+    Q_adim      = f_adim(:) - args.d / args.L_c * p_adim; % Total load applied on the raft
     thrust_adim =  - trapz(args.x(args.x_contact)/args.L_c, ...
         real(Q_adim) .* real(eta_x_raft) + imag(Q_adim) .* imag(eta_x_raft))/2; 
     %disp(trapz(real(p_adim .* eta_x_r))* dx_adim);

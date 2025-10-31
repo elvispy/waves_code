@@ -95,11 +95,15 @@ function plot_surferbot_run(run_dir)
         plot(x(args.x_contact)*scaleX , yy(args.x_contact)*scaleY , ...
              'r','LineWidth',3);
          
-        quiver(x(args.x_contact)*scaleX , yy(args.x_contact)'*scaleY, ...
-            zeros(size(x(args.x_contact))), pp'); 
+        %rangeY = max(yy) - min(yy);
+        %arrowScale = 0.1 * rangeY / max(abs(pp));
+         
+        %quiver(x(args.x_contact) , yy(args.x_contact)', ...
+        %    zeros(1, nnz(args.x_contact)), pp' * arrowScale * scaleY, ...
+        %    0, 'MaxHeadSize', 0.5); 
         
         ylim([-y_limit_microns, y_limit_microns]);
-        xlim([-sx, sx]*scaleX * 20);
+        xlim([-sx, sx]*scaleX * 5);
         xlabel('x (cm)'); ylabel('y (um)');
         title(sprintf('t = %.5f s',tvec(k)));
         set(gca,'FontSize',16);
@@ -116,9 +120,9 @@ function plot_surferbot_run(run_dir)
     plot(x, real(eta)*scaleY ,'b','LineWidth',1.5); hold on
     plot(x(args.x_contact),real(eta(args.x_contact))*scaleY , ...
          'r','LineWidth',2);
-    quiver(x(args.x_contact),real(eta(args.x_contact).')*scaleY , ...
-           zeros(1,nnz(args.x_contact)), args.loads.'/5e4*scaleY ,0, ...
-           'MaxHeadSize',1e-6);
+    %quiver(x(args.x_contact),real(eta(args.x_contact).')*scaleY , ...
+    %       zeros(1,nnz(args.x_contact)), args.loads.'/5e4*scaleY ,0, ...
+    %       'MaxHeadSize',1e-6);
     xlabel('x (m)'); ylabel('y (um)'); set(gca,'FontSize',16)
     title(sprintf('Surface deflection   U = %.3f mm/s',U*1e3))
     saveas(f1, fullfile(run_dir,'eta_t0.png'));

@@ -9,7 +9,7 @@ base = struct( ...
     'sigma',72.2e-3, 'rho',1000, 'nu',0*1e-6, 'g',9.81, ...
     'L_raft',L_raft, 'motor_position',0.24*L_raft/2, 'd',0.03, ...
     'EI',3.0e9*3e-2*(9.9e-4)^3/12, 'rho_raft',0.052, ...
-    'domainDepth',0.1, 'L_domain', 2.0*L_raft, 'n',nan, 'M',nan, ...
+    'domainDepth',nan, 'L_domain', nan, 'n',nan, 'M',nan, ...
     'motor_inertia',0.13e-3*2.5e-3, 'BC','radiative', ...
     'omega',2*pi*80, 'ooa', 4);
 
@@ -64,6 +64,16 @@ T = table(EI_col, omega_col, [S(:).N_x].', [S(:).M_z].', ...
     'VariableNames', {'EI','omega','N','M','thrust_N','Sxx','eta_edge_ratio','tail_flat_ratio','n_used','M_used','success'});
 disp('=== omega x EI sweep results ==='); disp(T);
 
+
+surf(reshape([S.EI], [20 8]), ...
+    reshape([S.omega], [20 8])/(2*pi), ...
+    reshape(log10([S.eta_edge_ratio]), [20 8]), 'DisplayName', 'Log of ratio of tails'); 
+xlabel('EI'); ylabel('Omega'); zlabel('eta(1)/eta(end)'); 
+set(gca, 'XScale', 'log'); set(gca, 'FontSize', 16); 
+caxis([-1 1]); colorbar; hold on; 
+scatter3(S(56).EI, S(56).omega/(2*pi), log10(S(56).eta_edge_ratio), 100, ...
+    'r', 'filled', 'DisplayName', 'Surferbot'); 
+legend('show', 'Location', 'south')
 end
 
 % ================= helper =================
@@ -91,8 +101,8 @@ function [R, meta] = run_case_with_retry(p, tail_thresh, max_retries, growth)
         p.n = n; p.M = M;
         retries = retries + 1;
     end
-
-    meta = struct('n_used', n, 'M_used', M, 'success', success, 'retries', retries);
+    
+    meta = struct('n_used', R.args.n, 'M_used', R.args.M, 'success', success, 'retries', retries);
 end
 
 function S = run_once(p)
