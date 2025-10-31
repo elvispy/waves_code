@@ -71,7 +71,7 @@ function plot_surferbot_run(run_dir)
     %% --- 2.  Quick MP4 of η(t,x) ---------------------------------------
     vidFile = fullfile(run_dir,'waves.mp4');
     vid     = VideoWriter(vidFile,'MPEG-4');
-    vid.FrameRate = 2*args.omega/(2*pi);
+    vid.FrameRate = 4*args.omega/(2*pi);
     open(vid);
     
     omega  = args.omega;
@@ -95,7 +95,8 @@ function plot_surferbot_run(run_dir)
         plot(x(args.x_contact)*scaleX , yy(args.x_contact)*scaleY , ...
              'r','LineWidth',3);
          
-        %quiver(x*scaleX , yy*scaleY, zeros(size(x)), pp); 
+        quiver(x(args.x_contact)*scaleX , yy(args.x_contact)'*scaleY, ...
+            zeros(size(x(args.x_contact))), pp'); 
         
         ylim([-y_limit_microns, y_limit_microns]);
         xlim([-sx, sx]*scaleX * 20);
