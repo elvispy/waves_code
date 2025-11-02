@@ -1,5 +1,7 @@
 function thrust_vs_n_test
-% n-resolution study: vary N, plot |eta(x)| per case and thrust vs N
+% Runs an N-resolution sweep (odd, increasing N), simulates each case, and stores fields and metrics.
+% Plots |eta(x)| per N with a constants textbox, thrust vs N, convergence ratios |eta^{i+1}|/|eta^i|, and Re/Im pressure along the raft.
+% Prints a console table of N, thrust, tail_flat_ratio, and dispersion residual.
 
 addpath('../src');
 close all;

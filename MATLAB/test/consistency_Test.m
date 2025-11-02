@@ -30,7 +30,7 @@ for ii = 1:numel(omega_values)
         'g'             , 9.81        , ...   % [m s?²] gravity
         'L_raft'        , L_raft         , ...   % [m] raft length
         'motor_position', 0.4*L_raft/2   , ...   % [m] motor x-position (from -L/2 to L/2)
-        'd'             , L_raft/2       , ...   % [m] raft depth (spanwise)
+        'd'             , L_raft/2            , ...   % [m] raft depth (spanwise)
         'EI'            , 10*3.0e9 * 3e-2 * (9.9e-4)^3 / 12 , ...  % [N m²] bending stiffness
         'rho_raft'      , 0.018*3.0    , ...   % [kg m?¹] linear mass
         'domainDepth'   , 0.5          , ...   % [m] water depth
@@ -38,7 +38,7 @@ for ii = 1:numel(omega_values)
         'M'             , 300          , ...   % gird points in the z direction
         'motor_inertia' , 0.13e-3*2.5e-3, ...  % [kg m²] motor inertia
         'BC'            , 'radiative'        );% boundary-condition type
-
+    
     %[~, x, z, phi, eta, args] = flexible_surferbot_v2('omega', omega, ...
     %    'sigma', 0, 'nu', 0, 'domainDepth', 1.5, 'L_raft', 0.1, ...
     %    'motor_position', 0.5 * 0.3, 'EI', 100, 'g', 9.81);

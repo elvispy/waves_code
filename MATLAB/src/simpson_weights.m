@@ -12,7 +12,7 @@ function w = simpson_weights(N, h)
 
     if isnumeric(h) && isscalar(h)  % Uniform grid
         if N < 3 || mod(N, 2) == 0
-            error("N must be an odd integer >= 3 for Simpsonâ€™s rule.");
+            error("N must be an odd integer >= 3 for Simpsons™s rule.");
         end
         w = ones(1, N);
         w(2:2:N-1) = 4;

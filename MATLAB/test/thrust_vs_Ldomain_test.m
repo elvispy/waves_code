@@ -1,5 +1,7 @@
 function S = thrust_vs_Ldomain_test
-% L-domain study: vary L_domain, plot |eta(x)| per case and thrust vs L_domain
+% Runs an L_domain sweep, simulates each case, and stores fields and diagnostics.
+% Plots |eta(x)| per L with a constants textbox, and plots thrust versus L_domain.
+% Prints a console table of L_domain, N_x, M_z, thrust, tail_flat_ratio, and dispersion residual.
 
 addpath('../src');
 

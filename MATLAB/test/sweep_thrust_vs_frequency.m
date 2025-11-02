@@ -7,9 +7,9 @@
 
 addpath '../src/'
 % Frequency range (Hz)
-f_values     = 2:3;
+f_values     = 80:80;
 omega_values = 2*pi*f_values;
-L_raft       = 0.1;
+L_raft       = 0.05;
 
 % Preallocate
 thrust_values   = zeros(size(omega_values));
@@ -22,12 +22,14 @@ for ii = 1:numel(omega_values)
     omega = omega_values(ii);
 
     % Run simulation (defaults elsewhere)
-    [~, x, z, phi, eta, args] = flexible_surferbot_v2('sigma',72.2e-3, 'rho',1000, 'nu',1e-6, 'g',9.81, ...
-            'L_raft',L_raft, 'motor_position',0.4*L_raft/2, 'd',L_raft/2, ...
-            'EI',100*3.0e9*3e-2*(9.9e-4)^3/12, 'rho_raft',0.018*10.0, ...
-            'domainDepth',0.5, 'L_domain', 3*L_raft, 'n',101, 'M',200, ...
-            'motor_inertia',0.5*0.13e-3*2.5e-3, 'BC','radiative', ...
+    [~, x, z, phi, eta, args] = flexible_surferbot_v2('sigma',72.2e-3, 'rho',1000, 'nu',0*1e-6, 'g',9.81, ...
+            'L_raft',L_raft, 'motor_position',0.24*L_raft/2, 'd',0.03, ...
+            'EI',10*3.0e9*3e-2*(9.9e-4)^3/12, 'rho_raft',0.018*10, ...
+            'domainDepth',0.1, 'L_domain', 2.0*L_raft, 'n',1001, 'M',600, ...
+            'motor_inertia',0.13e-3*2.5e-3, 'BC','radiative', ...
             'omega',omega, 'ooa', 4);
+        
+        
     
     % Thrust from solver
     thrust_values(ii) = args.thrust/args.d; % To compare it to other methods
@@ -58,7 +60,7 @@ for ii = 1:numel(omega_values)
     sf_radiation = args.sigma/4 * ( abs(eta_x_end(end))^2 - abs(eta_x_1(1))^2);
     
     momentum_values(ii) = momentum_values(ii) + sf_radiation;
-    thrust_values(ii)   = thrust_values(ii)   + sf_radiation;
+    %thrust_values(ii)   = thrust_values(ii);
 
     fprintf("%d, %.2e; ", ii, args.omega^2 - k * g);
 
@@ -93,11 +95,11 @@ title('Nondimensional thrust vs. frequency');
 legend({'Numerical thrust', 'LH', 'Momentum', 'Radiation Stress'}, 'Location','best', 'Interpreter','tex');
 
 
-fprintf('\n   f [Hz]     w*          M (N/m)       FT(N/m)        LH (N/m)\n');
+fprintf('\n   f [Hz]     w*          M (N/m)          FT(N/m)        LH (N/m)         Sxx (N/m)\n');
 fprintf('------------------------------------------------------------------------\n');
 
 for ii = 1:numel(f_values)
-    fprintf('%8.2f   %8.3g   %14.4e   %14.4e   %14.4e\n', ...
-        f_values(ii), omega_star(ii), mom_star(ii), thrust_star(ii), LH_star(ii));
+    fprintf('%8.2f   %8.3g   %14.4e   %14.4e   %14.4e   %14.4e\n', ...
+        f_values(ii), omega_star(ii), mom_star(ii), thrust_star(ii), LH_star(ii), Sxx_star(ii));
 end
 

@@ -173,10 +173,10 @@ def rigidSolver(rho, omega, nu, g, L_raft, L_domain, sigma, x_A, F_A, n):
     E1_R = jnp.hstack([N11, N12, E11_R, O_PP, O_PP, O_P1, O_P1])
 
     # E2 
-    E2 = jnp.hstack([N21, E21_C, N23, O_NP, O_NP, E23, E24])
+    E2 = jnp.hstack([C21 * N21, E21_C, C21 * N23, O_NP, O_NP, E23, E24])
 
     # E3
-    E3_L = jnp.hstack([E31_L, N32, N33, E32_L, O_PP, O_P1, O_P1])
+    E3_L = jnp.hstack([E31_L, C31 * N32, C31 * N33, E32_L, O_PP, O_P1, O_P1])
     E3_R = jnp.hstack([N31, N32, E31_R, O_PP, E32_R, O_P1, O_P1])
 
     # Boundary conditions

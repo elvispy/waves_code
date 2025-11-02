@@ -71,7 +71,7 @@ function plot_surferbot_run(run_dir)
     %% --- 2.  Quick MP4 of η(t,x) ---------------------------------------
     vidFile = fullfile(run_dir,'waves.mp4');
     vid     = VideoWriter(vidFile,'MPEG-4');
-    vid.FrameRate = 10*args.omega/(2*pi);
+    vid.FrameRate = 4*args.omega/(2*pi);
     open(vid);
     
     omega  = args.omega;
@@ -89,10 +89,18 @@ function plot_surferbot_run(run_dir)
     
     for k = 1:numel(tvec)
         yy = real(eta .* exp(1i*omega*tvec(k)));
+        pp = real(args.pressure .* exp(1i*omega*tvec(k)));
         
         plot(x*scaleX , yy*scaleY ,'b','LineWidth',2); hold on
         plot(x(args.x_contact)*scaleX , yy(args.x_contact)*scaleY , ...
              'r','LineWidth',3);
+         
+        %rangeY = max(yy) - min(yy);
+        %arrowScale = 0.1 * rangeY / max(abs(pp));
+         
+        %quiver(x(args.x_contact) , yy(args.x_contact)', ...
+        %    zeros(1, nnz(args.x_contact)), pp' * arrowScale * scaleY, ...
+        %    0, 'MaxHeadSize', 0.5); 
         
         ylim([-y_limit_microns, y_limit_microns]);
         xlim([-sx, sx]*scaleX * 5);
@@ -112,9 +120,9 @@ function plot_surferbot_run(run_dir)
     plot(x, real(eta)*scaleY ,'b','LineWidth',1.5); hold on
     plot(x(args.x_contact),real(eta(args.x_contact))*scaleY , ...
          'r','LineWidth',2);
-    quiver(x(args.x_contact),real(eta(args.x_contact).')*scaleY , ...
-           zeros(1,nnz(args.x_contact)), args.loads.'/5e4*scaleY ,0, ...
-           'MaxHeadSize',1e-6);
+    %quiver(x(args.x_contact),real(eta(args.x_contact).')*scaleY , ...
+    %       zeros(1,nnz(args.x_contact)), args.loads.'/5e4*scaleY ,0, ...
+    %       'MaxHeadSize',1e-6);
     xlabel('x (m)'); ylabel('y (um)'); set(gca,'FontSize',16)
     title(sprintf('Surface deflection   U = %.3f mm/s',U*1e3))
     saveas(f1, fullfile(run_dir,'eta_t0.png'));

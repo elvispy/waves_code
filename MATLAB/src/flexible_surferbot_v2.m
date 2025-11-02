@@ -21,11 +21,12 @@ function [U, x, z, phi, eta, args] = flexible_surferbot_v2(varargin)
     addParameter(p, 'domainDepth', 0.1);            % [m] depth of the simulation domain (second dimention, y-direction)
 
     % --- Solver settings ---
-    addParameter(p, 'n', 51);                      % [unitless] number of grid points in x in the raft
-    addParameter(p, 'M', 400);                      % [unitless] number of grid points in z
+    addParameter(p, 'n', nan);                      % [unitless] number of grid points in x in the raft
+    addParameter(p, 'M', nan);                      % [unitless] number of grid points in z
     addParameter(p, 'ooa', 4);                      % [unitless] finite difference order accuracy
     addParameter(p, 'test', false);                 % [boolean]  whether to run self-diagnostic tests
     % --- Motor parameters ---
+    addParameter(p, 'loads', nan);
     addParameter(p, 'motor_inertia', 0.13e-3 * 2.5e-3);  % [kg/m^2] motor rotational inertia
     addParameter(p, 'motor_force'  , nan);              % [N] Strength of the motor force if not provided by intertia
     addParameter(p, 'forcing_width', 0.05);             % [fraction of L_raft] width of Gaussian forcing
@@ -70,26 +71,43 @@ function [U, x, z, phi, eta, args] = flexible_surferbot_v2(varargin)
     % Store nondimensional groups for later use
     args.nd_groups = nd_groups;
 
-    % Wavenumber
-    k = dispersion_k(args.omega, args.g, args.domainDepth, args.nu, args.sigma, args.rho);
-    args.k = k;
-    
-    if tanh(args.k * args.domainDepth) < 0.95; warning('Domain depth not enough for dispersison relation'); end
-    
-    if 2*pi/real(k) / (args.L_raft / args.n) <= 20     
-        args.n = ceil(20 / (2*pi/real(k)) * args.L_raft);
-        args.n = args.n + mod(args.n, 2) + 1;
-        warning('Number of points in x direction too small. Changing n to %d', args.n); 
+    args.k = NaN; 
+    while isnan(args.k) || tanh(real(args.k) * args.domainDepth) < 0.99
+        
+        % Wavenumber
+        k = dispersion_k(args.omega, args.g, args.domainDepth, args.nu, args.sigma, args.rho);
+        args.k = k;
+        
+        if isnan(args.domainDepth) 
+            args.domainDepth = 2.5*args.g/args.omega^2; 
+        else
+            args.domainDepth = 1.05 * args.domainDepth;
+        end
     end
-    if isnan(args.L_domain) || args.L_domain <= 5 * 2*pi/k 
+    
+    % if tanh(args.k * args.domainDepth) < 0.95; warning('Domain depth not enough for dispersison relation'); end
+    
+    res = 80; % Minimal resolution per unit 
+    if isnan(args.n) 
+        args.n = ceil(res / (2*pi/real(k)) * args.L_raft);
+        args.n = args.n + mod(args.n, 2) + 1;
+    end
+    if 2*pi/real(k) / (args.L_raft / args.n) < res; warning('Number of points in x direction too small. Consider changing n to %d', ceil(res / (2*pi/real(k)) * args.L_raft)); end
+    if isnan(args.M) 
+        args.M = ceil(res / (2*pi/real(k)) * args.L_raft);
+    end
+    if 2*pi/real(k) / (args.L_raft / args.M) < res; warning('Number of points in z direction too small. Consider changing M to %d', ceil(res / (2*pi/real(k)) * args.L_raft)); end
+    
+    if isnan(args.L_domain) %|| args.L_domain < 10 * 2*pi/k 
         args.L_domain = max(args.L_raft/2 * 3, round(10*2*pi/real(k), 2, 'significant')); 
     end
     % Grid
-    L_domain_adim = ceil(args.L_domain / L_c);
-    if mod(L_domain_adim, 2) == 0
-        L_domain_adim = L_domain_adim + 1;
-    end
-    N = round((args.n-1) * L_domain_adim / (args.L_raft / L_c))+1;
+    %L_domain_adim = ceil(args.L_domain / L_c);
+    %if mod(L_domain_adim, 2) == 0
+    %    L_domain_adim = L_domain_adim + 1;
+    %end
+    N = round((args.n-1) * args.L_domain / args.L_raft)+1;
+    L_domain_adim = N / args.n; 
     M = args.M;
 
     x = linspace(-L_domain_adim/2, L_domain_adim/2, N);
@@ -105,13 +123,17 @@ function [U, x, z, phi, eta, args] = flexible_surferbot_v2(varargin)
     x_free(1) = false; x_free(end) = false;
 
     % Loads at which the motor applies a force to the raft
-    loads = force / F_c * gaussian_load(args.motor_position/L_c, args.forcing_width, x(x_contact));
+    if isnan(args.loads)
+        loads_adim = force / F_c * gaussian_load(args.motor_position/L_c, args.forcing_width, x(x_contact));
+    else
+        loads_adim = args.loads * L_c / F_c;
+    end
     if args.test
-        assert(abs(sum(dx * loads) - force/F_c) < 1e-12);
+        assert(abs(sum(dx * loads_adim) - force/F_c) < 1e-12);
     end
     
     % Solve system
-    solution = build_system_v2(N, M, dx, dz, x_free, x_contact, loads, args);
+    solution = build_system_v2(N, M, dx, dz, x_free, x_contact, loads_adim, args);
     
     %% Post-processing
     phi = reshape(solution(1:(N*M)), M, N);
@@ -119,8 +141,8 @@ function [U, x, z, phi, eta, args] = flexible_surferbot_v2(varargin)
 
     x = x * L_c;
     z = z * L_c;    
-    args.x_contact = x_contact;
-    args.loads = loads * F_c/L_c;
+    args.x_contact = x_contact; args.x = x;
+    args.loads = loads_adim * F_c/L_c;
     %figure(5); semilogy(x(x_contact), args.loads); hold on;
     args.N = N; args.M = M; args.dx = dx * L_c; args.dz = dz * L_c;
     args.t_c = t_c; args.L_c = L_c; args.m_c = m_c;

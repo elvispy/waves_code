@@ -1,6 +1,7 @@
 function S = thrust_vs_M_test
-% M-resolution study: vary M, plot |eta(x)| per case and thrust vs M
-
+% Runs an M-resolution sweep (vary M), simulates each case, and stores fields and diagnostics.
+% Plots |eta(x)| for each M with a constants textbox, and plots thrust versus M.
+% Prints a console table of M, thrust, tail_flat_ratio, and dispersion residual.
 
 addpath('../src');
 
@@ -103,9 +104,9 @@ res  = abs(args.omega^2 - args.g*k);
 
 dx = abs(x(2)-x(1)); dz = abs(z(2)-z(1));
 [Dx, ~] = getNonCompactFDmatrix2D(args.M,args.N,dx,dz,1,args.ooa);
-u  = reshape(Dx * reshape(phi, args.M*args.N,1), args.M, args.N); %#ok<NASGU>
+u  = reshape(Dx * reshape(phi, args.M*args.N,1), args.M, args.N); 
 
-rho = args.rho; omega = args.omega; %#ok<NASGU>
+rho = args.rho; omega = args.omega; 
 LH  = 0.25 * rho * omega^2 / k * (abs(eta(2))^2 - abs(eta(end-1))^2); %#ok<NASGU>
 mom = rho * trapz(z, abs(u(:,2)).^2 - abs(u(:,end-1)).^2);            %#ok<NASGU>
 
