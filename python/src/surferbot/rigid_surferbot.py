@@ -134,9 +134,8 @@ def rigidSolver(rho, omega, nu, g, L_raft, L_domain, sigma, x_A, F_A, n):
     # Equation 2
     E21_C = C21 * N22 # phi_center
     print(f"E21_C: {E21_C.shape}")
-    # TODO: check if doing this explicitly is right...
     E23 = (C23 * x[x_contact]).reshape((n, 1)) # theta
-    E24 = jnp.full((n, 1), C22) # zeta # TODO: check if this is right
+    E24 = jnp.full((n, 1), C22) # zeta
 
     # Equation 3
     E31_L = C31 * N31 # phi_left
@@ -181,15 +180,16 @@ def rigidSolver(rho, omega, nu, g, L_raft, L_domain, sigma, x_A, F_A, n):
     E3_R = jnp.hstack([N31, N32, E31_R, O_PP, E32_R, O_P1, O_P1])
 
     # Boundary conditions
-    k = dispersion_k(omega, g, 0, nu, sigma, rho) # Complex wavenumber 
+    k = dispersion_k(omega, g, 0.0, nu, sigma, rho) # Complex wavenumber (0.0 should be infinity / very large)
 
+    # need to make everything nondimensional
     E3_L = E3_L.at[0].set(jnp.zeros(2 * p - n + 2)) # Zeroing last row
     E3_R = E3_R.at[-1].set(jnp.zeros(2 * p - n + 2)) # Zeroing last row
 
-    E3_L = E3_L.at[0, 0].set(-1.0j*k - (1.0 / dx))
-    E3_L = E3_L.at[0, 1].set(1.0 / dx)
-    E3_R = E3_R.at[-1, -2].set(-1.0j*k + (1.0 / dx)) # TODO: Not sure if this and the condition below should be swapped...
-    E3_R = E3_R.at[-1, -1].set(1.0 / dx)
+    E3_L = E3_L.at[0, 0].set(-1.0j*k - (1.0 / dx)) # -1.0j * k * dx - 1.0
+    E3_L = E3_L.at[0, 1].set(1.0 / dx) # 1.0
+    E3_R = E3_R.at[-1, -2].set(1.0j*k - (1.0 / dx)) # -1.0
+    E3_R = E3_R.at[-1, -1].set(1.0 / dx) # -1.0j * k * dx + 1.0
 
     # E4, E5
     E4 = jnp.hstack([O_1P, E41_C, O_1P, O_1P, O_1P, E43, E44])
@@ -232,6 +232,3 @@ def rigidSolver(rho, omega, nu, g, L_raft, L_domain, sigma, x_A, F_A, n):
 if __name__ == "__main__":
     A = rigidSolver(1000, 10, 1e-6, 9.81, 0.05, 1, 0.072, 0.02, 1, 21)
     print(A[0])
-    print(A[1])
-    print(A[2])
-    print(A[3])
