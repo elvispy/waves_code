@@ -95,11 +95,16 @@ idxRightEdge  = find(rightEdgeMask);
 
 
 % ------------------------------------------------------------------------
-% 3.  Initialise 5�5 sparse cell container
+% 3.  Initialise 3 by 3 sparse cell container
 % ------------------------------------------------------------------------
-S2D = repmat({sparse(NM,NM)}, 2, 2);
+S2D = repmat({sparse(NP,NP)}, 3, 3);
+S2D{1, 3} = sparse(NP, nbContact);
+S2D{2, 3} = sparse(NP, nbContact);
+S2D{3, 3} = sparse(nbContact, nbContact);
+S2D{3, 1} = sparse(nbContact, NP);
+S2D{3, 2} = sparse(nbContact, NP);
 %S2D{i, j} refers to the block of equations i, and j = 1 correspond to the
-%variable phi, whle j=2 corresponds to the variable phi_z
+%variable phi, whle j=2 corresponds to the variable phi_z, and j = 3 to M
 
 % ------------------------------------------------------------------------
 % 4.  Equation 1: Bernoulli on free surface  
@@ -123,12 +128,13 @@ CC = idxContact;
 %[DxRaft,  ~] = getNonCompactFDmatrix(sum(x_contact),1,1,args.ooa);
 [Dx2Raft, ~] = getNonCompactFDmatrix(sum(x_contact),1,2,args.ooa);
 [Dx3Raft, ~] = getNonCompactFDmatrix(sum(x_contact),1,3,args.ooa);
-[Dx4Raft, ~] = getNonCompactFDmatrix(sum(x_contact),1,4,args.ooa);
+%[Dx4Raft, ~] = getNonCompactFDmatrix(sum(x_contact),1,4,args.ooa);
 
 S2D{1, 1}(idxContact([1 2 end-1 end]), :) = 0; 
 S2D{1, 2}(idxContact([1 2 end-1 end]), :) = 0; 
-S2D{1, 1}(CC, CC) = 1.0i * Lambda * Gamma * dx^2 * I_NM(CC, CC) + 2*Gamma*Lambda / Re * Dx2Raft;
-S2D{1, 2}(CC, CC) = (1.0i - 1.0i * Gamma * Lambda/Fr^2) * dx^2 * I_NM(CC, CC) + (-1.0i * kappa/dx^2) * Dx4Raft;
+S2D{1, 1}(CC, CC) = 1.0i * Lambda * Gamma * dx^2 * I_NP(CC, CC) + 2*Gamma*Lambda / Re * Dx2Raft;
+S2D{1, 2}(CC, CC) = (1.0i - 1.0i * Gamma * Lambda/Fr^2) * dx^2 * I_NP(CC, CC); %+ (-1.0i * kappa/dx^2) * Dx4Raft;
+S2D{1, 3}(CC, :)  = -1.0i * Dx2Raft;
 % Boundary conditions: No bending moment
 S2D{1, 2}(idxContact(2), CC)     = Dx2Raft(1, :);
 S2D{1, 2}(idxContact(end-1), CC) = Dx2Raft(end, :);
