@@ -5,7 +5,7 @@ function [U, x, z, phi, eta, args] = flexible_surferbot_v2(varargin)
     % --- Physical constants ---
     addParameter(p, 'sigma', 72.2e-3);              % [N/m] surface tension of water
     addParameter(p, 'rho', 1000.);                  % [kg/m^3] density of water
-    addParameter(p, 'omega', 2*pi*80.);             % [rad/s] driving frequency (80 Hz)
+    addParameter(p, 'omega', 2*pi*10.);             % [rad/s] driving frequency (80 Hz)
     addParameter(p, 'nu', 1e-6);                    % [m^2/s] kinematic viscosity of water
     addParameter(p, 'g', 9.81);                     % [m/s^2] gravitational acceleration
 
@@ -14,11 +14,11 @@ function [U, x, z, phi, eta, args] = flexible_surferbot_v2(varargin)
     addParameter(p, 'motor_position', 0.6/2.5 * 0.05); % [m] motor position along the raft (fraction x L_raft)
     addParameter(p, 'd', 0.03);                        % [m] depth of surferbot (third dimension, z-direction)
     addParameter(p, 'EI', 3.0e9 * 3e-2 * 9e-4^3 / 12); % [N m^2] bending stiffness
-    addParameter(p, 'rho_raft', 0.018 * 3.);           % [kg/m] mass per unit length of the raft
+    addParameter(p, 'rho_raft', 0.052);           % [kg/m] mass per unit length of the raft
 
     % --- Domain settings ---
     addParameter(p, 'L_domain', nan);               % [m] total length of the simulation domain
-    addParameter(p, 'domainDepth', 0.1);            % [m] depth of the simulation domain (second dimention, y-direction)
+    addParameter(p, 'domainDepth', nan);            % [m] depth of the simulation domain (second dimention, y-direction)
 
     % --- Solver settings ---
     addParameter(p, 'n', nan);                      % [unitless] number of grid points in x in the raft
