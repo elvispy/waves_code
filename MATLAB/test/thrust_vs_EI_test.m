@@ -13,7 +13,7 @@ base = struct( ...
         'omega',2*pi*80, 'ooa', 4);
 
 % EI values to test (multiplicative sweep)
-EI_list = base.EI * (100.*(0:10));
+EI_list = base.EI * (100.*(1:10));
 EI_list = unique(EI_list, 'stable');
 
 % Preallocate
