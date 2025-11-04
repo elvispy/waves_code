@@ -89,14 +89,14 @@ function [U, x, z, phi, eta, args] = flexible_surferbot_v2(varargin)
     
     res = 80; % Minimal resolution per unit 
     if isnan(args.n) 
-        args.n = ceil(res / (2*pi/real(k)) * args.L_raft);
+        args.n = max(res, ceil(res / (2*pi/real(k)) * args.L_raft));
         args.n = args.n + mod(args.n, 2) + 1;
     end
     if 2*pi/real(k) / (args.L_raft / args.n) < res; warning('Number of points in x direction too small. Consider changing n to %d', ceil(res / (2*pi/real(k)) * args.L_raft)); end
     if isnan(args.M) 
-        args.M = ceil(res / (2*pi/real(k)) * args.L_raft);
+        args.M = ceil(res * real(k) * args.domainDepth);
     end
-    if 2*pi/real(k) / (args.L_raft / args.M) < res; warning('Number of points in z direction too small. Consider changing M to %d', ceil(res / (2*pi/real(k)) * args.L_raft)); end
+    if 1/real(k) / (args.domainDepth / args.M) < res; warning('Number of points in z direction too small. Consider changing M to %d', ceil(res / (2*pi/real(k)) * args.L_raft)); end
     
     if isnan(args.L_domain) %|| args.L_domain < 10 * 2*pi/k 
         args.L_domain = max(args.L_raft/2 * 3, round(10*2*pi/real(k), 2, 'significant')); 
