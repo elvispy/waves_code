@@ -65,10 +65,6 @@ Re     = args.nd_groups.Re;
 nbContact = sum(x_contact);
 I_NP = speye(NP); I_CC = speye(nbContact, nbContact);
 
-% ------------------------------------------------------------------------
-% 1.  Finite-difference operators (1-D ? 2-D via Kronecker) 
-% ------------------------------------------------------------------------
-
 
 % ------------------------------------------------------------------------
 % 2.  Logical masks  ?  row-index vectors
@@ -113,8 +109,8 @@ L = idxLeftFreeSurf;
 [DxFree,  ~] = getNonCompactFDmatrix(nbLeft,1,1,args.ooa);
 [DxxFree, ~] = getNonCompactFDmatrix(nbLeft,1,2,args.ooa);
 % (1:(end-1))
-S2D{1,1}(L(2:end-1),L) =  I_NP(L(2:end-1), L) * dx^2 + 4.0j/Re * DxxFree(2:end-1, :);
-S2D{1,2}(L(2:end-1),L) =  -dx^2/Fr^2 * I_NP(L(2:end-1), L) + 1/(We * Gamma)*DxxFree(2:end-1, :);
+S2D{1,1}(L(2:end-1),L) =  dx^2 * I_NP(L(2:end-1), L) + 4.0j/Re * DxxFree(2:end-1, :);
+S2D{1,2}(L(2:end-1),L) =  -dx^2/Fr^2 * I_NP(L(2:end-1), L) + 1/(We * Gamma) * DxxFree(2:end-1, :);
 
 R = idxRightFreeSurf;
 S2D{1,1}(R(2:end-1),R) =  dx^2 * I_NP(R(2:end-1), R) + 4.0j/Re * DxxFree(2:end-1, :);
@@ -130,22 +126,22 @@ CC = idxContact;
 [Dx3Raft, ~] = getNonCompactFDmatrix(sum(x_contact),1,3,args.ooa);
 %[Dx4Raft, ~] = getNonCompactFDmatrix(sum(x_contact),1,4,args.ooa);
 
-S2D{1, 1}(idxContact([1 2 end-1 end]), :) = 0; 
-S2D{1, 2}(idxContact([1 2 end-1 end]), :) = 0; 
+
 S2D{1, 1}(CC, CC) = 1.0i * Lambda * Gamma * dx^2 * I_NP(CC, CC) + 2*Gamma*Lambda / Re * Dx2Raft;
 S2D{1, 2}(CC, CC) = (1.0i - 1.0i * Gamma * Lambda/Fr^2) * dx^2 * I_NP(CC, CC); %+ (-1.0i * kappa/dx^2) * Dx4Raft;
 S2D{1, 3}(CC, :)  = -1.0i * Dx2Raft;
-% Boundary conditions: No bending moment
-S2D{1, 2}(idxContact(2), CC)     = Dx2Raft(1, :);
-S2D{1, 2}(idxContact(end-1), CC) = Dx2Raft(end, :);
-% Boundary conditions: No stress on end
-S2D{1, 2}(idxContact(1), CC)  = Dx3Raft(1, :)/dx^2; 
-S2D{1, 2}(idxContact(1), L)   = S2D{1, 2}(idxContact(1), L) ...
-    + Lambda / (kappa * We) * DxFree(end, :);
 
-S2D{1, 2}(idxContact(end), CC) = Dx3Raft(end, :)/dx^2;
-S2D{1, 2}(idxContact(end), R)   = S2D{1, 2}(idxContact(end), R) ...
-        - Lambda / (kappa * We) * DxFree(1, :);
+S2D{1, 1}(idxContact([1 end]), :) = 0; 
+S2D{1, 2}(idxContact([1 end]), :) = 0;
+
+% Boundary conditions: No stress on end
+S2D{1, 2}(idxContact(1), CC)   = Dx3Raft(1, :); 
+S2D{1, 2}(idxContact(1), L)    = S2D{1, 2}(idxContact(1), L) ...
+    - dx^2 * Lambda / (kappa * We) * DxFree(end, :);
+
+S2D{1, 2}(idxContact(end), CC) = Dx3Raft(end, :);
+S2D{1, 2}(idxContact(end), R)  = S2D{1, 2}(idxContact(end), R) ...
+    - dx^2 * Lambda / (kappa * We) * DxFree(1, :);
 
 % Momentum equation for rigid-case and stability
 
