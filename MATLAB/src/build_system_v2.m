@@ -144,9 +144,11 @@ S2D{1, 2}(idxContact(end), R)  = S2D{1, 2}(idxContact(end), R) ...
     - dx^2 * Lambda / (kappa * We) * DxFree(1, :);
 
 % Momentum equation for rigid-case and stability
-
 S2D{3, 2}(:, CC) = + 1.0i * Dx2Raft;
 S2D{3, 3} = (dx^2/kappa) * I_CC;
+% Boundary conditions: No bending moment
+S2D{3, 3}([1 end], :)   = 0;
+
 
 if args.test == true % Dirichlet BC conditions for testing
     S2D{1, 1}(idxContact, :) = 0;
