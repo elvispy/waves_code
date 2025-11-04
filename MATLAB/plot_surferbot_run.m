@@ -140,5 +140,34 @@ function plot_surferbot_run(run_dir)
     savefig(f2, fullfile(run_dir,'phi_imag_t0.fig'));
     %close(f2);
     
+    %% --- 3b.  Surface |eta| and phase(eta) panels ---------------------------
+    scaleY = 1e6;              
+    mag_eta   = abs(eta) * scaleY;
+    phase_eta = unwrap(angle(eta)); % mod(angle(eta), 2*pi); 
+
+    f3b = figure('Visible','on','Position',[100 500 1600 820]);
+
+    % Left: |eta|(x) at surface
+    subplot(2,1,1)
+    plot(x, mag_eta, 'b', 'LineWidth', 1.5); hold on
+    if isfield(args,'x_contact') && ~isempty(args.x_contact)
+        plot(x(args.x_contact), mag_eta(args.x_contact), 'r.', 'MarkerSize', 16);
+    end
+    xlabel('x (m)'); ylabel('|eta| (um)'); set(gca,'FontSize',16)
+    title('Magnitude of \eta at surface')
+
+    % Right: phase(eta)(x) at surface
+    subplot(2,1,2)
+    plot(x, phase_eta, 'k', 'LineWidth', 1.5); hold on
+    if isfield(args,'x_contact') && ~isempty(args.x_contact)
+        plot(x(args.x_contact), phase_eta(args.x_contact), 'r.', 'MarkerSize', 16);
+    end
+    xlabel('x (m)'); ylabel('phase(\eta) (rad)'); set(gca,'FontSize',16)
+    title('Phase of \eta at surface')
+
+    saveas(f3b, fullfile(run_dir,'eta_mag_phase.png'));
+    savefig(f3b, fullfile(run_dir,'eta_mag_phase.fig'));
+
+
     fprintf('Plots saved in %s\n', run_dir);
 end
