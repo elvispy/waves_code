@@ -151,7 +151,6 @@ S2D{3, 2}([1 end], :)       = 0;      % No eta_xx
 S2D{3, 3}([1 end], [1 end]) = eye(2); % M = 0 on ends
 
 
-
 if args.test == true % Dirichlet BC conditions for testing
     S2D{1, 1}(idxContact, :) = 0;
     S2D{1, 2}(idxContact, :) = I_NP(idxContact, :);
