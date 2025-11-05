@@ -6,13 +6,13 @@ addpath('../src');
 L_raft = 0.05;
 base = struct( ...
     'sigma',72.2e-3, 'rho',1000, 'nu',0*1e-6, 'g',9.81, ...
-        'L_raft',L_raft, 'motor_position',0.4*L_raft/2, 'd',0.03, ...
+        'L_raft',L_raft, 'motor_position',0.24*L_raft/2, 'd',0.03, ...
         'EI',3.0e9*3e-2*(9.9e-4)^3/12, 'rho_raft',0.052, ...
         'motor_inertia',0.13e-3*2.5e-3, 'BC','radiative', ...
         'omega',2*pi*80, 'ooa', 4);
 
 % EI values to test (multiplicative sweep)
-EI_list = base.EI * (10.^(0:2:10));
+EI_list = base.EI * (10.^linspace(-3, 1, 100));
 EI_list = unique(EI_list, 'stable');
 
 % Preallocate
@@ -69,17 +69,19 @@ annotation('textbox',[0.78 0.12 0.20 0.80], ...
 
 % Thrust vs EI
 figure(2); clf;
-plot([S.EI], [S.thrust_N], 'o-','MarkerSize',6,'LineWidth',1.2, 'DisplayName', 'Pressure integral'); hold on;
-plot([S.EI], [S.Sxx],      '--','MarkerSize',6,'LineWidth',2.0, 'DisplayName', 'LH');
-xlabel('EI'); ylabel('Thrust/d (N/m)');
-set(gca,'FontSize',14); grid on; legend; set(gca, 'YScale', 'log', 'XScale', 'log');
+plot([S.EI]./base.EI, [S.thrust_N], 'o-','MarkerSize',6,'LineWidth',1.2, 'DisplayName', 'Pressure integral'); hold on;
+plot([S.EI]./base.EI, [S.Sxx],      '--','MarkerSize',6,'LineWidth',2.0, 'DisplayName', 'LH');
+xlabel('EI/EI0'); ylabel('Thrust/d (N/m)');
+set(gca,'FontSize',14); grid on; legend; set(gca, 'YScale', 'linear', 'XScale', 'log');
 title('Thrust vs EI');
 
 % Console table
 T = table([S.EI].', [S.N_x].', [S.M_z].', ...
-          [S.thrust_N].', [S.tail_flat_ratio].', [S.disp_res].', ...
-    'VariableNames', {'EI','N_x','M_z','thrust_N','tail_flat_ratio','dispersion_resid'});
+          [S.thrust_N].', [S.Sxx].', [S.tail_flat_ratio].', [S.disp_res].', ...
+    'VariableNames', {'EI','N_x','M_z','thrust_N', 'LH', 'tail_flat_ratio','dispersion_resid'});
 disp('=== EI sweep results ==='); disp(T);
+
+S = struct2table(S);
 
 end
 
