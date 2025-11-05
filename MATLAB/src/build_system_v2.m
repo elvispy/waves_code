@@ -121,29 +121,29 @@ S2D{1,2}(R(2:end-1),R) =  -dx^2/Fr^2 * I_NP(R(2:end-1), R) + 1/(We * Gamma) * Dx
 %       overwrite the rows that were zeroed out above
 % ------------------------------------------------------------------------
 CC = idxContact;
-%[DxRaft,  ~] = getNonCompactFDmatrix(sum(x_contact),1,1,args.ooa);
+[DxRaft,  ~] = getNonCompactFDmatrix(sum(x_contact),1,1,args.ooa);
 [Dx2Raft, ~] = getNonCompactFDmatrix(sum(x_contact),1,2,args.ooa);
-[Dx3Raft, ~] = getNonCompactFDmatrix(sum(x_contact),1,3,args.ooa);
+%[Dx3Raft, ~] = getNonCompactFDmatrix(sum(x_contact),1,3,args.ooa);
 %[Dx4Raft, ~] = getNonCompactFDmatrix(sum(x_contact),1,4,args.ooa);
 
 
 S2D{1, 1}(CC, CC) = 1.0i * Lambda * Gamma * dx^2 * I_NP(CC, CC) + 2*Gamma*Lambda / Re * Dx2Raft;
 S2D{1, 2}(CC, CC) = (1.0i - 1.0i * Gamma * Lambda/Fr^2) * dx^2 * I_NP(CC, CC); %+ (-1.0i * kappa/dx^2) * Dx4Raft;
-S2D{1, 3}(CC, :)  = -1.0i * Dx2Raft;
+S2D{1, 3}(CC, :)  =  Dx2Raft;
 
+% We zero equations for boundary conditions
 S2D{1, 1}(idxContact([1 end]), :) = 0; 
 S2D{1, 2}(idxContact([1 end]), :) = 0;
+S2D{1, 3}(idxContact([1 end]), :) = 0;
 
-% Boundary conditions: No stress on end
-S2D{1, 2}(idxContact(1), CC)   = Dx3Raft(1, :); 
-S2D{1, 2}(idxContact(1), L)    = S2D{1, 2}(idxContact(1), L) ...
-    - dx^2 * Lambda / (kappa * We) * DxFree(end, :);
+% Boundary conditions: Stress on end given by surface tension
+S2D{1, 3}(idxContact(1), :)   = DxRaft(1, :); 
+S2D{1, 2}(idxContact(1), L)   = -1.0i * dx * Lambda / We * DxFree(end, :);
 
-S2D{1, 2}(idxContact(end), CC) = Dx3Raft(end, :);
-S2D{1, 2}(idxContact(end), R)  = S2D{1, 2}(idxContact(end), R) ...
-    - dx^2 * Lambda / (kappa * We) * DxFree(1, :);
+S2D{1, 3}(idxContact(end), :) = DxRaft(end, :);
+S2D{1, 2}(idxContact(end), R) = -1.0i * dx * Lambda / We * DxFree(1, :);
 
-% Momentum equation for rigid-case and stability
+% Bending moment coupling equation (M = EI eta_xx)
 S2D{3, 2}(:, CC) = + 1.0i * Dx2Raft;
 S2D{3, 3} = (dx^2/kappa) * I_CC;
 % Boundary conditions: No bending moment
