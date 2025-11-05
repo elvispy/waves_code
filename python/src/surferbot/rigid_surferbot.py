@@ -105,10 +105,13 @@ def rigidSolver(rho, omega, nu, g, L_raft, L_domain, sigma, x_A, F_A, n):
     d_dx = Diff(axis=0, grid=grid_x, acc=2, shape=(p,))
 
     # Used for E1, E3
-    d_dx_left = Diff(axis=0, grid=grid_x[0:left_raft_boundary], acc=2, shape=(sum(x_free)//2,))
+    d_dx_left = Diff(axis=0, grid=grid_x[0:(left_raft_boundary+1)], acc=2, shape=(sum(x_free)//2+1,))
+    d_dx_left_square = d_dx_left[0:-1, 0:-1]
     print(f"d_dx_left: {d_dx_left.shape}")
     print(f"left_raft_boundary: {left_raft_boundary}")
-    d_dx_right = Diff(axis=0, grid=grid_x[right_raft_boundary: ], acc=2, shape=(sum(x_free)//2,))
+    d_dx_right = Diff(axis=0, grid=grid_x[(right_raft_boundary-1): ], acc=2, shape=(sum(x_free)//2+1,))
+    d_dx_right_square = d_dx_right[0:-1, 1:]
+    
     print(f"d_dx_right: {d_dx_right.shape}")
     print(f"number of free points: {sum(x_free)//2}")
 
@@ -132,18 +135,18 @@ def rigidSolver(rho, omega, nu, g, L_raft, L_domain, sigma, x_A, F_A, n):
 
     # Equation 1 # TODO: fix labeling...
     # phi_left
-    E11_1L = C11 * N11 + d_dx_left**2 * (C12 * N11 + C14) + C13 
+    E11_1L = C11 * N11 + d_dx_left_square**2 * (C12 * N11 + C14) + C13 
     E11_1C = C11 * N12 + d_dx_raft**2 * (C12 * N12)
-    E11_1R = C11 * N13 + d_dx_right**2 * (C12 * N13) # TODO: check if the derivative is correct
+    E11_1R = C11 * N13 + d_dx_right_square**2 * (C12 * N13) # TODO: check if the derivative is correct
 
     # phi_right
-    E11_2L = C11 * N11 + d_dx_left**2 * (C12 * N11)
-    E11_2C = C11 * N12 + d_dx_raft**2 * (C12 * N12)
-    E11_2R = C11 * N11 + d_dx_right**2 * (C12 * N11 + C14) + C13
+    E11_2L = C11 * N31 + d_dx_left_square**2 * (C12 * N11)
+    E11_2C = C11 * N32 + d_dx_raft**2 * (C12 * N12)
+    E11_2R = C11 * N33 + d_dx_right_square**2 * (C12 * N11 + C14) + C13
 
     # Boundary conditions
-    E11_1LB = C13 + d_dx_left**2 * C14
-    E11_1RB = C13 + d_dx_right**2 * C14
+    #E11_1LB = C13 + d_dx_left**2 * C14
+    #E11_1RB = C13 + d_dx_right**2 * C14
     # TODO: check if these are nondimensional
     E13 = (1j * omega * L_c / 2) - d_dx_raft**2 * (1j * omega * L_c / 2) 
     E14 = 1j * omega - d_dx_raft**2 * (1j * omega)
@@ -156,11 +159,20 @@ def rigidSolver(rho, omega, nu, g, L_raft, L_domain, sigma, x_A, F_A, n):
     E24 = jnp.full((n, 1), C22) # zeta
 
     # Equation 3 # TODO: need to check this, maybe relabel this is confusing
-    E31_L = C31 * N31 # phi_left
-    E31_R = C31 * N33 # phi_right
-    print(f"E31_L: {E31_L.shape}") 
-    E32_L = C32 + d_dx_left**2 * C33 # eta_left
-    E32_R = C32 + d_dx_right**2 * C33 # eta_right
+    # phi_left
+    E31_1L = C31 * N11 
+    E31_1C = C31 * N12 
+    E31_1R = C31 * N13 
+
+    # phi_right
+    E31_2L = C31 * N31 
+    E31_2C = C31 * N32 
+    E31_2R = C31 * N31 
+
+    #print(f"E31_L: {E31_L.shape}") 
+    E32_L = C32 + d_dx_left_square**2 * C33 # eta_left
+    E32_R = C32 + d_dx_right_square**2 * C33 # eta_right
+
 
     # Equation 4
     E41_C = integral @ (C43 + d_dx_raft**2 * C46) # phi_center
@@ -189,12 +201,13 @@ def rigidSolver(rho, omega, nu, g, L_raft, L_domain, sigma, x_A, F_A, n):
     # E1
     E1_L = jnp.hstack([E11_1L, E11_1C, E11_1R, O_PP, O_PP, O_P1, O_P1])
     # Boundary conditions
-    E1_L = E1_L.at[-1].set([E11_1LB, O_1N, O_1P, O_1P, O_1P, E13, E14])
+    d2_dx2_left = d_dx_left**2; 
+    E1_L.at[0:((n-p)//2+1), (n-p)//2] = E1_L.at[0:((n-p)//2+1), (n-p)//2] + d2_dx2_left[:-1, -1] * (C12 * N11 + C14)
+    #E1_L = E1_L.at[-1].set([E11_1LB, O_1N, O_1P, O_1P, O_1P, E13, E14])
 
     E1_R = jnp.hstack([E11_2L, E11_2C, E11_2R, O_PP, O_PP, O_P1, O_P1])
     # Boundary conditions
-    E1_R = E1_R.at[0].set([E11_1RB, O_1N, O_1P, O_1P, O_1P, E13, E14])
-
+    #E1_R = E1_R.at[0].set([E11_1RB, O_1N, O_1P, O_1P, O_1P, E13, E14])
 
     # E2 
     E2 = jnp.hstack([C21 * N21, E21_C, C21 * N23, O_NP, O_NP, E23, E24])
