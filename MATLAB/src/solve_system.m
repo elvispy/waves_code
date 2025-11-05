@@ -6,7 +6,14 @@ old2 = warning('query','MATLAB:singularMatrix');
 warning('off','MATLAB:nearlySingularMatrix');
 warning('off','MATLAB:singularMatrix');
 lastwarn('');
+%diary off; clc
+%prev = spparms; c = onCleanup(@() spparms(prev));
+%diary('mldivide_log.txt'); diary on
+%spparms('spumoni',3);           % max verbosity
+
 x_try0 = A \ b_sparse;
+
+%diary off
 [msg0,~] = lastwarn;
 warning(old1.state,'MATLAB:nearlySingularMatrix');
 warning(old2.state,'MATLAB:singularMatrix');

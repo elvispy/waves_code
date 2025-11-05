@@ -75,7 +75,7 @@ function plot_surferbot_run(run_dir)
     open(vid);
     
     omega  = args.omega;
-    tvec   = linspace(0,10*pi/omega,100);
+    tvec   = linspace(0,10*pi/omega,400);
     scaleX = 1e2;  % cm
     scaleY = 1e6;  % µm
     
