@@ -71,7 +71,7 @@ function plot_surferbot_run(run_dir)
     %% --- 2.  Quick MP4 of η(t,x) ---------------------------------------
     vidFile = fullfile(run_dir,'waves.mp4');
     vid     = VideoWriter(vidFile,'MPEG-4');
-    vid.FrameRate = 4*args.omega/(2*pi);
+    vid.FrameRate = args.omega/(2*pi);
     open(vid);
     
     omega  = args.omega;
