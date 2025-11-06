@@ -205,8 +205,8 @@ else
     % WE WILL ADD THIS dx after solving for x. 
     b(idxContact) = - dx^2 * motor_weights(:).';   % only on raft contact nodes
     % THe next two equations are boundary conditions:
-    b(idxContact(1:2)) = 0;
-    b(idxContact((end-1):end)) = 0;
+    b(idxContact([1 end])) = 0;
+    %b(idxContact((end-1):end)) = 0;
 end
 
 % ------------------------------------------------------------------------
