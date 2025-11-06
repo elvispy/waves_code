@@ -1,4 +1,4 @@
-addpath './src'
+addpath '../src'
 
 % Names of outputs you want
 names = {'U', 'x', 'z', 'phi', 'eta', 'args'};
@@ -6,9 +6,9 @@ names = {'U', 'x', 'z', 'phi', 'eta', 'args'};
 L_raft = 0.05;
 [out{1:numel(names)}] = flexible_surferbot_v2( ...
     'sigma'         , 72.2e-3      , ...   % [N/m] surface tension
-    'rho'           , 1000.0        , ...   % [kg/m�] water density
+    'rho'           , 1000.0        , ...   % [kg/m3] water density
     'omega'         , 2*pi*80        , ...   % [rad 1/s] drive frequency
-    'nu'            , 0*1.0e-6      , ...   % [m�/s] kinematic viscosity
+    'nu'            , 0*1.0e-6      , ...   % [m2/s] kinematic viscosity
     'g'             , 9.81          , ...   % [m/s2] gravity
     'L_raft'        , L_raft        , ...   % [m] raft length  
     'L_domain'      , 5*L_raft      , ...
