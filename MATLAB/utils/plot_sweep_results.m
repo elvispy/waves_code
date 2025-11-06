@@ -1,8 +1,28 @@
 function plot_sweep_results
-% ------------------------------------------------------------------------
-%  Reads the manifest, calculates a characteristic frequency, and plots
-%  U vs. a non-dimensional frequency (omega / omega_c).
-% ------------------------------------------------------------------------
+% PLOT_SWEEP_RESULTS
+% Purpose:
+%   Read surferbot_results/manifest.csv, compute a characteristic frequency
+%   omega_c = sqrt(EI / (m_c * L_c)), and plot U vs (omega / omega_c)
+%   grouped by EI.
+%
+% Requirements:
+%   - Manifest file: surferbot_results/manifest.csv with columns run_id, EI_Nm2, f_hz, U_m.
+%   - Each run folder must contain results.mat with args.m_c and args.L_c.
+%
+% How to run:
+%   - From the project root, call: plot_sweep_results
+%
+% What it does:
+%   1) Loads the manifest and the first run's args to read m_c and L_c.
+%   2) For each unique EI, sorts runs by frequency and computes omega/omega_c.
+%   3) Plots U (m/s) vs omega/omega_c on a log-x axis with legend per EI.
+%
+% Outputs:
+%   - One figure: "Surferbot Velocity vs Non-Dimensional Frequency"
+%
+% Notes:
+%   - omega = 2*pi*f_hz
+%   - Adjust axis scales or labels if needed
 
 % ---------- 1. Define File Paths ----------------------------------------
 outdir = 'surferbot_results';

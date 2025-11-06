@@ -1,5 +1,29 @@
 function S = thrust_vs_EI_test
-% EI study: vary flexural rigidity, plot |eta(x)| per case and thrust vs EI
+% THRUST_VS_EI_TEST
+% Purpose:
+%   Sweep flexural rigidity (EI) for a “surferbot” model, solve each case,
+%   and compare free-surface amplitude profiles and thrust vs EI.
+%
+% How to run:
+%   - Ensure ../src contains FLEXIBLE_SURFERBOT_V2 and dependencies.
+%   - Call the function: S = thrust_vs_EI_test;  % returns results table
+%
+% What it does:
+%   - Defines a base parameter set (fluid, geometry, drive, BCs).
+%   - Builds EI_list over 10^(-3)–10^(+1) × EI0.
+%   - For each EI: solves the model, stores fields, thrust, and diagnostics.
+%
+% Outputs:
+%   - Figures: (1) |η(x)| for all EI; (2) Thrust/d vs EI/EI0 with two estimates.
+%   - Console: run constants and a summary table per EI.
+%   - Return value S: table with x, z, φ, η, N_x, M_z, thrust_N, Sxx, ratios, residuals, EI.
+%
+% Key diagnostics:
+%   - thrust_N = args.thrust/args.d (pressure integral per depth).
+%   - Sxx: alternative thrust proxy from surface energy flux.
+%   - tail_flat_ratio: variability near the interior “tail.”
+%   - disp_res: |ω^2 − gk| dispersion residual.
+
 
 addpath('../src');
 

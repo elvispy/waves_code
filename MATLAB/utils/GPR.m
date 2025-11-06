@@ -1,4 +1,33 @@
-addpath ./src
+% BO_SURFERBOT.M
+% Purpose:
+%   Bayesian optimization wrapper for FLEXIBLE_SURFERBOT_V2. Searches over
+%   omega, motor_position, and EI to optimize a user-defined metric.
+%
+% How to run:
+%   - Ensure ./src contains FLEXIBLE_SURFERBOT_V2 and its dependencies.
+%   - Requires Statistics and Machine Learning Toolbox (bayesopt).
+%   - Edit the 'metric' handle and 'maximize' flag as needed.
+%   - Run the script; it launches bayesopt with plots and parallel evals.
+%
+% What it does:
+%   1) Declares decision bounds (omega [5,100], motor_position [0, L/2], EI range).
+%   2) Defines fixed physical/geometry parameters and BCs.
+%   3) Builds an objective that calls FLEXIBLE_SURFERBOT_V2 with name-value pairs,
+%      computes metric(out, params), and flips sign if maximizing.
+%   4) Runs bayesopt for up to 100 evaluations with EI+ acquisition.
+%
+% Outputs:
+%   - 'results': bayesopt object (inspect Results and plots).
+%   - 'bestX', 'bestF': best decision variables and objective value.
+%   - 'bestParams': fixed+best variables for a final model run.
+%
+% Customize:
+%   - Replace 'metric = @(out,params) out.U' with any scalar metric.
+%   - Adjust 'MaxObjectiveEvaluations', acquisition, or parallel settings.
+
+
+
+addpath '../src'
 
 %% 1) Configure decision variables and constants
 decision = [ ...

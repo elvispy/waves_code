@@ -1,8 +1,33 @@
 function run_surferbot_sweep
-% ------------------------------------------------------------------------
-%  Surferbot parameter sweep with progress messages
-% ------------------------------------------------------------------------
-
+% RUN_SURFERBOT_SWEEP
+%
+% Performs parameter sweep for surferbot fluid-structure interaction simulations.
+% Runs multiple simulations in parallel with progress tracking.
+%
+% Usage:
+%   run_surferbot_sweep
+%
+% Requirements:
+%   - Parallel Computing Toolbox
+%   - save_surferbot_run function
+%   - regenerate_manifest function
+%
+% Main steps:
+%   1. Define base parameters for surferbot simulation
+%   2. Set up parameter sweep ranges (omega, EI)
+%   3. Generate Cartesian product of parameter combinations
+%   4. Run simulations in parallel using parfor
+%   5. Save results and update progress monitor
+%   6. Generate results manifest
+%
+% Inputs: None
+% Outputs: Saves simulation results to 'surferbot_results' directory
+%
+% Notes:
+%   - Uses parallel processing for efficiency
+%   - Progress displayed as percentage complete
+%   - Automatically generates parameter combinations
+%   - Results include omega and EI parameter variations
 % ---------- Base variables ----------------------------------------------
 base = struct( ...
     'sigma'         , 72.2e-3 , ...

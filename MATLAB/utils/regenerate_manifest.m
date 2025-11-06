@@ -1,5 +1,31 @@
 function regenerate_manifest(outdir)
-%REGENERATE_MANIFEST  Rebuild manifest.csv from the saved run folders using parallel processing.
+
+% REGENERATE_MANIFEST
+% Purpose:
+%   Rebuild surferbot_results/manifest.csv by scanning run folders in parallel.
+%
+% How to run:
+%   regenerate_manifest            % uses default "surferbot_results"
+%   regenerate_manifest(outdir)    % specify alternative output folder
+%
+% Requirements:
+%   - Each run folder contains config.json (input args) and results.mat with U.
+%   - Parallel Computing Toolbox for parfor (falls back to serial if not available).
+%
+% What it does:
+%   1) Lists subfolders in outdir, newest last.
+%   2) In parallel, loads U from results.mat and args from config.json.
+%   3) Writes a temporary CSV, then atomically moves it to manifest.csv.
+%
+% CSV columns:
+%   run_id, U_m, f_hz, EI_Nm2, motor_pos_m, motor_inertia_kgm, domain_depth_m,
+%   L_raft_m, n, M, BC
+%
+% Output:
+%   - manifest.csv in outdir with one row per valid run.
+% Notes:
+%   - Skips folders missing config.json or results.mat; reports count at end.
+
 
 if nargin < 1 || isempty(outdir), outdir = 'surferbot_results'; end
 assert(isfolder(outdir), 'Folder not found: %s', outdir);

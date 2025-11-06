@@ -1,25 +1,87 @@
+% sweeper.M
+%
+% Description:
+%   End-to-end demo that:
+%     1) calls FLEXIBLE_SURFERBOT_V2 with all key parameters explicitly set,
+%     2) visualizes surface deflection η(x) and contact loads,
+%     3) visualizes the complex velocity potential φ(x,z),
+%     4) verifies PDE, boundary conditions, and beam–fluid coupling by reporting residual norms.
+%
+% How to run:
+%   - Place this script in the project’s examples/ or scripts/ folder.
+%   - Ensure ../src contains FLEXIBLE_SURFERBOT_V2 and FD helpers:
+%       getNonCompactFDmatrix2D, getNonCompactFDmatrix.
+%   - Open MATLAB, cd to this script’s folder, then run it.
+%
+% What it produces:
+%   - Figure 1: η(x) in micrometers with contact nodes highlighted (red) and contact force quivers.
+%   - Figure 2: φ(x,z) imaginary part as a color map with contours of Im(φ)/(ω L_raft^2).
+%   - Command Window prints:
+%       * “Velocity is … mm/s”
+%       * Norms of Laplacian residual, Bernoulli condition on the free surface,
+%         beam equilibrium residual, bottom no-penetration, and left/right radiation BCs.
+%
+% Key inputs set here (units in SI unless noted):
+%   sigma           Surface tension [N/m]. Use 0*sigma to disable its effect here.
+%   rho             Fluid density [kg/m^3].
+%   omega           Drive angular frequency [rad/s].
+%   nu              Kinematic viscosity [m^2/s]. Using 0*… disables viscous terms here.
+%   g               Gravity [m/s^2].
+%   L_raft          Raft length [m].
+%   motor_position  Motor x-location from −L_raft/2 to +L_raft/2 [m].
+%   d               Raft spanwise depth [m].
+%   EI              Bending stiffness [N·m^2].
+%   rho_raft        Linear mass of raft [kg/m].
+%   L_domain        Computational domain length in x [m].
+%   domainDepth     Water depth in z [m].
+%   n               Grid points along the raft (x-direction).
+%   M               Grid points in the vertical (z-direction).
+%   motor_inertia   Motor rotational inertia [kg·m^2].
+%   BC              Boundary condition type on lateral boundaries, e.g., 'radiative'.
+%
+% Outputs from FLEXIBLE_SURFERBOT_V2:
+%   U       Complex surge velocity magnitude [m/s] (printed in mm/s).
+%   x,z     Spatial grids in x and z.
+%   phi     Complex velocity potential field φ(x,z).
+%   eta     Complex free-surface/raft deflection η(x).
+%   args    Struct of derived parameters, masks, operators, and metadata (e.g., k, dx, dz,
+%           x_contact, phi_z, EI, rho, d, ω, L_raft). Used for diagnostics and plotting.
+%
+% Diagnostics performed:
+%   - Laplacian(φ) in the fluid bulk → reports ||∇²φ||.
+%   - Linearized Bernoulli on the free surface away from edges → reports norm of residual.
+%   - Beam equation on contact region, including fluid loading and motor inertia → reports
+%     ||beam − J_motor ω² loads||_∞.
+%   - Bottom no-penetration: Dz φ = 0 at z = −domainDepth → residual norm.
+%   - Left/right radiation-type BCs: φ_x ∓ i k φ = 0 → residual norms.
+%
+% Adjustable visualization settings:
+%   - Axis scaling for η: 'scale' factor (default 1e6 for micrometers) and automatic y-limits.
+%   - Colormap and contour levels for φ.
+%   - Figure sizes via set(gcf,'Position',…).
+%
+% Tips:
+%   - Start with the provided parameters; then vary omega, EI, or L_raft to study sensitivity.
+%   - If residual norms are large, increase n and M or adjust domain size to reduce reflection.
+%   - Ensure all inputs use SI units; labels convert η to micrometers only for plotting.
 
-%% We call the surferbot
-% ------------------------------------------------------------------------
-% Example: call flexible_surferbot_v2 with every parameter specified
-% ------------------------------------------------------------------------
-addpath './src'
+addpath '../src'
 [U, x, z, phi, eta, args] = flexible_surferbot_v2( ...
-    'sigma'         , 0*72.2e-3      , ...   % [N m?�] surface tension
-    'rho'           , 1000.0       , ...   % [kg m?�] water density
-    'omega'         , 2*pi*10      , ...   % [rad s?�] drive frequency
-    'nu'            , 0*1.0e-6       , ...   % [m� s?�] kinematic viscosity
-    'g'             , 10*9.81         , ...   % [m s?�] gravity
+    'sigma'         , 0*72.2e-3      , ...   % [N m?�] surface tension
+    'rho'           , 1000.0       , ...   % [kg m?�] water density
+    'omega'         , 2*pi*10      , ...   % [rad s?�] drive frequency
+    'nu'            , 0*1.0e-6       , ...   % [m� s?�] kinematic viscosity
+    'g'             , 10*9.81         , ...   % [m s?�] gravity
     'L_raft'        , 0.05         , ...   % [m] raft length
     'motor_position', 1.9e-2/2   , ...   % [m] motor x-position (from -L/2 to L/2)
     'd'             , 0.03         , ...   % [m] raft depth (spanwise)
-    'EI'            , 100*3.0e9 * 3e-2 * (9.9e-4)^3 / 12 , ...  % [N m�] bending stiffness
-    'rho_raft'      , 0.018*3.0    , ...   % [kg m?�] linear mass
+    'EI'            , 100*3.0e9 * 3e-2 * (9.9e-4)^3 / 12 , ...  % [N m�] bending stiffness
+    'rho_raft'      , 0.018*3.0    , ...   % [kg m?�] linear mass
     'L_domain'      , 0.2          , ...   % [m] domain length
     'domainDepth'   , 0.2          , ...   % [m] water depth
     'n'             , 201          , ...   % grid points in the raft
     'M'             , 100          , ...   % gird points in the z direction
-    'motor_inertia' , 0.13e-3*2.5e-3, ...  % [kg m�] motor inertia
+    'motor_inertia' , 0.13e-3*2.5e-3, ...  % [kg m�] motor inertia
     'BC'            , 'radiative'        );% boundary-condition type
 
 close all;

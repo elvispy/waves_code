@@ -1,4 +1,36 @@
-addpath './src/'
+% plottingvideo.m
+%
+% Description:
+%   Generates an animation of the flexible surferbot’s surface motion over time 
+%   and saves it as an MPEG-4 video file named "makingwaves.mp4".
+%
+% Usage:
+%   Run this script from within the project’s /scripts or /examples directory.
+%   It requires the function FLEXIBLE_SURFERBOT_V2 to be accessible in ../src/.
+%
+% Functionality:
+%   1. Adds the source code folder to the MATLAB path.
+%   2. Defines an excitation frequency (omega) and a corresponding time vector.
+%   3. Calls FLEXIBLE_SURFERBOT_V2 to compute displacement fields and geometry.
+%   4. Scales and plots the surface deflection η(x, t) over time.
+%   5. Highlights the contact points of the surferbot in red.
+%   6. Captures each frame and compiles them into a video file.
+%
+% Inputs:
+%   (Specified inside the script)
+%     omega   – Angular frequency of oscillation [rad/s].
+%     EI      – Bending stiffness parameter used by FLEXIBLE_SURFERBOT_V2.
+%
+% Outputs:
+%   - A video file "makingwaves.mp4" stored in the current working directory.
+%
+% Notes:
+%   - Adjust 'myVideo.FrameRate' to control animation smoothness.
+%   - Modify 'scaleX' and 'scaleY' to change axis scaling for visualization.
+%   - The video captures approximately 10 cycles of motion at 20 Hz.
+
+
+addpath '../src/'
 
 omega = 2*pi*20;
 tvec = linspace(0, 10*pi/omega, 200);
