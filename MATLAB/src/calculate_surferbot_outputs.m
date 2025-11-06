@@ -78,7 +78,7 @@ function [U, power, thrust, eta, p] = calculate_surferbot_outputs(args, phi, phi
 
     % Power (loads already raft-only)
     power = -(0.5 * args.omega * args.L_c * F_c) * trapz(args.x(args.x_contact)/args.L_c,  ...
-            (imag(eta_raft) .* (-args.loads(:))));
+            (imag(eta_raft) .* args.loads(:)));
 
     % Outputs
     eta = full(eta_adim * args.L_c);
