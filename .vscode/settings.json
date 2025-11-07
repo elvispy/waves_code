@@ -12,5 +12,6 @@
   "python.analysis.extraPaths": [
     "./python/src",
     "./python/src/surferbot"
-  ]
+  ],
+  "julia.environmentPath": "./Julia"
 }
