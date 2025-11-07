@@ -29,21 +29,24 @@
 
 addpath '../src'
 
+L_raft = 0.05; % Size of surferbot
+
 %% 1) Configure decision variables and constants
 decision = [ ...
- struct('name','omega'         ,'range',[5,100]           ,'transform','none')
- struct('name','motor_position','range',[0,0.05/2]        ,'transform','none')
- struct('name','EI'            ,'range',[1e-1 10] * 1e-4*3.0e9 * 3e-2 * (9.9e-4)^3 / 12,'transform','none')];
+ struct('name','omega'         ,'range',[10,90]           ,'transform','none')
+ struct('name','motor_position','range',[0,L_raft/2]        ,'transform','none')
+ struct('name','EI'            ,'range',[1e-1 10] * 1e-4*3.0e9 * 3e-2 * (9.9e-4)^3 / 12,'transform','log')];
+
 
 fixed = struct( ...
-  'sigma',72.2e-3, 'rho',1000.0, 'nu',0*1.0e-6, 'g',9.81, ...
-  'L_raft',0.05, 'L_domain',5*0.05, 'd',0.03, ...
+  'sigma',72.2e-3, 'rho',1000.0, 'nu',1.0e-6, 'g',9.81, ...
+  'L_raft',L_raft,  'd',0.03, ...
   'rho_raft',0.052, 'motor_inertia',0.13e-3*2.5e-3, ...
   'BC','radiative');
 
 %% 2) Choose the metric and sense
 % Metric is a function of model output and parameters. Replace as needed.
-metric = @(out,params) out.U;     % e.g., minimize thrust U
+metric = @(out,params) out.args.thrust;     % e.g., minimize thrust U
 maximize = false;                  % set true to maximize (the code flips sign)
 
 %% 3) Build optimizableVariable array from config
@@ -59,7 +62,7 @@ results = bayesopt(obj, vars, ...
   'MaxObjectiveEvaluations', 100, ...
   'IsObjectiveDeterministic', true, ...
   'AcquisitionFunctionName','expected-improvement-plus', ...
-  'UseParallel', true, ...
+  'UseParallel', false, ...
   'PlotFcn', {@plotMinObjective,@plotObjectiveModel,@plotAcquisitionFunction});
 
 bestX = results.XAtMinObjective;      % table of best variables
@@ -69,7 +72,10 @@ bestF = results.MinObjective;
 bestParams = fixed;
 fn = bestX.Properties.VariableNames;
 for i=1:numel(fn), bestParams.(fn{i}) = bestX{1,fn{i}}; end
-[out_best] = flexible_surferbot_v2(struct2nv(bestParams){:});
+args = struct2nv(bestParams);
+[out_best] = flexible_surferbot_v2(args{:});
+
+
 
 %% ---- Helpers ----
 function obj = makeObjective(modelFcn, fixed, metric, maximize)
@@ -83,11 +89,14 @@ function f = inner(tbl, modelFcn, fixed, metric, maximize)
   n = fieldnames(o); for k=1:numel(n), p.(n{k}) = o.(n{k}); end
   % call model with name-value pairs
   nv = struct2nv(p);
-  out = modelFcn(nv{:});
+  [U,x,z,phi,eta,args] = modelFcn(nv{:});
+  out = struct('U',U,'x',x,'z',z,'phi',phi,'eta',eta,'args',args);
   val = metric(out, p);
   if maximize, val = -val; end
   f = val;
 end
+
+
 
 function nv = struct2nv(s)
   names = fieldnames(s);
