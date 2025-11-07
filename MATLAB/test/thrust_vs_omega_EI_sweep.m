@@ -14,8 +14,8 @@ base = struct( ...
     'omega',2*pi*80, 'ooa', 4);
 
 % --- sweep lists (edit as needed)
-omega_list = 2*pi*(5:5:100);        % rad/s
-EI_list    = base.EI * 10.^linspace(-3, 1, 20);   % simple multiples
+omega_list = 2*pi*(4:4:100);        % rad/s
+EI_list    = base.EI * 10.^linspace(-3, 1, 51);   % simple multiples
 
 % --- storage (2D: omega x EI)
 proto = struct('thrust_N',NaN,'N_x',NaN,'M_z',NaN, ...
@@ -71,9 +71,34 @@ surf(reshape([S.EI], [numel(omega_list) numel(EI_list)]), ...
 xlabel('EI'); ylabel('Omega'); zlabel('eta(1)/eta(end)'); 
 set(gca, 'XScale', 'log'); set(gca, 'FontSize', 16); 
 caxis([-1 1]); colorbar; hold on; 
-scatter3(S(56).EI, S(56).omega/(2*pi), log10(S(56).eta_edge_ratio), 100, ...
+
+idxSurferbot = find([S.EI] == base.EI & [S.omega] == base.omega);
+
+scatter3(S(idxSurferbot).EI, S(idxSurferbot).omega/(2*pi), ...
+    log10(S(idxSurferbot).eta_edge_ratio), 100, ...
     'r', 'filled', 'DisplayName', 'Surferbot'); 
 legend('show', 'Location', 'south')
+
+
+figure;
+allargs = [S.args]; allndgroups = [allargs.ndgroups]; allkappa = [allndgroups.kappa];
+asymmetry_factor = ([S.eta_1].^2 - [S.eta_end].^2) ./ ([S.eta_1].^2 + [S.eta_end].^2);
+surf(reshape(allkappa, [numel(omega_list) numel(EI_list)]), ...
+    reshape([S.omega], [numel(omega_list) numel(EI_list)])/(2*pi), ...
+    reshape(asymmetry_factor, [numel(omega_list) numel(EI_list)]), 'DisplayName', 'Asymmetry factor'); 
+xlabel('kappa'); ylabel('Omega'); zlabel('eta(1)^2 - eta(end)^2 / eta(1)^2 + eta(end)^2'); 
+set(gca, 'XScale', 'log'); set(gca, 'FontSize', 16); 
+caxis([-1 1]); colorbar; hold on; 
+
+idxSurferbot = find([S.EI] == base.EI & [S.omega] == base.omega);
+
+scatter3(allkappa(idxSurferbot), S(idxSurferbot).omega/(2*pi), ...
+    asymmetry_factor(idxSurferbot), 100, ...
+    'r', 'filled', 'DisplayName', 'Surferbot'); 
+legend('show', 'Location', 'south')
+
+S = struct2table(S(:));
+
 end
 
 % ================= helper =================
@@ -128,6 +153,7 @@ function S = run_once(p)
         'N_x',args.N,'M_z',args.M, ...
         'thrust_N',args.thrust/args.d, ...
         'tail_flat_ratio',tail_ratio, ...
+        'eta_1', eta(1), 'eta_end', eta(end), ...
         'args', args, ...
         'Sxx', Sxx, ...
         'eta_edge_ratio', eta_edge_ratio);
