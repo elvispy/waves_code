@@ -126,13 +126,13 @@ def rigidSolver(rho, omega, nu, g, L_raft, L_domain, sigma, x_A, F_A, n):
     E1_Phi  = jnp.vstack([
         jnp.hstack([C13 * jnp.eye(L), jnp.zeros((L, p-L))]),
         jnp.hstack([jnp.zeros((L, p-L)), C13 * jnp.eye(L)])
-    ], dtype=jnp.complex128)
+    ], dtype=jnp.complex64)
     E1_Phi = E1_Phi.at[0:L,   0:(L+1)      ].add(C14 * d2_dx2_free)
     E1_Phi = E1_Phi.at[L:2*L, (p - L - 1):p].add(C14 * d2_dx2_free)
     E1_Phiz = jnp.vstack([
         jnp.hstack([C11 * jnp.eye(L), jnp.zeros((L, p-L))]),
         jnp.hstack([jnp.zeros((L, p-L)), C11 * jnp.eye(L)])
-    ], dtype=jnp.complex128)
+    ], dtype=jnp.complex64)
     E1_Phiz = E1_Phiz.at[0:L,   0:(L+1)      ].add(C12 * d2_dx2_free)
     E1_Phiz = E1_Phiz.at[L:2*L, (p - L - 1):p].add(C12 * d2_dx2_free)
     
@@ -140,10 +140,10 @@ def rigidSolver(rho, omega, nu, g, L_raft, L_domain, sigma, x_A, F_A, n):
         E1_Phi, 
         E1_Phiz, 
         jnp.zeros((2*L, p + 2))
-    ], dtype=jnp.complex128)
+    ], dtype=jnp.complex64)
     
     # Boundary conditions
-    k = dispersion_k(omega, g, jnp.inf, nu, sigma, rho) # Complex wavenumber
+    k = dispersion_k(omega, g, 100 * L_raft, nu, sigma, rho, k0 = omega**2/gx) # Complex wavenumber
     kbar = k * L_c
 
     E1 = E1.at[[0, -1], :].set(0.0)
@@ -154,7 +154,7 @@ def rigidSolver(rho, omega, nu, g, L_raft, L_domain, sigma, x_A, F_A, n):
     E1 = E1.at[-1, -1].set(-1.0j * kbar * dx + 1.0) 
     
     # Equation 2 (Kinematic boundary condition inside the raft eta = zeta + x theta)
-    E2_Eta   = C21 * jnp.hstack([jnp.zeros((n, L)), jnp.eye(n), jnp.zeros((n, L))], dtype=jnp.complex128)
+    E2_Eta   = C21 * jnp.hstack([jnp.zeros((n, L)), jnp.eye(n), jnp.zeros((n, L))], dtype=jnp.complex64)
     E2_Zeta  = C22 * jnp.ones((n, 1))
     E2_Theta = C23 * x[x_contact].reshape((n, 1))
 
@@ -163,7 +163,7 @@ def rigidSolver(rho, omega, nu, g, L_raft, L_domain, sigma, x_A, F_A, n):
         E2_Eta, 
         E2_Zeta, 
         E2_Theta
-    ], dtype=jnp.complex128)
+    ], dtype=jnp.complex64)
 
     # Equation 3 (Kinematic boundary condition phi_z = i eta)
     E3_Phiz = jnp.eye(p)
@@ -173,7 +173,7 @@ def rigidSolver(rho, omega, nu, g, L_raft, L_domain, sigma, x_A, F_A, n):
         E3_Phiz, 
         E3_Eta, 
         jnp.zeros((p, 2))
-    ], dtype=jnp.complex128)
+    ], dtype=jnp.complex64)
     
     # Equation 4
     E4_Phi = jnp.hstack([
@@ -189,7 +189,7 @@ def rigidSolver(rho, omega, nu, g, L_raft, L_domain, sigma, x_A, F_A, n):
         jnp.zeros((1, 2*p)), 
         E4_Zeta, 
         E4_Theta
-    ], dtype=jnp.complex128)
+    ], dtype=jnp.complex64)
 
     #print(f"integral shape: {integral.shape}")
     #print(f"other shape E51C: {(x[x_contact] * (C53 + d_dx_raft**2 * C56)).shape}")
@@ -208,7 +208,7 @@ def rigidSolver(rho, omega, nu, g, L_raft, L_domain, sigma, x_A, F_A, n):
         jnp.zeros((1, 2*p)), 
         E5_Zeta, 
         E5_Theta
-    ], dtype=jnp.complex128)
+    ], dtype=jnp.complex64)
 
     # Equation 6 (phiz = Nphi)
     E6_Phi = DtN
@@ -219,7 +219,7 @@ def rigidSolver(rho, omega, nu, g, L_raft, L_domain, sigma, x_A, F_A, n):
         E6_Phiz,
         jnp.zeros((p, p)),
         jnp.zeros((p, 2))
-    ], dtype=jnp.complex128)
+    ], dtype=jnp.complex64)
 
     '''
     # Stacking equations
@@ -264,15 +264,13 @@ def rigidSolver(rho, omega, nu, g, L_raft, L_domain, sigma, x_A, F_A, n):
     '''
 
     # Concatenate 
-    A = jnp.vstack([E1, E2, E3, E4, E5, E6], dtype=jnp.complex128)
+    A = jnp.vstack([E1, E2, E3, E4, E5, E6], dtype=jnp.complex64)
 
     b = jnp.vstack([
-        jnp.zeros((2*L,1)), 
-        jnp.zeros((p,1)),
-        jnp.zeros((n,1)),
+        jnp.zeros((3*p,1)), 
         C42, 
         C52
-    ], dtype=jnp.complex128)
+    ], dtype=jnp.complex64)
 
     print(f"A shape: {A.shape}")
     print(f"b shape: {b.shape}")
