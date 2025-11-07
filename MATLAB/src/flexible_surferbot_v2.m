@@ -99,7 +99,7 @@ function [U, x, z, phi, eta, args] = flexible_surferbot_v2(varargin)
     if 1/real(k) / (args.domainDepth / args.M) < res; warning('Number of points in z direction too small. Consider changing M to %d', ceil(res / (2*pi/real(k)) * args.L_raft)); end
     
     if isnan(args.L_domain) %|| args.L_domain < 10 * 2*pi/k 
-        args.L_domain = max(args.L_raft/2 * 3, round(10*2*pi/real(k), 2, 'significant')); 
+        args.L_domain = min(3 * args.L_raft, round(3*2*pi/real(k) + args.L_raft, 2, 'significant')); 
     end
     % Grid
     %L_domain_adim = ceil(args.L_domain / L_c);
