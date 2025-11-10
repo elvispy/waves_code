@@ -15,7 +15,7 @@ base = struct( ...
 
 % --- sweep lists (edit as needed)
 omega_list = 2*pi*(4:4:100);        % rad/s
-EI_list    = base.EI * 10.^linspace(-3, 1, 51);   % simple multiples
+EI_list    = base.EI * 10.^linspace(-3, 1, 57);   % simple multiples
 
 % --- storage (2D: omega x EI)
 proto = struct('thrust_N',NaN,'N_x',NaN,'M_z',NaN, ...
@@ -43,6 +43,8 @@ for iw = 1:numel(omega_list)
         S(iw,ie).M_z             = R.M_z;
         S(iw,ie).tail_flat_ratio = R.tail_flat_ratio;
         S(iw,ie).args            = R.args;
+        S(iw,ie).eta_1           = R.eta_1;
+        S(iw,ie).eta_end         = R.eta_end;
         S(iw,ie).EI              = p.EI;
         S(iw,ie).omega           = p.omega;
         S(iw,ie).Sxx             = R.Sxx;
@@ -72,7 +74,7 @@ xlabel('EI'); ylabel('Omega'); zlabel('eta(1)/eta(end)');
 set(gca, 'XScale', 'log'); set(gca, 'FontSize', 16); 
 caxis([-1 1]); colorbar; hold on; 
 
-idxSurferbot = find([S.EI] == base.EI & [S.omega] == base.omega);
+idxSurferbot = find([S.EI] >= base.EI & [S.omega] == base.omega, 1);
 
 scatter3(S(idxSurferbot).EI, S(idxSurferbot).omega/(2*pi), ...
     log10(S(idxSurferbot).eta_edge_ratio), 100, ...
@@ -81,18 +83,18 @@ legend('show', 'Location', 'south')
 
 
 figure;
-allargs = [S.args]; allndgroups = [allargs.ndgroups]; allkappa = [allndgroups.kappa];
-asymmetry_factor = ([S.eta_1].^2 - [S.eta_end].^2) ./ ([S.eta_1].^2 + [S.eta_end].^2);
-surf(reshape(allkappa, [numel(omega_list) numel(EI_list)]), ...
+allargs = [S.args]; allnd_groups = [allargs.nd_groups]; allkappa = [allnd_groups.kappa];
+asymmetry_factor = (abs([S.eta_1]).^2 - abs([S.eta_end]).^2) ./ (abs([S.eta_1]).^2 + abs([S.eta_end]).^2);
+surf(reshape([S.EI], [numel(omega_list) numel(EI_list)]), ...
     reshape([S.omega], [numel(omega_list) numel(EI_list)])/(2*pi), ...
     reshape(asymmetry_factor, [numel(omega_list) numel(EI_list)]), 'DisplayName', 'Asymmetry factor'); 
-xlabel('kappa'); ylabel('Omega'); zlabel('eta(1)^2 - eta(end)^2 / eta(1)^2 + eta(end)^2'); 
+xlabel('EI'); ylabel('Omega'); zlabel('Asymmetry factor'); 
 set(gca, 'XScale', 'log'); set(gca, 'FontSize', 16); 
 caxis([-1 1]); colorbar; hold on; 
 
-idxSurferbot = find([S.EI] == base.EI & [S.omega] == base.omega);
 
-scatter3(allkappa(idxSurferbot), S(idxSurferbot).omega/(2*pi), ...
+
+scatter3(S(idxSurferbot).EI, S(idxSurferbot).omega/(2*pi), ...
     asymmetry_factor(idxSurferbot), 100, ...
     'r', 'filled', 'DisplayName', 'Surferbot'); 
 legend('show', 'Location', 'south')
