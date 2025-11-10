@@ -34,8 +34,8 @@ L_raft = 0.05; % Size of surferbot
 %% 1) Configure decision variables and constants
 decision = [ ...
  struct('name','omega'         ,'range',[10,90]           ,'transform','none')
- struct('name','motor_position','range',[0,L_raft/2]        ,'transform','none')
- struct('name','EI'            ,'range',[1e-1 10] * 1e-4*3.0e9 * 3e-2 * (9.9e-4)^3 / 12,'transform','log')];
+ struct('name','motor_position','range',[-L_raft/2,L_raft/2]        ,'transform','none')
+ struct('name','EI'            ,'range',[5e-3 10] * 3.0e9 * 3e-2 * (9.9e-4)^3 / 12, 'transform','log')];
 
 
 fixed = struct( ...
@@ -46,7 +46,8 @@ fixed = struct( ...
 
 %% 2) Choose the metric and sense
 % Metric is a function of model output and parameters. Replace as needed.
-metric = @(out,params) out.args.thrust;     % e.g., minimize thrust U
+metric = @(out,params) -abs(out.U) * abs(out.args.thrust)/abs(out.args.power);%(abs(out.eta(1))^2 - abs(out.eta(end))) ...
+    %/ (abs(out.eta(1))^2 + abs(out.eta(end)));%- abs(out.U);     % e.g., minimize thrust U
 maximize = false;                  % set true to maximize (the code flips sign)
 
 %% 3) Build optimizableVariable array from config
@@ -59,10 +60,11 @@ obj = makeObjective(@flexible_surferbot_v2, fixed, metric, maximize);
 
 %% 5) Run BO
 results = bayesopt(obj, vars, ...
-  'MaxObjectiveEvaluations', 100, ...
+  'MaxObjectiveEvaluations', 200, ...
   'IsObjectiveDeterministic', true, ...
+  'ExplorationRatio', 0.65, ...
   'AcquisitionFunctionName','expected-improvement-plus', ...
-  'UseParallel', false, ...
+  'UseParallel', true, ...
   'PlotFcn', {@plotMinObjective,@plotObjectiveModel,@plotAcquisitionFunction});
 
 bestX = results.XAtMinObjective;      % table of best variables
@@ -90,7 +92,7 @@ function f = inner(tbl, modelFcn, fixed, metric, maximize)
   % call model with name-value pairs
   nv = struct2nv(p);
   [U,x,z,phi,eta,args] = modelFcn(nv{:});
-  out = struct('U',U,'x',x,'z',z,'phi',phi,'eta',eta,'args',args);
+  out = struct('U',U,'eta',eta,'args',args);
   val = metric(out, p);
   if maximize, val = -val; end
   f = val;
