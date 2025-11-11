@@ -99,6 +99,7 @@ T = table([S.EI].', [S.N_x].', [S.M_z].', ...
 disp('=== EI sweep results ==='); disp(T);
 
 S = struct2table(S);
+save('data/EI_sweep.mat', 'S');
 end
 
 % ---- helper ----
