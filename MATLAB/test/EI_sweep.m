@@ -1,7 +1,7 @@
 function S = EI_sweep
 % EI sweep: vary flexural rigidity EI and analyze response.
 % Plots:
-%   Fig 1: 1×3 tiled panels vs EI/EI0 ? (a) Thrust, (b) Power, (c) |?(1)| and |?(end)|
+%   Fig 1: 1ï¿½3 tiled panels vs EI/EI0 ? (a) Thrust, (b) Power, (c) |?(1)| and |?(end)|
 %   Fig 2: Overlay all series after unit-max normalization for shape comparison.
 % Console:
 %   Table with EI, N, M, thrust, power, tail ratio, dispersion residual.
