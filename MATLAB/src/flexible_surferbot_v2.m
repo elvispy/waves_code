@@ -12,7 +12,7 @@ function [U, x, z, phi, eta, args] = flexible_surferbot_v2(varargin)
     % --- Raft properties ---
     addParameter(p, 'L_raft', 0.05);                   % [m] length of the raft
     addParameter(p, 'motor_position', 0.6/2.5 * 0.05); % [m] motor position along the raft (fraction x L_raft)
-    addParameter(p, 'd', 0.03);                        % [m] depth of surferbot (third dimension, z-direction)
+    addParameter(p, 'd', nan);                        % [m] depth of surferbot (third dimension, z-direction)
     addParameter(p, 'EI', 3.0e9 * 3e-2 * 9e-4^3 / 12); % [N m^2] bending stiffness
     addParameter(p, 'rho_raft', 0.052);           % [kg/m] mass per unit length of the raft
 
@@ -47,6 +47,8 @@ function [U, x, z, phi, eta, args] = flexible_surferbot_v2(varargin)
     else
         force = args.motor_force;
     end
+    if isnan(args.d); args.d = 0.6 * args.L_raft; end
+    
     L_c   = args.L_raft;
     t_c   = 1 / args.omega;
     m_c   = args.rho_raft * L_c;
