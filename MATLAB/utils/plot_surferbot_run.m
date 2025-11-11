@@ -1,4 +1,4 @@
-function plot_surferbot_run(run_dir)
+function plot_surferbot_run(run_dir, silent)
 % PLOT_SURFERBOT_RUN
 % Purpose:
 %   Load a saved Surferbot simulation and produce an MP4 plus key figures.
@@ -27,6 +27,7 @@ function plot_surferbot_run(run_dir)
 
 %% --- 0.  Select folder / struct if not provided --------------------
 S = [];                        % <-- will hold data if provided as struct
+if nargin < 2 || isempty(silent), silent = false; end
 if nargin < 1 || isempty(run_dir)
     % Define path and check for the manifest file
     outdir = 'surferbot_results';
@@ -89,50 +90,106 @@ eta = S.eta;
 args = S.args;
 
 %% --- 2.  Quick MP4 of η(t,x) ---------------------------------------
+% --- (A) Video setup + timing ---
+vid_len_sec = 10;           % total video duration
+fps         = 30;           % playback FPS
+
 vidFile = fullfile(run_dir,'waves.mp4');
 vid     = VideoWriter(vidFile,'MPEG-4');
-vid.FrameRate = args.omega/(2*pi);
+vid.FrameRate = fps;
 open(vid);
 
 omega  = args.omega;
-tvec   = linspace(0,10*pi/omega,400);
+T      = 2*pi/omega;        
+N      = vid_len_sec * fps; % total frames
+tvec   = linspace(0, vid_len_sec * T, N);   % real-time timeline
+
 scaleX = 1e2;  % cm
 scaleY = 1e6;  % µm
 
-% --- DYNAMIC Y-LIMITS ---
+% limits and geometry
 sy = max(abs(eta),[],'all');
-sx = max(abs(x(args.x_contact)), [], 'all');
-plot_buffer = 1.4; 
-y_limit_microns = sy * scaleY * plot_buffer;
+y_limit_microns = sy * scaleY * 1.1;
 
-fig = figure('Visible','on','Position',[200 200 900 240]);
+x_scaled = x * scaleX;
+x_min = x_scaled(1);
+x_max = x_scaled(end);
+
+ocean = [0.20 0.45 0.80];
+% --- compute indices and styling ---
+hasRaft   = isfield(args,'x_contact') && ~isempty(args.x_contact);
+hasMotor  = isfield(args,'motor_position') && ~isempty(args.motor_position);
+
+% find nearest x index for motor_position (assumes coordinate, not index)
+if hasMotor
+    [~, i_motor] = min(abs(x - args.motor_position));
+end
+
+fig = figure('Visible', ternary(~silent,'on','off'), 'Position',[200 200 900 240]);
+function out = ternary(cond,a,b), if cond, out=a; else, out=b; end, end
+
+% --- graphics priming ---
+yy0 = real(eta .* exp(1i*omega*tvec(1))) * scaleY;
+bottomVec = -y_limit_microns * ones(1, numel(x_scaled));
+
+hFill = patch([x_scaled, fliplr(x_scaled)], ...
+              [yy0(:).', bottomVec], ...
+              ocean, 'EdgeColor','none','FaceAlpha',0.25, ...
+              'HandleVisibility','off'); hold on
+hLine = plot(x_scaled, yy0, 'b', 'LineWidth', 2, 'HandleVisibility','off');
+
+if hasRaft
+    hContact = plot(x_scaled(args.x_contact), yy0(args.x_contact), ...
+                    'k', 'LineWidth', 4, 'HandleVisibility','off'); % raft is black
+end
+
+% NEW: yellow star marker at motor position
+if hasMotor
+    dark_yellow = [0.85 0.65 0.00];
+    hMotor = plot(x_scaled(i_motor), yy0(i_motor), 'o', ...
+                  'MarkerFaceColor', dark_yellow, ...
+                  'MarkerEdgeColor', dark_yellow, ...
+                  'MarkerSize', 10, ...
+                  'LineStyle', 'none', ...
+                  'DisplayName', 'Motor position');
+end
+
+xlim([x_min, x_max]);
+
+% add a little buffer on TOP so legend never overlaps
+top_buffer = 0.35; % 15% extra headroom
+ylim([-y_limit_microns, y_limit_microns*(1+top_buffer)]);
+
+xlabel('$x\;(\mathrm{cm})$', 'Interpreter','latex');
+ylabel('$y\;(\mu\mathrm{m})$', 'Interpreter','latex');
+set(gca,'FontSize',20); box on;
+
+% place legend for the star only
+if hasMotor
+    legend(hMotor, 'Location','northeast');
+end
 
 for k = 1:numel(tvec)
-    yy = real(eta .* exp(1i*omega*tvec(k)));
-    pp = real(args.pressure .* exp(1i*omega*tvec(k)));
-    
-    plot(x*scaleX , yy*scaleY ,'b','LineWidth',2); hold on
-    plot(x(args.x_contact)*scaleX , yy(args.x_contact)*scaleY , ...
-            'r','LineWidth',3);
-        
-    %rangeY = max(yy) - min(yy);
-    %arrowScale = 0.1 * rangeY / max(abs(pp));
-        
-    %quiver(x(args.x_contact) , yy(args.x_contact)', ...
-    %    zeros(1, nnz(args.x_contact)), pp' * arrowScale * scaleY, ...
-    %    0, 'MaxHeadSize', 0.5); 
-    
-    ylim([-y_limit_microns, y_limit_microns]);
-    xlim([-sx, sx]*scaleX * 5);
-    xlabel('x (cm)'); ylabel('y (um)');
-    title(sprintf('t = %.5f s',tvec(k)));
-    set(gca,'FontSize',16);
-    
+    yy = real(eta .* exp(1i*omega*tvec(k))) * scaleY;
+
+    set(hFill, 'YData', [yy(:).', bottomVec]);
+    set(hLine, 'YData', yy);
+
+    if hasRaft
+        set(hContact, 'YData', yy(args.x_contact));
+    end
+    if hasMotor
+        set(hMotor, 'YData', yy(i_motor));
+    end
+
+    title(sprintf('f = %d Hz, t = %.3f s', omega/(2*pi), tvec(k)));
+    drawnow limitrate nocallbacks
     frame = getframe(fig);
-    writeVideo(vid,frame);
-    cla
+    writeVideo(vid, frame);
 end
-close(vid);  %close(fig);
+
+close(vid);
+
 
 %% --- 3.  Static η(x,0) with loads ----------------------------------
 scaleY = 1e6;
