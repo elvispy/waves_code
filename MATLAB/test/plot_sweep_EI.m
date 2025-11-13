@@ -1,4 +1,4 @@
-function replot_EI_sweep(saveDir)
+function plot_sweep_EI(saveDir, export)
 % Recreate EI_sweep figures (MATLAB 2018b-compatible, publication-ready)
 % Usage:
 %   replot_EI_sweep_pub_2018b
@@ -6,6 +6,7 @@ function replot_EI_sweep(saveDir)
 
 if nargin < 1, saveDir = 'data'; end
 if ~exist(saveDir,'dir'), mkdir(saveDir); end
+if nargin < 2, export = false; end
 
 % ---- Parameters ----
 BASE_FONT   = 'Times';
@@ -75,9 +76,11 @@ title('Normalization coefficient','FontName',BASE_FONT,'FontSize',11)
 legend('Location','best','Box','off')
 style_axes(gca,BASE_FONT,GRID_ALPHA)
 
-% Save
-print(fig1, fullfile(saveDir,'fig1_EI_sweep.pdf'), '-dpdf','-painters','-r300');
-print(fig1, fullfile(saveDir,'fig1_EI_sweep.png'), '-dpng','-r300');
+if export
+    % Save
+    print(fig1, fullfile(saveDir,'fig1_EI_sweep.pdf'), '-dpdf','-painters','-r300');
+    print(fig1, fullfile(saveDir,'fig1_EI_sweep.png'), '-dpng','-r300');
+end
 
 % ====================== FIGURE 2 ======================
 unitmax = @(y) (max(abs(y))>0) .* (y ./ max(abs(y))) + (max(abs(y))==0).*y;
@@ -103,9 +106,11 @@ title('Scaled metrics overlay','FontName',BASE_FONT,'FontSize',11)
 legend('Location','southeast','Box','off')
 style_axes(gca,BASE_FONT,GRID_ALPHA)
 
-% Save
-print(fig2, fullfile(saveDir,'fig2_overlay.pdf'), '-dpdf','-painters','-r300');
-print(fig2, fullfile(saveDir,'fig2_overlay.png'), '-dpng','-r300');
+if export
+    % Save
+    print(fig2, fullfile(saveDir,'fig2_overlay.pdf'), '-dpdf','-painters','-r300');
+    print(fig2, fullfile(saveDir,'fig2_overlay.png'), '-dpng','-r300');
+end
 
 % ====================== TABLE ======================
 %T = table(EI, S.N_x, S.M_z, S.thrust_N, S.power, S.tail_flat_ratio, S.disp_res, ...

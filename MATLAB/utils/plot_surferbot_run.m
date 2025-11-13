@@ -14,15 +14,17 @@ function plot_surferbot_run(run_dir, silent)
 %
 % What it does:
 %   - Loads results.mat from run_dir (if not given S).
-%   - Builds a short MP4 of η(x,t) with contact nodes highlighted.
-%   - Saves static η(x) at t=0 with U annotation.
-%   - Renders Imag(φ)(x,z) as pcolor + contours.
-%   - Saves |η|(x) and phase(η)(x) panels.
+%   - Builds a short MP4 of ?(x,t) with contact nodes highlighted.
+%   - Saves static ?(x) at t=0 with U annotation.
+%   - Renders Imag(?)(x,z) as pcolor + contours.
+%   - Saves |?|(x) and phase(?)(x) panels.
+%   - plots fore/aft surferbot trajectories in (x,y) colored by time.
 %
 % Outputs (saved in run_dir or current folder if S provided):
-%   - waves.mp4, eta_t0.png/.fig, phi_imag_t0.png/.fig, eta_mag_phase.png/.fig.
+%   - waves.mp4, eta_t0.png/.fig, phi_imag_t0.png/.fig, eta_mag_phase.png/.fig,
+%     surferbot_xy_fore_aft.png/.fig.
 % Notes:
-%   - Video y-limits auto-scale from |η|; x-limits from contact span.
+%   - Video y-limits auto-scale from |?|; x-limits from contact span.
 %   - Requires VideoWriter and standard plotting functions.
 
 %% --- 0.  Select folder / struct if not provided --------------------
@@ -89,7 +91,7 @@ phi = S.phi;
 eta = S.eta; 
 args = S.args;
 
-%% --- 2.  Quick MP4 of η(t,x) ---------------------------------------
+%% --- 2.  Quick MP4 of ?(t,x) ---------------------------------------
 % --- (A) Video setup + timing ---
 vid_len_sec = 10;           % total video duration
 fps         = 30;           % playback FPS
@@ -105,7 +107,7 @@ N      = vid_len_sec * fps; % total frames
 tvec   = linspace(0, vid_len_sec * T, N);   % real-time timeline
 
 scaleX = 1e2;  % cm
-scaleY = 1e6;  % µm
+scaleY = 1e6;  % �m
 
 % limits and geometry
 sy = max(abs(eta),[],'all');
@@ -143,7 +145,7 @@ if hasRaft
                     'k', 'LineWidth', 4, 'HandleVisibility','off'); % raft is black
 end
 
-% NEW: yellow star marker at motor position
+% yellow marker at motor position
 if hasMotor
     dark_yellow = [0.85 0.65 0.00];
     hMotor = plot(x_scaled(i_motor), yy0(i_motor), 'o', ...
@@ -157,7 +159,7 @@ end
 xlim([x_min, x_max]);
 
 % add a little buffer on TOP so legend never overlaps
-top_buffer = 0.35; % 15% extra headroom
+top_buffer = 0.35; % 35% extra headroom
 ylim([-y_limit_microns, y_limit_microns*(1+top_buffer)]);
 
 xlabel('$x\;(\mathrm{cm})$', 'Interpreter','latex');
@@ -169,11 +171,13 @@ if hasMotor
     legend(hMotor, 'Location','northeast');
 end
 
+
+%% VIDEO
 for k = 1:numel(tvec)
     yy = real(eta .* exp(1i*omega*tvec(k))) * scaleY;
 
     set(hFill, 'YData', [yy(:).', bottomVec]);
-    set(hLine, 'YData', yy);
+    set(hLine,  'YData', yy);
 
     if hasRaft
         set(hContact, 'YData', yy(args.x_contact));
@@ -190,41 +194,84 @@ end
 
 close(vid);
 
+%% 2b. Surferbot fore/aft trajectory in (x,y) --------------------
+% Use your formula: x(t) = real(eta(1)*exp(i*omega*t)) + U*t
+% and analogously for eta(end). y(t) = real(eta(k)*exp(i*omega*t)).
+[~, fore_idx] = max(abs(S.eta(1:end/2)));
+[~,  aft_idx] = max(abs(S.eta(end/2:end))); aft_idx = aft_idx + round(numel(S.eta)/2);
+eta_fore = eta(fore_idx);
+eta_aft  = eta(aft_idx);
 
-%% --- 3.  Static η(x,0) with loads ----------------------------------
+phi_surface = transpose(S.phi(end, :)); 
+Dx = getNonCompactFDmatrix(S.args.N, S.args.dx, 1, S.args.ooa);
+phi_x_fore = Dx(fore_idx, :) * phi_surface;
+phi_x_aft  = Dx(aft_idx, :)  * phi_surface;
+
+tvec = linspace(0, 56, 100)/1000;
+y_fore = real(eta_fore .* exp(1i*omega*tvec));  % y position (fore)
+y_aft  = real(eta_aft  .* exp(1i*omega*tvec));  % y position (aft)
+
+x_fore = (real(phi_x_fore .* exp(1i*omega*tvec)) + U) .* tvec; % x position (fore)
+x_aft  = (real(phi_x_aft  .* exp(1i*omega*tvec)) + U) .* tvec; % x position (aft)
+
+f4 = figure('Visible', ternary(~silent,'on','off'), 'Position',[200 200 700 600]);
+subplot(2, 1, 1);
+hold on;
+scatter(1e3 * x_fore, 1e6 * y_fore, 50, 1e3 * tvec, 'filled');   % fore
+xlabel('x (mm)');
+ylabel('y (um)');
+title('Surferbot fore trajectory');
+grid on;
+set(gca,'FontSize',16);
+cb = colorbar;
+cb.Label.String = 'time (ms)';
+
+subplot(2, 1, 2);
+s2 = scatter(1e3 * x_aft,  1e6 * y_aft,  50, 1e3 * tvec, 'filled');   % aft
+set(s2, 'Marker','^');                                      % different marker
+xlabel('x (mm)');
+ylabel('y (um)');
+title('Surferbot aft trajectory');
+grid on;
+set(gca,'FontSize',16);
+
+cb = colorbar;
+cb.Label.String = 'time (ms)';
+
+%legend([s1 s2], {'Fore','Aft'}, 'Location','best');
+
+saveas(f4, fullfile(run_dir,'surferbot_xy_fore_aft.svg'));
+savefig(f4, fullfile(run_dir,'surferbot_xy_fore_aft.fig'));
+
+%% --- 3.  Static ?(x,0) with loads ----------------------------------
 scaleY = 1e6;
 f1 = figure('Visible','on','Position',[0 600 1600 420]);
 plot(x, real(eta)*scaleY ,'b','LineWidth',1.5); hold on
 plot(x(args.x_contact),real(eta(args.x_contact))*scaleY , ...
         'r','LineWidth',2);
-%quiver(x(args.x_contact),real(eta(args.x_contact).')*scaleY , ...
-%       zeros(1,nnz(args.x_contact)), args.loads.'/5e4*scaleY ,0, ...
-%       'MaxHeadSize',1e-6);
 xlabel('x (m)'); ylabel('y (um)'); set(gca,'FontSize',16)
 title(sprintf('Surface deflection   U = %.3f mm/s',U*1e3))
-saveas(f1, fullfile(run_dir,'eta_t0.png'));
+saveas(f1, fullfile(run_dir,'eta_t0.svg'));
 savefig(f1, fullfile(run_dir,'eta_t0.fig'));
-%close(f1);
 
-%% --- 4.  Imaginary φ field -----------------------------------------
+%% --- 4.  Imaginary ? field -----------------------------------------
 f2 = figure('Visible','on','Position',[0 1000 1600 420]);
 colormap(f2,'winter'); shading interp
 p  = pcolor(x', z, imag(phi));  set(p,'EdgeColor','none');
 colorbar; hold on
 contour(x', z, imag(phi)/(args.omega*args.L_raft^2), 8,'k');
 set(gca,'FontSize',20); title('Imag(\phi) field');
-saveas(f2, fullfile(run_dir,'phi_imag_t0.png'));
+saveas(f2, fullfile(run_dir,'phi_imag_t0.svg'));
 savefig(f2, fullfile(run_dir,'phi_imag_t0.fig'));
-%close(f2);
 
-%% --- 3b.  Surface |eta| and phase(eta) panels ---------------------------
+%% --- 3b.  Surface |eta| and phase(eta) panels ----------------------
 scaleY = 1e6;              
 mag_eta   = abs(eta) * scaleY;
-phase_eta = unwrap(angle(eta)); % mod(angle(eta), 2*pi); 
+phase_eta = unwrap(angle(eta)); 
 
 f3b = figure('Visible','on','Position',[100 500 1600 820]);
 
-% Left: |eta|(x) at surface
+% Top: |eta|(x) at surface
 subplot(2,1,1)
 plot(x, mag_eta, 'b', 'LineWidth', 1.5); hold on
 if isfield(args,'x_contact') && ~isempty(args.x_contact)
@@ -233,7 +280,7 @@ end
 xlabel('x (m)'); ylabel('|eta| (um)'); set(gca,'FontSize',16)
 title('Magnitude of \eta at surface')
 
-% Right: phase(eta)(x) at surface
+% Bottom: phase(eta)(x) at surface
 subplot(2,1,2)
 plot(x, phase_eta, 'k', 'LineWidth', 1.5); hold on
 if isfield(args,'x_contact') && ~isempty(args.x_contact)
@@ -242,9 +289,8 @@ end
 xlabel('x (m)'); ylabel('phase(\eta) (rad)'); set(gca,'FontSize',16)
 title('Phase of \eta at surface')
 
-saveas(f3b, fullfile(run_dir,'eta_mag_phase.png'));
+saveas(f3b, fullfile(run_dir,'eta_mag_phase.svg'));
 savefig(f3b, fullfile(run_dir,'eta_mag_phase.fig'));
-
 
 fprintf('Plots saved in %s\n', run_dir);
 
