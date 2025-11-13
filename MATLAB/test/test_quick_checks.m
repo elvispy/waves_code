@@ -1,4 +1,4 @@
-function run_quick_checks
+function test_quick_checks
 % CLI smoke tests and readable output
 
 addpath('../src');

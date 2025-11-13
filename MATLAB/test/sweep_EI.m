@@ -1,4 +1,4 @@
-function S = EI_sweep
+function S = sweep_EI
 % EI sweep: vary flexural rigidity EI and analyze response.
 % Plots:
 %   Fig 1: 1�3 tiled panels vs EI/EI0 ? (a) Thrust, (b) Power, (c) |?(1)| and |?(end)|

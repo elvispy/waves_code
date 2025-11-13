@@ -20,7 +20,7 @@ L_raft = 0.05;
 
 
 % Build struct from names + values
-S = cell2struct(out(:), names(:), 1); S.args.thrust / S.args.power
+S = cell2struct(out(:), names(:), 1); 
 
-%plot_surferbot_run(S);
+plot_surferbot_run(S);
  

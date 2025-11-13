@@ -1,4 +1,4 @@
-function S = thrust_vs_omega_EI_sweep
+function S = sweep_omega_EI
 % Sweep omega and EI. Retry runs with higher resolution if tail_flat_ratio > 0.05.
 
 addpath('../src');

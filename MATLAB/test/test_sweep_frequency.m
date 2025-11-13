@@ -7,7 +7,7 @@
 
 addpath '../src/'
 % Frequency range (Hz)
-f_values     = 80:80;
+f_values     = 10:10:60;
 omega_values = 2*pi*f_values;
 L_raft       = 0.05;
 
@@ -23,12 +23,10 @@ for ii = 1:numel(omega_values)
 
     % Run simulation (defaults elsewhere)
     [~, x, z, phi, eta, args] = flexible_surferbot_v2('sigma',72.2e-3, 'rho',1000, 'nu',0*1e-6, 'g',9.81, ...
-            'L_raft',L_raft, 'motor_position',0.24*L_raft/2, 'd',0.03, ...
-            'EI',10*3.0e9*3e-2*(9.9e-4)^3/12, 'rho_raft',0.018*10, ...
-            'domainDepth',0.1, 'L_domain', 2.0*L_raft, 'n',1001, 'M',600, ...
+            'L_raft',L_raft, 'motor_position',0.24*L_raft/2, ...
+            'EI',3.0e9*3e-2*(9.9e-4)^3/12, ... %'rho_raft',0.018*10, ...
             'motor_inertia',0.13e-3*2.5e-3, 'BC','radiative', ...
             'omega',omega, 'ooa', 4);
-        
         
     
     % Thrust from solver
