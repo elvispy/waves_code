@@ -79,7 +79,7 @@ style_axes(gca,BASE_FONT,GRID_ALPHA)
 if export
     % Save
     print(fig1, fullfile(saveDir,'fig1_EI_sweep.pdf'), '-dpdf','-painters','-r300');
-    print(fig1, fullfile(saveDir,'fig1_EI_sweep.png'), '-dpng','-r300');
+    print(fig1, fullfile(saveDir,'fig1_EI_sweep.svg'), '-dsvg','-r300');
 end
 
 % ====================== FIGURE 2 ======================
@@ -109,7 +109,7 @@ style_axes(gca,BASE_FONT,GRID_ALPHA)
 if export
     % Save
     print(fig2, fullfile(saveDir,'fig2_overlay.pdf'), '-dpdf','-painters','-r300');
-    print(fig2, fullfile(saveDir,'fig2_overlay.png'), '-dpng','-r300');
+    print(fig2, fullfile(saveDir,'fig2_overlay.svg'), '-dsvg','-r300');
 end
 
 % ====================== TABLE ======================

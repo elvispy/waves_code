@@ -1,4 +1,4 @@
-function plot_sweep_omega_EI(saveDir, saveVar)
+function plot_sweep_omega_EI(saveDir, export)
 % Create omega-EI sweep figures (MATLAB 2018b-compatible, publication-ready)
 %
 % Usage:
@@ -10,7 +10,7 @@ function plot_sweep_omega_EI(saveDir, saveVar)
 %   replot_omega_EI_sweep(S, 'my_output_dir')
 
 if nargin < 1, saveDir = 'data'; end
-if nargin < 2, saveVar = false; end
+if nargin < 2, export = false; end
 if ~exist(saveDir,'dir'), mkdir(saveDir); end
 
 % Handle S being a table (as produced at the end of Script 2) or struct
@@ -134,9 +134,9 @@ view(ax1, -30, 25); % Set 3D view angle
 style_axes_3d(ax1, BASE_FONT, FONT_SIZE_AXIS, GRID_ALPHA);
 
 % --- Save ---
-if saveVar
+if export
     print(fig1, fullfile(saveDir,'fig1_omega_EI_eta_ratio.pdf'), '-dpdf','-painters','-r300');
-    print(fig1, fullfile(saveDir,'fig1_omega_EI_eta_ratio.png'), '-dpng','-r300');
+    print(fig1, fullfile(saveDir,'fig1_omega_EI_eta_ratio.svg'), '-dsvg','-r300');
 end
 
 %% ====================== FIGURE 2 (Asymmetry Factor) ======================
@@ -178,9 +178,9 @@ style_axes_3d(ax2, BASE_FONT, FONT_SIZE_AXIS, GRID_ALPHA);
 
 
 % --- Save ---
-if saveVar
+if export
     print(fig2, fullfile(saveDir,'fig2_omega_EI_asymmetry.pdf'), '-dpdf','-painters','-r300');
-    print(fig2, fullfile(saveDir,'fig2_omega_EI_asymmetry.png'), '-dpng','-r300');
+    print(fig2, fullfile(saveDir,'fig2_omega_EI_asymmetry.svg'), '-dsvg','-r300');
 end
 
 %% ====================== FIGURE 3 (2D Contour Plot) ======================
@@ -233,9 +233,9 @@ text(ax3, EI_surferbot * 1.15, 0.98*Omega_surferbot_hz, ' Surferbot', ...
 style_axes(ax3, BASE_FONT, GRID_ALPHA);
 
 % --- Save ---
-if saveVar
+if export
     print(fig3, fullfile(saveDir,'fig3_omega_EI_contour.pdf'), '-dpdf','-painters','-r300');
-    print(fig3, fullfile(saveDir,'fig3_omega_EI_contour.png'), '-dpng','-r300');
+    print(fig3, fullfile(saveDir,'fig3_omega_EI_contour.svg'), '-dsvg','-r300');
 end
 
 
@@ -288,9 +288,9 @@ text(ax4, EI_surferbot * 1.15, 0.98*Omega_surferbot_hz, ' Surferbot', ...
 style_axes(ax4, BASE_FONT, GRID_ALPHA);
 
 % --- Save ---
-if saveVar
+if export
     print(fig4, fullfile(saveDir,'fig4_omega_EI_thrust_power_norm.pdf'), '-dpdf','-painters','-r300');
-    print(fig4, fullfile(saveDir,'fig4_omega_EI_thrust_power_norm.png'), '-dpng','-r300');
+    print(fig4, fullfile(saveDir,'fig4_omega_EI_thrust_power_norm.svg'), '-dsvg','-r300');
 end
 
 
@@ -335,9 +335,9 @@ set(ax5, 'XScale', 'linear'); % Use linear scale for frequency
 yline(0, 'k:', 'HandleVisibility', 'off'); % Add a dotted zero line
 
 % --- Save ---
-if saveVar
+if export
     print(fig5, fullfile(saveDir,'fig5_omega_thrust_Sxx_combined.pdf'), '-dpdf','-painters','-r300');
-    print(fig5, fullfile(saveDir,'fig5_omega_thrust_Sxx_combined.png'), '-dpng','-r300');
+    print(fig5, fullfile(saveDir,'fig5_omega_thrust_Sxx_combined.svg'), '-dsvg','-r300');
 end
 
 
@@ -415,10 +415,10 @@ xlim(ax6, [min_val max_val]);
 ylim(ax6, [min_val max_val]);
 
 % --- Save ---
-if saveVar
+if export
     % Using the filenames from your snippet
     print(fig6, fullfile(saveDir,'fig7_omega_thrust_Sxx_corr_colormix.pdf'), '-dpdf','-painters','-r300');
-    print(fig6, fullfile(saveDir,'fig7_omega_thrust_Sxx_corr_colormix.png'), '-dpng','-r300');
+    print(fig6, fullfile(saveDir,'fig7_omega_thrust_Sxx_corr_colormix.svg'), '-dsvg','-r300');
 end
 
 end
