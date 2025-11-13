@@ -46,8 +46,8 @@ plot(xEI, Tthr, '-','LineWidth',LINE_W,'MarkerSize',MK,...
     'Color',C(1,:),'MarkerFaceColor',C(1,:),'MarkerEdgeColor','w', 'HandleVisibility', 'off');
 set(gca,'XScale','log'); xlim([min(xEI) max(xEI)]); grid on;
 
-xlabel('EI (N m^4)','FontName',BASE_FONT,'FontSize',10)
-ylabel('Thrust (N/m)','FontName',BASE_FONT,'FontSize',10)
+xlabel('EI (N m^4)','FontName',BASE_FONT,'FontSize',14)
+ylabel('Thrust (N/m)','FontName',BASE_FONT,'FontSize',14)
 title('Thrust','FontName',BASE_FONT,'FontSize',11)
 legend('Location','best','Box','off')
 style_axes(gca,BASE_FONT,GRID_ALPHA)
@@ -57,9 +57,9 @@ plot(xEI, -Ppow, 'o-','LineWidth',LINE_W,'MarkerSize',MK,...
     'Color',C(2,:),'MarkerFaceColor',C(2,:),'MarkerEdgeColor','w', 'HandleVisibility', 'off');
 xline(EIsurf, '--', 'DisplayName', 'Surferbot', 'LineWidth', 2);
 set(gca,'XScale','log','YScale','log'); xlim([min(xEI) max(xEI)]); grid on;
-xlabel('EI (N m^4)','FontName',BASE_FONT,'FontSize',10)
-ylabel('Power (W)','FontName',BASE_FONT,'FontSize',10)
-title('Power','FontName',BASE_FONT,'FontSize',11)
+xlabel('EI (N m^4)','FontName',BASE_FONT,'FontSize',14)
+ylabel('Power (W)','FontName',BASE_FONT,'FontSize',14)
+%title('Power','FontName',BASE_FONT,'FontSize',14)
 legend('Location','best','Box','off')
 style_axes(gca,BASE_FONT,GRID_ALPHA)
 
@@ -70,9 +70,9 @@ xline(EIsurf, '--', 'DisplayName', 'Surferbot', 'LineWidth', 2);
 plot(xEI, symFactor, 'o-','LineWidth',LINE_W,'MarkerSize',MK,...
     'Color',C(3,:),'MarkerFaceColor',C(3,:),'MarkerEdgeColor','w','HandleVisibility','off'); 
 set(gca,'XScale','log'); xlim([min(xEI) max(xEI)]); grid on;
-xlabel('EI (N m^4)','FontName',BASE_FONT,'FontSize',10)
-ylabel('y','FontName',BASE_FONT,'FontSize',10)
-title('Normalization coefficient','FontName',BASE_FONT,'FontSize',11)
+xlabel('EI (N m^4)','FontName',BASE_FONT,'FontSize',14)
+ylabel('y','FontName',BASE_FONT,'FontSize',14)
+%title('Normalization coefficient','FontName',BASE_FONT,'FontSize',14)
 legend('Location','best','Box','off')
 style_axes(gca,BASE_FONT,GRID_ALPHA)
 
@@ -91,19 +91,19 @@ E1n   = unitmax(E1);
 Eendn = unitmax(Eend);
 
 fig2 = figure('Units','centimeters','Position',[2 2 FIGSIZE_CM2], 'Color','w');
-plot(xEI, Tn,   '-','LineWidth',1.8,'Color',C(1,:),'DisplayName','Thrust (Normalized)'); 
+plot(xEI, Tn,   '-','LineWidth',1.8,'Color',C(1,:),'DisplayName','Thrust'); 
 hold on;
-plot(xEI, TnPn, '--','LineWidth',1.4,'Color',C(2,:),'DisplayName','Thrust/Power');
+plot(xEI, TnPn, '--','LineWidth',1.4,'Color',C(2,:),'DisplayName','$\eta$');
 plot(xEI, symFactor,  '-','LineWidth',1.8,'Marker','o','MarkerSize',MK,...
-    'MarkerFaceColor',C(3,:),'MarkerEdgeColor','w','Color',C(3,:),'DisplayName','Symmetry Factor');
+    'MarkerFaceColor',C(3,:),'MarkerEdgeColor','w','Color',C(3,:),'DisplayName','$\alpha$');
 %plot(xEI, Eendn,'-','LineWidth',1.4,'Marker','s','MarkerSize',MK,...
 %    'MarkerFaceColor',C(5,:),'MarkerEdgeColor','w','Color',C(5,:),'DisplayName','|eta(end)|');
 xline(EIsurf, '--', 'DisplayName', 'Surferbot', 'LineWidth', 2);
 set(gca,'XScale','log'); ylim([-1.05 1.05]); xlim([min(xEI) max(xEI)]); grid on;
-xlabel('EI (N m^4)','FontName',BASE_FONT,'FontSize',10)
-ylabel('y (Normalized)','FontName',BASE_FONT,'FontSize',10)
-title('Scaled metrics overlay','FontName',BASE_FONT,'FontSize',11)
-legend('Location','southeast','Box','off')
+xlabel('EI (N m^4)','FontName',BASE_FONT,'FontSize',14)
+ylabel('Normalized metric','FontName',BASE_FONT,'FontSize',14)
+%title('Scaled metrics overlay','FontName',BASE_FONT,'FontSize',11)
+legend('Location','southeast','Box','off', 'Interpreter', 'latex')
 style_axes(gca,BASE_FONT,GRID_ALPHA)
 
 if export
@@ -121,7 +121,7 @@ end
 
 % ===== Helper =====
 function style_axes(ax,baseFont,gridAlpha)
-set(ax,'FontName',baseFont,'FontSize',10,'LineWidth',0.75,...
+set(ax,'FontName',baseFont,'FontSize',14,'LineWidth',0.75,...
     'TickDir','out','Box','off');
 ax.GridAlpha = gridAlpha;
 ax.MinorGridAlpha = gridAlpha;
