@@ -444,23 +444,52 @@ set(ax,'XMinorTick','on','YMinorTick','on');
 grid(ax, 'on'); % Turn grid on
 end
 
+function cmap = bwr_colormap(n_colors, gamma)
+    % BWR-style diverging colormap with more contrast near endpoints.
+    %
+    % 0   -> white
+    % -1  -> blue-ish
+    % +1  -> orange-ish
+    %
+    % n_colors : number of entries (default 256)
+    % gamma    : >1 increases distinguishability near endpoints (default 2)
+    %
+    % Requires Image Processing Toolbox (rgb2lab, lab2rgb).
 
-% ----- NEW HELPER FUNCTION -----
-function cmap = bwr_colormap(n_colors)
-    % Creates a custom Blue-White-Red colormap
-    % n_colors: (Optional) number of entries, defaults to 256
-    if nargin < 1, n_colors = 256; end
-    
-    % Define the "anchor" colors
-    colors_in = [1 0 0;  % Red
-                 1 1 1;  % White
-                 0 0 1]; % Blue
-                 
-    % Define the "anchor" data points (from -1 to 1)
-    data_points = [-1, 0, 1];
-    
-    % Linearly interpolate to create the full n_colors map
-    % This finds the R, G, and B values for each of the n_colors
-    % steps between -1 and 1.
-    cmap = interp1(data_points, colors_in, linspace(-1, 1, n_colors));
+    if nargin < 1 || isempty(n_colors)
+        n_colors = 256;
+    end
+    if nargin < 2 || isempty(gamma)
+        gamma = 1.3;  % >1 => more resolution near -1 and 1
+    end
+
+    % Friendly endpoints in sRGB [0,1]
+    rgb_anchors = [0.99 0.35 0.00;  % orange
+                   1.00 1.00 1.00;   % white (0)
+                   0.00 0.35 0.80];   % blue
+                   
+
+    % Positions in "data space"
+    data_points = [-1 0 1];
+
+    % Convert anchors to Lab (perceptual-ish)
+    lab_anchors = rgb2lab(rgb_anchors);
+
+    % Linear parameter in [-1,1]
+    t_lin = linspace(-1,1,n_colors).';
+
+    % Nonlinear remap to emphasize endpoints:
+    % gamma > 1 => flatter center, steeper near ends
+    a = abs(t_lin);
+    t_nl = sign(t_lin) .* (a.^gamma);
+
+    % Interpolate in Lab using nonlinear parameter
+    lab_interp = interp1(data_points.', lab_anchors, t_nl, 'linear');
+
+    % Back to RGB
+    cmap = lab2rgb(lab_interp);
+
+    % Clamp to [0,1] to avoid numerical excursions
+    cmap = max(min(cmap,1),0);
 end
+
