@@ -127,7 +127,10 @@ if hasMotor
     [~, i_motor] = min(abs(x - args.motor_position));
 end
 
-fig = figure('Visible', ternary(~silent,'on','off'), 'Position',[200 200 900 240]);
+fig = figure('Position',[200 200 700 240], ...
+    'Color', 'w');
+set(gca,'LooseInset',[0.02 0.02 0.02 0.02]);
+
 function out = ternary(cond,a,b), if cond, out=a; else, out=b; end, end
 
 % --- graphics priming ---
@@ -188,11 +191,14 @@ for k = 1:numel(tvec)
 
     title(sprintf('f = %d Hz, t = %.3f s', omega/(2*pi), tvec(k)));
     drawnow limitrate nocallbacks
-    frame = getframe(fig);
-    writeVideo(vid, frame);
+    if silent == false
+        
+        frame = getframe(fig);
+        writeVideo(vid, frame);
+    end
 end
 
-close(vid);
+if silent == false; close(vid); end
 
 %% 2b. Surferbot fore/aft trajectory in (x,y) --------------------
 % Use your formula: x(t) = real(eta(1)*exp(i*omega*t)) + U*t
@@ -214,7 +220,7 @@ y_aft  = real(eta_aft  .* exp(1i*omega*tvec));  % y position (aft)
 x_fore = (real(phi_x_fore .* exp(1i*omega*tvec)) + U) .* tvec; % x position (fore)
 x_aft  = (real(phi_x_aft  .* exp(1i*omega*tvec)) + U) .* tvec; % x position (aft)
 
-f4 = figure('Visible', ternary(~silent,'on','off'), 'Position',[200 200 700 600]);
+f4 = figure('Position',[200 200 700 600]);
 subplot(2, 1, 1);
 hold on;
 scatter(1e3 * x_fore, 1e6 * y_fore, 50, 1e3 * tvec, 'filled');   % fore
