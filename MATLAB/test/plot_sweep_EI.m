@@ -34,7 +34,14 @@ Tthr = S.thrust_N;
 Ppow = S.power;
 E1   = S.eta_1;
 Eend = S.eta_end;
-symFactor = (E1.^2 - Eend.^2) ./ (E1.^2 + Eend.^2);
+symFactor = -(E1.^2 - Eend.^2) ./ (E1.^2 + Eend.^2);
+
+unitmax = @(y) (max(abs(y))>0) .* (y ./ max(abs(y))) + (max(abs(y))==0).*y;
+Tn    = unitmax(Tthr);
+%Pn    = unitmax(Ppow);
+TnPn  = unitmax(Tthr ./ Ppow);
+%E1n   = unitmax(E1);
+%Eendn = unitmax(Eend);
 
 % ====================== FIGURE 1 ======================
 fig1 = figure('Units','centimeters','Position',[2 2 FIGSIZE_CM1], 'Color','w');
@@ -68,7 +75,9 @@ subplot(3,1,3); hold on;
 yline(0, '-', 'HandleVisibility', 'off', 'LineWidth', 0.5);
 xline(EIsurf, '--', 'DisplayName', 'Surferbot', 'LineWidth', 2);
 plot(xEI, symFactor, 'o-','LineWidth',LINE_W,'MarkerSize',MK,...
-    'Color',C(3,:),'MarkerFaceColor',C(3,:),'MarkerEdgeColor','w','HandleVisibility','off'); 
+    'Color',C(3,:),'MarkerFaceColor',C(3,:),'MarkerEdgeColor','w',...
+    'DisplayName', '$\alpha$', 'HandleVisibility','off'); 
+%plot(xEI, TnPn, '--','LineWidth',1.4,'Color',C(2,:),'DisplayName','$\eta$');
 set(gca,'XScale','log'); xlim([min(xEI) max(xEI)]); grid on;
 xlabel('EI (N m^4)','FontName',BASE_FONT,'FontSize',14)
 ylabel('$\alpha$','FontName',BASE_FONT,'FontSize',18, 'Interpreter', 'latex')
@@ -83,12 +92,7 @@ if export
 end
 
 % ====================== FIGURE 2 ======================
-unitmax = @(y) (max(abs(y))>0) .* (y ./ max(abs(y))) + (max(abs(y))==0).*y;
-Tn    = unitmax(Tthr);
-%Pn    = unitmax(Ppow);
-TnPn  = unitmax(Tthr ./ Ppow);
-E1n   = unitmax(E1);
-Eendn = unitmax(Eend);
+
 
 fig2 = figure('Units','centimeters','Position',[2 2 FIGSIZE_CM2], 'Color','w');
 plot(xEI, Tn,   '-','LineWidth',1.8,'Color',C(1,:),'DisplayName','Thrust'); 
@@ -120,7 +124,6 @@ end
 
 
 % ====================== FIGURE 3 ======================
-% ====================== FIGURE 1 ======================
 fig3 = figure('Units','centimeters','Position',[4 4 FIGSIZE_CM1], 'Color','w');
 
 % Pre-create axes so we can control positions later
@@ -159,19 +162,21 @@ legend(ax2,'Location','northeast','Box','off', 'FontSize', 16);
 style_axes(ax2,BASE_FONT,GRID_ALPHA);
 
 % ---------- AXIS 3: alpha ----------
-axes(ax3);
+axes(ax3); hold on;
 yline(0, '-', 'HandleVisibility','off','LineWidth',0.5);
 xline(EIsurf, '--', 'DisplayName','Surferbot','LineWidth',2, ...
     'HandleVisibility', 'off');
 plot(xEI, symFactor, 'o-', ...
     'LineWidth',LINE_W,'MarkerSize',MK, ...
     'Color',C(3,:),'MarkerFaceColor',C(3,:), ...
-    'MarkerEdgeColor','w','HandleVisibility','off');
+    'MarkerEdgeColor','w',...
+    'DisplayName', '$\alpha$', 'HandleVisibility','on');
+plot(xEI, TnPn, '--','LineWidth',1.4,'Color',C(2,:),'DisplayName','$\eta$');
 set(ax3,'XScale','log');
 xlim(ax3,[min(xEI) max(xEI)]);
 grid(ax3,'on');
-ylabel(ax3,'Asymmetry factor $\alpha$','FontName',BASE_FONT,'FontSize',18,'Interpreter','latex');
-legend(ax3,'Location','best','Box','off');
+ylabel(ax3,'Normalized Metric','FontName',BASE_FONT,'FontSize',20, 'Interpreter', 'latex');
+legend(ax3,'Location','southeast','Box','off', 'Interpreter', 'latex', 'Fontsize', 20);
 style_axes(ax3,BASE_FONT,GRID_ALPHA);
 
 % ---------- Make it compact & "fused" ----------
