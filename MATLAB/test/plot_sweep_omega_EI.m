@@ -25,8 +25,8 @@ FIGSIZE_CM_LINE = [18, 16];
 LINE_W          = 1.5;
 MK              = 5.5;
 GRID_ALPHA      = 0.2;
-FONT_SIZE_AXIS  = 14;
-FONT_SIZE_TITLE = 16;
+FONT_SIZE_AXIS  = 18;
+FONT_SIZE_TITLE = 20;
 
 % Color matrix C is not needed for surf plots, which use a colormap
 C = [0.00 0.45 0.70;
@@ -119,7 +119,7 @@ set(ax1, 'XScale', 'log');
 xlabel(ax1, 'EI (N m^4)', 'FontName', BASE_FONT, 'FontSize', FONT_SIZE_AXIS);
 ylabel(ax1, 'Frequency (Hz)', 'FontName', BASE_FONT, 'FontSize', FONT_SIZE_AXIS);
 zlabel(ax1, 'log_{10}(|\eta_1 / \eta_{end}|)', 'FontName', BASE_FONT, 'FontSize', FONT_SIZE_AXIS);
-title(ax1, 'Tail Amplitude Ratio', 'FontName', BASE_FONT, 'FontSize', FONT_SIZE_TITLE);
+%title(ax1, 'Tail Amplitude Ratio', 'FontName', BASE_FONT, 'FontSize', FONT_SIZE_TITLE);
 
 caxis(ax1, [-1 1]);
 cb = colorbar(ax1);
@@ -135,8 +135,8 @@ style_axes_3d(ax1, BASE_FONT, FONT_SIZE_AXIS, GRID_ALPHA);
 
 % --- Save ---
 if export
-    print(fig1, fullfile(saveDir,'fig1_omega_EI_eta_ratio.pdf'), '-dpdf','-painters','-r300');
-    print(fig1, fullfile(saveDir,'fig1_omega_EI_eta_ratio.svg'), '-dsvg','-r300');
+    print(fig1, fullfile(saveDir,'plot_sweep_omega_EI_fig1.pdf'), '-dpdf','-painters','-r300');
+    print(fig1, fullfile(saveDir,'plot_sweep_omega_EI_fig1.svg'), '-dsvg','-r300');
 end
 
 %% ====================== FIGURE 2 (Asymmetry Factor) ======================
@@ -161,7 +161,7 @@ set(ax2, 'XScale', 'log');
 xlabel(ax2, 'EI (N m^4)', 'FontName', BASE_FONT, 'FontSize', FONT_SIZE_AXIS);
 ylabel(ax2, 'Frequency (Hz)', 'FontName', BASE_FONT, 'FontSize', FONT_SIZE_AXIS);
 zlabel(ax2, 'Asymmetry Factor', 'FontName', BASE_FONT, 'FontSize', FONT_SIZE_AXIS);
-title(ax2, 'Asymmetry Factor', 'FontName', BASE_FONT, 'FontSize', FONT_SIZE_TITLE);
+%title(ax2, 'Asymmetry Factor', 'FontName', BASE_FONT, 'FontSize', FONT_SIZE_TITLE);
 
 caxis(ax2, [-1 1]);
 colormap(ax2, bwr_colormap());
@@ -170,7 +170,7 @@ cb.Label.String = 'Factor';
 cb.Label.FontName = BASE_FONT;
 cb.Label.FontSize = FONT_SIZE_AXIS;
 
-legend(ax2, 'show', 'Location', 'southoutside', 'Box', 'off', 'FontName', BASE_FONT);
+legend(ax2, 'show', 'Location', 'best', 'Box', 'off', 'FontName', BASE_FONT);
 view(ax2, -30, 25); % Set 3D view angle
 
 % Apply custom helper style
@@ -179,8 +179,8 @@ style_axes_3d(ax2, BASE_FONT, FONT_SIZE_AXIS, GRID_ALPHA);
 
 % --- Save ---
 if export
-    print(fig2, fullfile(saveDir,'fig2_omega_EI_asymmetry.pdf'), '-dpdf','-painters','-r300');
-    print(fig2, fullfile(saveDir,'fig2_omega_EI_asymmetry.svg'), '-dsvg','-r300');
+    print(fig2, fullfile(saveDir,'plot_sweep_omega_EI_fig2.pdf'), '-dpdf','-painters','-r300');
+    print(fig2, fullfile(saveDir,'plot_sweep_omega_EI_fig2.svg'), '-dsvg','-r300');
 end
 
 %% ====================== FIGURE 3 (2D Contour Plot) ======================
@@ -213,7 +213,7 @@ ylim(ax3, [min(Omega_grid_hz(:)) max(Omega_grid_hz(:))]);
 
 xlabel(ax3, 'EI (N m^4)', 'FontName', BASE_FONT, 'FontSize', FONT_SIZE_AXIS);
 ylabel(ax3, 'Frequency (Hz)', 'FontName', BASE_FONT, 'FontSize', FONT_SIZE_AXIS);
-title(ax3, 'Asymmetry Factor', 'FontName', BASE_FONT, 'FontSize', FONT_SIZE_TITLE);
+%title(ax3, 'Asymmetry Factor', 'FontName', BASE_FONT, 'FontSize', FONT_SIZE_TITLE);
 
 caxis(ax3, [-1 1]);
 colormap(ax3, bwr_colormap()); % Use the blue-white-red map
@@ -234,8 +234,8 @@ style_axes(ax3, BASE_FONT, GRID_ALPHA);
 
 % --- Save ---
 if export
-    print(fig3, fullfile(saveDir,'fig3_omega_EI_contour.pdf'), '-dpdf','-painters','-r300');
-    print(fig3, fullfile(saveDir,'fig3_omega_EI_contour.svg'), '-dsvg','-r300');
+    print(fig3, fullfile(saveDir,'plot_sweep_omega_EI_fig3.pdf'), '-dpdf','-painters','-r300');
+    print(fig3, fullfile(saveDir,'plot_sweep_omega_EI_fig3.svg'), '-dsvg','-r300');
 end
 
 
@@ -268,7 +268,7 @@ ylim(ax4, [min(Omega_grid_hz(:)) max(Omega_grid_hz(:))]);
 
 xlabel(ax4, 'EI (N m^4)', 'FontName', BASE_FONT, 'FontSize', FONT_SIZE_AXIS);
 ylabel(ax4, 'Frequency (Hz)', 'FontName', BASE_FONT, 'FontSize', FONT_SIZE_AXIS);
-title(ax4, 'Normalized Thrust / Power', 'FontName', BASE_FONT, 'FontSize', FONT_SIZE_TITLE);
+%title(ax4, 'Normalized Thrust / Power', 'FontName', BASE_FONT, 'FontSize', FONT_SIZE_TITLE);
 
 % --- USE DIVERGING COLORMAP AND LIMITS ---
 caxis(ax4, [-1 1]); % Set limits to -1 and 1
@@ -289,8 +289,8 @@ style_axes(ax4, BASE_FONT, GRID_ALPHA);
 
 % --- Save ---
 if export
-    print(fig4, fullfile(saveDir,'fig4_omega_EI_thrust_power_norm.pdf'), '-dpdf','-painters','-r300');
-    print(fig4, fullfile(saveDir,'fig4_omega_EI_thrust_power_norm.svg'), '-dsvg','-r300');
+    print(fig4, fullfile(saveDir,'plot_sweep_omega_EI_fig4.pdf'), '-dpdf','-painters','-r300');
+    print(fig4, fullfile(saveDir,'plot_sweep_omega_EI_fig4.svg'), '-dsvg','-r300');
 end
 
 
@@ -326,7 +326,7 @@ plot(ax5, NaN, NaN, 'k-', 'LineWidth', LINE_W, 'DisplayName', 'S_{xx}');
 % ---------------------------------------------
 
 % Styling
-title(ax5, 'Thrust vs. S_{xx} (Radiation Stress)');
+%title(ax5, 'Thrust vs. S_{xx} (Radiation Stress)');
 xlabel(ax5, 'Frequency (Hz)', 'FontName', BASE_FONT, 'FontSize', FONT_SIZE_AXIS);
 ylabel(ax5, 'Force/Length (N/m)', 'FontName', BASE_FONT, 'FontSize', FONT_SIZE_AXIS);
 legend(ax5, 'show', 'Location', 'northwest', 'Box', 'off', 'FontName', BASE_FONT, 'FontSize', FONT_SIZE_AXIS+1);
@@ -336,8 +336,8 @@ yline(0, 'k:', 'HandleVisibility', 'off'); % Add a dotted zero line
 
 % --- Save ---
 if export
-    print(fig5, fullfile(saveDir,'fig5_omega_thrust_Sxx_combined.pdf'), '-dpdf','-painters','-r300');
-    print(fig5, fullfile(saveDir,'fig5_omega_thrust_Sxx_combined.svg'), '-dsvg','-r300');
+    print(fig5, fullfile(saveDir,'plot_sweep_omega_EI_fig5.pdf'), '-dpdf','-painters','-r300');
+    print(fig5, fullfile(saveDir,'plot_sweep_omega_EI_fig5.svg'), '-dsvg','-r300');
 end
 
 
@@ -391,7 +391,7 @@ end
 
 
 % --- Styling ---
-title(ax6, 'Correlation of Thrust and S_{xx}');
+%title(ax6, 'Correlation of Thrust and S_{xx}');
 xlabel(ax6, 'Thrust (N/m)', 'FontName', BASE_FONT, 'FontSize', FONT_SIZE_AXIS);
 ylabel(ax6, 'S_{xx} (N/m)', 'FontName', 'Times', 'FontSize', FONT_SIZE_AXIS);
 
@@ -417,8 +417,8 @@ ylim(ax6, [min_val max_val]);
 % --- Save ---
 if export
     % Using the filenames from your snippet
-    print(fig6, fullfile(saveDir,'fig7_omega_thrust_Sxx_corr_colormix.pdf'), '-dpdf','-painters','-r300');
-    print(fig6, fullfile(saveDir,'fig7_omega_thrust_Sxx_corr_colormix.svg'), '-dsvg','-r300');
+    print(fig6, fullfile(saveDir,'plot_sweep_omega_EI_fig6.pdf'), '-dpdf','-painters','-r300');
+    print(fig6, fullfile(saveDir,'plot_sweep_omega_EI_fig6.svg'), '-dsvg','-r300');
 end
 
 end
