@@ -150,7 +150,7 @@ hold(ax2, 'on');
 xlim([min(EI_grid(:)) max(EI_grid(:))]); ylim([min(Omega_grid_hz(:)) max(Omega_grid_hz(:))]);
 % The main surface plot
 surf(ax2, EI_grid, Omega_grid_hz, asymmetry_factor, 'DisplayName', 'Asymmetry Factor', ...
-    'EdgeColor', 'none', 'FaceAlpha', 0.85);
+    'EdgeColor', 'none', 'FaceAlpha', 0.85, 'HandleVisibility', 'off');
 
 % The reference 'Surferbot' point
 scatter3(ax2, EI_surferbot, Omega_surferbot_hz, asymm_surferbot, 100, ...
@@ -166,7 +166,7 @@ zlabel(ax2, 'Asymmetry Factor', 'FontName', BASE_FONT, 'FontSize', FONT_SIZE_AXI
 caxis(ax2, [-1 1]);
 colormap(ax2, bwr_colormap());
 cb = colorbar(ax2); shading interp
-cb.Label.String = 'Factor';
+cb.Label.String = 'Asymmetry Factor';
 cb.Label.FontName = BASE_FONT;
 cb.Label.FontSize = FONT_SIZE_AXIS;
 
@@ -218,7 +218,7 @@ ylabel(ax3, 'Frequency (Hz)', 'FontName', BASE_FONT, 'FontSize', FONT_SIZE_AXIS)
 caxis(ax3, [-1 1]);
 colormap(ax3, bwr_colormap()); % Use the blue-white-red map
 cb = colorbar(ax3);
-cb.Label.String = 'Factor';
+cb.Label.String = 'Asymmetry Factor';
 cb.Label.FontName = BASE_FONT;
 cb.Label.FontSize = FONT_SIZE_AXIS;
 
