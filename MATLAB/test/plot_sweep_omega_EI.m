@@ -57,7 +57,7 @@ log10_eta_ratio(isinf(log10_eta_ratio)) = NaN; % Handle potential -Inf
 % Data for Plot 2: Asymmetry Factor
 eta_1_sq     = abs(reshape([S.eta_1], n_omega, n_EI)).^2;
 eta_end_sq   = abs(reshape([S.eta_end], n_omega, n_EI)).^2;
-asymmetry_factor = (eta_1_sq - eta_end_sq) ./ (eta_1_sq + eta_end_sq);
+asymmetry_factor = -(eta_1_sq - eta_end_sq) ./ (eta_1_sq + eta_end_sq);
 
 % ---- Find "Surferbot" reference point ----
 % These values are from the 'base' struct in thrust_vs_omega_EI_sweep
@@ -452,9 +452,9 @@ function cmap = bwr_colormap(n_colors)
     if nargin < 1, n_colors = 256; end
     
     % Define the "anchor" colors
-    colors_in = [0 0 1;  % Blue
+    colors_in = [1 0 0;  % Red
                  1 1 1;  % White
-                 1 0 0]; % Red
+                 0 0 1]; % Blue
                  
     % Define the "anchor" data points (from -1 to 1)
     data_points = [-1, 0, 1];
