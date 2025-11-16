@@ -1,4 +1,4 @@
-function S = motorPosition_EI_sweep
+function S = sweep_motorPosition_EI
 % Sweep motor_position and EI. Retry runs with higher resolution if tail_flat_ratio > 0.05.
 
 addpath('../src');
@@ -15,7 +15,7 @@ base = struct( ...
 
 % --- sweep lists (edit as needed)
 % positions as a fraction of half-raft length (meters)
-motor_position_list = (0.02:0.02:0.48) * (L_raft/2);
+motor_position_list = (0.02:0.02:0.48) * L_raft;
 EI_list             = base.EI * 10.^linspace(-3, 1, 57);   % same EI grid
 
 % --- storage (2D: motor_position x EI)
