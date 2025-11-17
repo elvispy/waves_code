@@ -98,6 +98,7 @@ fps         = 30;           % playback FPS
 
 vidFile = fullfile(run_dir,'waves.mp4');
 vid     = VideoWriter(vidFile,'MPEG-4');
+vid.Quality = 100;
 vid.FrameRate = fps;
 open(vid);
 
@@ -127,8 +128,10 @@ if hasMotor
     [~, i_motor] = min(abs(x - args.motor_position));
 end
 
-fig = figure('Position',[200 200 700 240], ...
-    'Color', 'w');
+%fig = figure('Position',[200 200 700 240], ...
+%    'Color', 'w');
+fig = figure('Position',[200 200 1400 480], 'Color', 'w', 'Renderer', 'opengl');
+
 set(gca,'LooseInset',[0.02 0.02 0.02 0.02]);
 
 function out = ternary(cond,a,b), if cond, out=a; else, out=b; end, end
@@ -167,7 +170,7 @@ ylim([-y_limit_microns, y_limit_microns*(1+top_buffer)]);
 
 xlabel('$x\;(\mathrm{cm})$', 'Interpreter','latex');
 ylabel('$y\;(\mu\mathrm{m})$', 'Interpreter','latex');
-set(gca,'FontSize',20); box on;
+set(gca,'FontSize',28); box on;
 
 % place legend for the star only
 if hasMotor

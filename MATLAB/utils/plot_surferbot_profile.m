@@ -137,7 +137,7 @@ set(gca,'LooseInset',[0.02 0.02 0.02 0.02]);
 %out_fig = fullfile(run_dir,'eta_profile_1D.fig');
 %saveas(fig, out_svg);
 %savefig(fig, out_fig);
-print(fig, fullfile(run_dir,'eta_profile_1D.pdf'), '-dpdf','-vector','-r300', '-bestfit');
+print(fig, fullfile(run_dir,'eta_profile_1D.pdf'), '-dpdf','-painters','-r300', '-bestfit');
 
 fprintf('1D profile figure saved in %s\n', run_dir);
 
