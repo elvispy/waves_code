@@ -77,7 +77,7 @@ xline(EIsurf, '--', 'DisplayName', 'Surferbot', 'LineWidth', 2);
 plot(xEI, symFactor, 'o-','LineWidth',LINE_W,'MarkerSize',MK,...
     'Color',C(3,:),'MarkerFaceColor',C(3,:),'MarkerEdgeColor','w',...
     'DisplayName', '$\alpha$', 'HandleVisibility','off'); 
-%plot(xEI, TnPn, '--','LineWidth',1.4,'Color',C(2,:),'DisplayName','$\eta$');
+%plot(xEI, TnPn, '--','LineWidth',1.4,'Color',C(2,:),'DisplayName','$\overline{F}_T/\overline{P}_T$');
 set(gca,'XScale','log'); xlim([min(xEI) max(xEI)]); grid on;
 xlabel('EI (N m^4)','FontName',BASE_FONT,'FontSize',14)
 ylabel('$\alpha$','FontName',BASE_FONT,'FontSize',18, 'Interpreter', 'latex')
@@ -97,7 +97,7 @@ end
 fig2 = figure('Units','centimeters','Position',[2 2 FIGSIZE_CM2], 'Color','w');
 plot(xEI, Tn,   '-','LineWidth',1.8,'Color',C(1,:),'DisplayName','Thrust'); 
 hold on;
-plot(xEI, TnPn, '--','LineWidth',1.4,'Color',C(2,:),'DisplayName','$\eta$');
+plot(xEI, TnPn, '--','LineWidth',1.4,'Color',C(2,:),'DisplayName','$\overline{F}_T/\overline{P}_T$');
 plot(xEI, symFactor,  '-','LineWidth',1.8,'Marker','o','MarkerSize',MK,...
     'MarkerFaceColor',C(3,:),'MarkerEdgeColor','w','Color',C(3,:),'DisplayName','$\alpha$');
 %plot(xEI, Eendn,'-','LineWidth',1.4,'Marker','s','MarkerSize',MK,...
@@ -171,7 +171,7 @@ plot(xEI, symFactor, 'o-', ...
     'Color',C(3,:),'MarkerFaceColor',C(3,:), ...
     'MarkerEdgeColor','w',...
     'DisplayName', '$\alpha$', 'HandleVisibility','on');
-plot(xEI, TnPn, '--','LineWidth',1.4,'Color',C(2,:),'DisplayName','$\eta$');
+plot(xEI, TnPn, '--','LineWidth',1.4,'Color',C(2,:),'DisplayName','$\overline{F}_T/\overline{P}_T$');
 set(ax3,'XScale','log');
 xlim(ax3,[min(xEI) max(xEI)]);
 grid(ax3,'on');
