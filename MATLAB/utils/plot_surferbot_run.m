@@ -170,7 +170,7 @@ ylim([-y_limit_microns, y_limit_microns*(1+top_buffer)]);
 
 xlabel('$x\;(\mathrm{cm})$', 'Interpreter','latex');
 ylabel('$y\;(\mu\mathrm{m})$', 'Interpreter','latex');
-set(gca,'FontSize',28); box on;
+set(gca,'FontSize',40); box on;
 
 % place legend for the star only
 if hasMotor
