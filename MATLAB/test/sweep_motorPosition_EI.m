@@ -107,6 +107,7 @@ if ~isempty(idxSurferbot)
 end
 
 S = struct2table(S(:));
+save('data/sweepMotorPositionEI.mat', 'S');
 
 end
 
