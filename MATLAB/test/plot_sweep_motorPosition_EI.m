@@ -13,7 +13,7 @@ if ~exist(saveDir,'dir'), mkdir(saveDir); end
 
 % Handle S being a table or struct; edit filename if needed
 D = load(fullfile(saveDir, 'sweepMotorPositionEI.mat'));
-S = D.T;
+S = D.S;
 if istable(S)
     S = table2struct(S);
 end
@@ -62,7 +62,7 @@ asymmetry_factor = -(eta_1_sq - eta_end_sq) ./ (eta_1_sq + eta_end_sq);
 % These values mirror the 'base' struct in sweep_motorPosition_EI
 L_raft_val      = 0.05; % same as in the sweep script
 EIsurf_val      = 3.0e9 * 3e-2 * (9.9e-4)^3 / 12;
-MP_surf_val     = 0.24 * (L_raft_val/2); % base.motor_position
+MP_surf_val     = 0.24 / 2; % base.motor_position
 
 all_args   = [S.args]; 
 all_power  = [all_args.power];
