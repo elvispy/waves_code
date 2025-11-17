@@ -185,7 +185,7 @@ contourf(ax3, EI_grid, MP_grid, asymmetry_factor, n_fill_levels, ...
     'LineStyle', 'none', 'HandleVisibility', 'off');
 
 % Line at base motor position
-yline(MP_surferbot, 'k--', 'LineWidth', 2);
+%yline(MP_surferbot, 'k--', 'LineWidth', 2);
 
 scatter(ax3, EI_surferbot, MP_surferbot, 100, ...
     'k', 'filled', 'MarkerEdgeColor', 'w', 'LineWidth', 1, ...
@@ -230,7 +230,7 @@ contourf(ax4, EI_grid, MP_grid, thrust_over_power_norm, n_fill_levels, ...
     'LineStyle', 'none', 'HandleVisibility', 'off');
 
 % Line at base motor position
-yline(MP_surferbot, 'k--', 'LineWidth', 2);
+%yline(MP_surferbot, 'k--', 'LineWidth', 2);
 
 scatter(ax4, EI_surferbot, MP_surferbot, 100, ...
     'k', 'filled', 'MarkerEdgeColor', 'w', 'LineWidth', 1, ...
@@ -299,7 +299,7 @@ set(ax5, 'XScale', 'linear');
 yline(0, 'k:', 'HandleVisibility', 'off');
 
 if export
-    print(fig5, fullfile(saveDir,'plot_sweep_motorPosition_EI_fig5.pdf'), '-dpdf','-vector','-r300');
+    print(fig5, fullfile(saveDir,'plot_sweep_motorPosition_EI_fig5.pdf'), '-dpdf','-painters','-r300');
     print(fig5, fullfile(saveDir,'plot_sweep_motorPosition_EI_fig5.svg'), '-dsvg','-r300');
 end
 
