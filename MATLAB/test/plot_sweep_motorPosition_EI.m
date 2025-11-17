@@ -299,7 +299,7 @@ set(ax5, 'XScale', 'linear');
 yline(0, 'k:', 'HandleVisibility', 'off');
 
 if export
-    print(fig5, fullfile(saveDir,'plot_sweep_motorPosition_EI_fig5.pdf'), '-dpdf','-painters','-r300');
+    print(fig5, fullfile(saveDir,'plot_sweep_motorPosition_EI_fig5.pdf'), '-dpdf','-vector','-r300');
     print(fig5, fullfile(saveDir,'plot_sweep_motorPosition_EI_fig5.svg'), '-dsvg','-r300');
 end
 
