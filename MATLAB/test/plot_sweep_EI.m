@@ -21,7 +21,7 @@ C = [0.00 0.45 0.70;
      0.95 0.90 0.25;
      0.80 0.47 0.65;
      0.00 0.00 0.00;
-     0.90 0.10 0.90];
+     0.50 0.10 0.50];
 
 % ---- Load ----
 D = load('data/EI_sweep.mat');
@@ -61,7 +61,7 @@ legend('Location','best','Box','off')
 style_axes(gca,BASE_FONT,GRID_ALPHA)
 
 subplot(3,1,2)
-plot(xEI, -Ppow, 'o-','LineWidth',LINE_W,'MarkerSize',MK,...
+plot(xEI, -Ppow, '-','LineWidth',LINE_W,'MarkerSize',MK,...
     'Color',C(2,:),'MarkerFaceColor',C(2,:),'MarkerEdgeColor','w', 'HandleVisibility', 'off');
 xline(EIsurf, '--', 'DisplayName', 'Surferbot', 'LineWidth', 2);
 set(gca,'XScale','log','YScale','log'); xlim([min(xEI) max(xEI)]); grid on;
@@ -75,7 +75,7 @@ subplot(3,1,3); hold on;
 
 yline(0, '-', 'HandleVisibility', 'off', 'LineWidth', 0.5);
 xline(EIsurf, '--', 'DisplayName', 'Surferbot', 'LineWidth', 2);
-plot(xEI, symFactor, 'o-','LineWidth',LINE_W,'MarkerSize',MK,...
+plot(xEI, symFactor, '-','LineWidth',LINE_W,'MarkerSize',MK,...
     'Color',C(3,:),'MarkerFaceColor',C(3,:),'MarkerEdgeColor','w',...
     'DisplayName', '$\alpha$', 'HandleVisibility','off'); 
 %plot(xEI, TnPn, '--','LineWidth',1.4,'Color',C(2,:),'DisplayName','$\overline{F}_T/\overline{P}_T$');
@@ -99,8 +99,8 @@ fig2 = figure('Units','centimeters','Position',[2 2 FIGSIZE_CM2], 'Color','w');
 plot(xEI, Tn,   '-','LineWidth',1.8,'Color',C(1,:),'DisplayName','Thrust'); 
 hold on;
 %plot(xEI, TnPn, '--','LineWidth',1.4,'Color',C(2,:),'DisplayName','$\overline{F}_T/\overline{P}_T$');
-plot(xEI, symFactor,  '-','LineWidth',1.8,'Marker','o','MarkerSize',MK,...
-    'MarkerFaceColor',C(3,:),'MarkerEdgeColor','w','Color',C(3,:),'DisplayName','$\alpha$');
+plot(xEI, symFactor,  '-','LineWidth',1.8,'Marker','none','MarkerSize',MK,...
+    'MarkerFaceColor',C(3,:),'MarkerEdgeColor','none','Color',C(3,:),'DisplayName','$\alpha$');
 %plot(xEI, Eendn,'-','LineWidth',1.4,'Marker','s','MarkerSize',MK,...
 %    'MarkerFaceColor',C(5,:),'MarkerEdgeColor','w','Color',C(5,:),'DisplayName','|eta(end)|');
 xline(EIsurf, '--', 'DisplayName', 'Surferbot', 'LineWidth', 2);
@@ -108,7 +108,7 @@ set(gca,'XScale','log'); ylim([-1.05 1.05]); xlim([min(xEI) max(xEI)]); grid on;
 xlabel('EI (N m^4)','FontName',BASE_FONT,'FontSize',14)
 ylabel('Normalized metric','FontName',BASE_FONT,'FontSize',14)
 %title('Scaled metrics overlay','FontName',BASE_FONT,'FontSize',11)
-legend('Location','southeast','Box','off', 'Interpreter', 'latex')
+legend('Location','best','Box','off', 'Interpreter', 'latex')
 style_axes(gca,BASE_FONT,GRID_ALPHA)
 
 if export
@@ -150,16 +150,16 @@ style_axes(ax1,BASE_FONT,GRID_ALPHA);
 
 % ---------- AXIS 2: Power ----------
 axes(ax2);
-plot(xEI, -Ppow, 'o-', ...
+plot(xEI, -Ppow, '-', ...
     'LineWidth',LINE_W,'MarkerSize',MK, ...
     'Color',C(2,:),'MarkerFaceColor',C(2,:), ...
     'MarkerEdgeColor','w','HandleVisibility','off');
 xline(EIsurf, '--', 'DisplayName', 'Surferbot', 'LineWidth', 2);
 set(ax2,'XScale','log','YScale','log');
-xlim(ax2,[min(xEI) max(xEI)]);
+xlim(ax2,[min(xEI) max(xEI)]); ylim(ax2,[min(-Ppow) max(-Ppow*1.1)]);
 grid(ax2,'on');
 ylabel(ax2,'Power (W)','FontName',BASE_FONT,'FontSize',14, 'Interpreter', 'latex');
-legend(ax2,'Location','northeast','Box','off', 'FontSize', 16);
+legend(ax2,'Location','best','Box','off', 'FontSize', 16);
 style_axes(ax2,BASE_FONT,GRID_ALPHA);
 
 % ---------- AXIS 3: alpha ----------
@@ -167,7 +167,7 @@ axes(ax3); hold on;
 yline(0, '-', 'HandleVisibility','off','LineWidth',0.5);
 xline(EIsurf, '--', 'DisplayName','Surferbot','LineWidth',2, ...
     'HandleVisibility', 'off');
-plot(xEI, symFactor, 'o-', ...
+plot(xEI, symFactor, '-', ...
     'LineWidth',LINE_W,'MarkerSize',MK, ...
     'Color',C(3,:),'MarkerFaceColor',C(3,:), ...
     'MarkerEdgeColor','w',...
@@ -177,7 +177,7 @@ set(ax3,'XScale','log');
 xlim(ax3,[min(xEI) max(xEI)]);
 grid(ax3,'on');
 ylabel(ax3,'Normalized Metric','FontName',BASE_FONT,'FontSize',20, 'Interpreter', 'latex');
-legend(ax3,'Location','southeast','Box','off', 'Interpreter', 'latex', 'Fontsize', 20);
+legend(ax3,'Location','best','Box','off', 'Interpreter', 'latex', 'Fontsize', 20);
 style_axes(ax3,BASE_FONT,GRID_ALPHA);
 
 % ---------- Make it compact & "fused" ----------
