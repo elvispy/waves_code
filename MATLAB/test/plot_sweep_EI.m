@@ -20,7 +20,8 @@ C = [0.00 0.45 0.70;
      0.00 0.60 0.50;
      0.95 0.90 0.25;
      0.80 0.47 0.65;
-     0.00 0.00 0.00];
+     0.00 0.00 0.00;
+     0.90 0.10 0.90];
 
 % ---- Load ----
 D = load('data/EI_sweep.mat');
@@ -97,7 +98,7 @@ end
 fig2 = figure('Units','centimeters','Position',[2 2 FIGSIZE_CM2], 'Color','w');
 plot(xEI, Tn,   '-','LineWidth',1.8,'Color',C(1,:),'DisplayName','Thrust'); 
 hold on;
-plot(xEI, TnPn, '--','LineWidth',1.4,'Color',C(2,:),'DisplayName','$\overline{F}_T/\overline{P}_T$');
+%plot(xEI, TnPn, '--','LineWidth',1.4,'Color',C(2,:),'DisplayName','$\overline{F}_T/\overline{P}_T$');
 plot(xEI, symFactor,  '-','LineWidth',1.8,'Marker','o','MarkerSize',MK,...
     'MarkerFaceColor',C(3,:),'MarkerEdgeColor','w','Color',C(3,:),'DisplayName','$\alpha$');
 %plot(xEI, Eendn,'-','LineWidth',1.4,'Marker','s','MarkerSize',MK,...
@@ -112,7 +113,7 @@ style_axes(gca,BASE_FONT,GRID_ALPHA)
 
 if export
     % Save
-    print(fig2, fullfile(saveDir,'EI_sweep_fig2.pdf'), '-dpdf','-painters','-r300');
+    print(fig2, fullfile(saveDir,'EI_sweep_fig2.pdf'), '-dpdf','-painters','-r300'); %args;OK
     print(fig2, fullfile(saveDir,'EI_sweep_fig2.svg'), '-dsvg','-r300');
 end
 
@@ -171,7 +172,7 @@ plot(xEI, symFactor, 'o-', ...
     'Color',C(3,:),'MarkerFaceColor',C(3,:), ...
     'MarkerEdgeColor','w',...
     'DisplayName', '$\alpha$', 'HandleVisibility','on');
-plot(xEI, TnPn, '--','LineWidth',1.4,'Color',C(2,:),'DisplayName','$\overline{F}_T/\overline{P}_T$');
+plot(xEI, TnPn, '--','LineWidth',1.4,'Color',C(7,:),'DisplayName','$\overline{F}_T/\overline{P}_T$');
 set(ax3,'XScale','log');
 xlim(ax3,[min(xEI) max(xEI)]);
 grid(ax3,'on');

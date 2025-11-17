@@ -209,7 +209,7 @@ scatter(ax3, EI_surferbot, Omega_surferbot_hz, 100, ...
 % --- Styling ---
 set(ax3, 'XScale', 'log');
 xlim(ax3, [min(EI_grid(:)) max(EI_grid(:))]); 
-ylim(ax3, [min(Omega_grid_hz(:)) max(Omega_grid_hz(:))]);
+ylim(ax3, [10 max(Omega_grid_hz(:))]);
 
 xlabel(ax3, 'EI (N m^4)', 'FontName', BASE_FONT, 'FontSize', FONT_SIZE_AXIS);
 ylabel(ax3, 'Frequency (Hz)', 'FontName', BASE_FONT, 'FontSize', FONT_SIZE_AXIS);
