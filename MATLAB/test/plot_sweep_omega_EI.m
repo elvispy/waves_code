@@ -421,6 +421,82 @@ if export
     print(fig6, fullfile(saveDir,'plot_sweep_omega_EI_fig6.svg'), '-dsvg','-r300');
 end
 
+%% ====================== FIGURE 7 (Asymmetry with Natural Freq Line) ======================
+% Purpose: Same as Fig 3 (Asymmetry), but overlaying the theoretical 
+% natural frequency: omega = A * sqrt(EI)
+
+fig7 = figure('Color','w', 'Units','centimeters');
+set(fig7, 'PaperUnits', 'centimeters', 'PaperSize', FIGSIZE_2D_CM, ...
+    'PaperPosition', [0 0 FIGSIZE_2D_CM]);
+set(fig7, 'Position', [12 12 FIGSIZE_2D_CM]); % Offset on-screen position
+
+ax7 = gca;
+hold(ax7, 'on');
+
+% --- 1. Background Contour (Same as Fig 3) ---
+n_fill_levels = 50;
+contourf(ax7, EI_grid, Omega_grid_hz, asymmetry_factor, n_fill_levels, ...
+    'LineStyle', 'none', 'HandleVisibility', 'off');
+
+% --- 2. Calculate and Plot Theoretical Curve ---
+% Equation: omega = A * sqrt(EI)
+% A = 2 * pi * (4.73)^2 / (rho^0.5 * L^2)
+
+% Extract parameters (assuming constant rho/L across the sweep)
+% all_args was defined earlier in the script
+rho_r = all_args(1).rho_raft; 
+L_r   = all_args(1).L_raft;
+
+% Calculate A
+% Note: 4.73 is approx beta*L for the first free-free beam mode
+beta_l = 7.85;
+A_val = (beta_l)^2 / (sqrt(rho_r) * L_r^2 * 2 * pi);
+
+% Generate Smooth Curve Data
+% Use logspace for EI since the X-axis is logarithmic
+EI_curve_vec = logspace(log10(min(EI_grid(:))), log10(max(EI_grid(:))), 200);
+Omega_curve_rad = A_val * sqrt(EI_curve_vec);
+
+% Convert to Hz for the plot
+Freq_curve_hz = Omega_curve_rad / (2*pi);
+
+% Plot the line (Cyan or Green usually pops well against Red/Blue)
+plot(ax7, EI_curve_vec, Freq_curve_hz, 'c-', 'LineWidth', 3, ...
+    'DisplayName', sprintf('Resonant frequency (mode %.3f)', beta_l), ...
+    'HandleVisibility', 'off');
+
+% --- 3. Surferbot Reference Point ---
+scatter(ax7, EI_surferbot, Omega_surferbot_hz, 100, ...
+    'k', 'filled', 'MarkerEdgeColor', 'w', 'LineWidth', 1, 'DisplayName', 'Surferbot');
+
+% --- 4. Styling ---
+set(ax7, 'XScale', 'log');
+xlim(ax7, [min(EI_grid(:)) max(EI_grid(:))]); 
+ylim(ax7, [10 max(Omega_grid_hz(:))]);
+
+xlabel(ax7, 'EI (N m^4)', 'FontName', BASE_FONT, 'FontSize', FONT_SIZE_AXIS);
+ylabel(ax7, 'Frequency (Hz)', 'FontName', BASE_FONT, 'FontSize', FONT_SIZE_AXIS);
+
+caxis(ax7, [-1 1]);
+colormap(ax7, bwr_colormap()); 
+cb = colorbar(ax7);
+cb.Label.String = 'Asymmetry Factor';
+cb.Label.FontName = BASE_FONT;
+cb.Label.FontSize = FONT_SIZE_AXIS;
+
+% Add Legend to identify the curve and the dot
+legend(ax7, 'show', 'Location', 'southeast', 'Box', 'off', ...
+    'FontName', BASE_FONT, 'FontSize', FONT_SIZE_AXIS);
+
+% Apply the 2D helper style
+style_axes(ax7, BASE_FONT, GRID_ALPHA);
+
+% --- Save ---
+if export
+    print(fig7, fullfile(saveDir,'plot_sweep_omega_EI_fig7.pdf'), '-dpdf','-painters','-r300');
+    print(fig7, fullfile(saveDir,'plot_sweep_omega_EI_fig7.svg'), '-dsvg','-r300');
+end
+
 end
 
 % ====================== Helper Function ======================
@@ -460,7 +536,7 @@ function cmap = bwr_colormap(n_colors, gamma)
         n_colors = 256;
     end
     if nargin < 2 || isempty(gamma)
-        gamma = 1.3;  % >1 => more resolution near -1 and 1
+        gamma = 1.;  % >1 => more resolution near -1 and 1
     end
 
     % Friendly endpoints in sRGB [0,1]
