@@ -65,9 +65,9 @@ function simple_mode_video()
         'HorizontalAlignment', 'center', 'VerticalAlignment', 'middle');
 
     % 3. Plot Objects
-    hF1 = plot(x_plot, nan(size(x_plot)), 'b--', 'LineWidth', 2);
-    hF2 = plot(x_plot, nan(size(x_plot)), 'r--', 'LineWidth', 2);
-    hSum = plot(x_plot, nan(size(x_plot)), 'k-', 'LineWidth', 5);
+    hF1 = plot(x_plot, nan(size(x_plot)), 'b--', 'LineWidth', 8);
+    hF2 = plot(x_plot, nan(size(x_plot)), 'r--', 'LineWidth', 8);
+    hSum = plot(x_plot, nan(size(x_plot)), 'k-', 'LineWidth', 16);
     
     % --- Styling ---
     axis off;               
