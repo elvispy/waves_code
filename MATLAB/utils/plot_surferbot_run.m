@@ -130,11 +130,11 @@ end
 
 %fig = figure('Position',[200 200 700 240], ...
 %    'Color', 'w');
-fig = figure('Position',[200 200 1400 480], 'Color', 'w', 'Renderer', 'opengl');
+fig = figure('Position',[200 200 960 480], 'Color', 'w', 'Renderer', 'opengl');
 
 set(gca,'LooseInset',[0.02 0.02 0.02 0.02]);
 
-function out = ternary(cond,a,b), if cond, out=a; else, out=b; end, end
+%function out = ternary(cond,a,b), if cond, out=a; else, out=b; end, end
 
 % --- graphics priming ---
 yy0 = real(eta .* exp(1i*omega*tvec(1))) * scaleY;
@@ -177,7 +177,7 @@ if hasMotor
     legend(hMotor, 'Location','northeast');
 end
 
-
+%set(gca, 'FontSize', 0.1);
 %% VIDEO
 for k = 1:numel(tvec)
     yy = real(eta .* exp(1i*omega*tvec(k))) * scaleY;
@@ -195,7 +195,6 @@ for k = 1:numel(tvec)
     title(sprintf('f = %d Hz, t = %.3f s', omega/(2*pi), tvec(k)));
     drawnow limitrate nocallbacks
     if silent == false
-        
         frame = getframe(fig);
         writeVideo(vid, frame);
     end
