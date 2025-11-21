@@ -1,28 +1,15 @@
 import jax.numpy as jnp
-import numpy as np
-import pytest
+import unittest
 
-from surferbot.rigid_surferbot import rigidSolver
+from surferbot.rigid import rigidSolver
 
-# testing variables
-rho = 1000.
-omega = 2*jnp.pi*80.
-nu = nu = 1e-6
-g = 9.81
-L_raft = 0.05
-L_domain = 1.
-gamma = 72.2e-3
-x_A = 0.025 # check this
-f_A = 1. # check this
-n = 100
+class RankTests(unittest.TestCase):
+    @staticmethod
+    def test_general_matrix_rank():
+        [phi, eta, zeta, theta, A] = rigidSolver(1000, 10, 1e-6, 9.81, 0.05, 1, 0.072, 0.02, 1, 21)
+        assert jnp.linalg.matrix_rank(A) == min(A.shape)
+    @staticmethod    
+    def test_bigger_raft_rank():
+        [phi, eta, zeta, theta, A] = rigidSolver(1000, 10, 1e-6, 9.81, 0.3, 1, 0.072, 0.02, 1, 21)
+        assert jnp.linalg.matrix_rank(A) == min(A.shape)
 
-# def general_test(rho, omega, nu, g, L_raft, L_domain, gamma, x_A, f_A, n):
-#     [phi, theta, eta, zeta, r, c] = rigidSolver(rho, omega, nu, g, L_raft, L_domain,gamma, x_A, f_A, n)
-    
-#     assert phi == 
-#     assert theta ==
-#     assert eta ==
-#     assert zeta == 
-def test_square_matrix_test(rho, omega, nu, g, L_raft, L_domain, gamma, x_A, F_A, n):
-    [phi, theta, eta, zeta, r, c] = rigidSolver(rho, omega, nu, g, L_raft, L_domain,gamma, x_A, f_A, n)
-    assert r == c

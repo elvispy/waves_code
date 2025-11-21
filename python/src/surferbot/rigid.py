@@ -1,4 +1,6 @@
 import jax
+import numpy as np
+from scipy.linalg import qr
 import jax.numpy as jnp
 from surferbot.DtN import DtN_generator
 from surferbot.myDiff import Diff
@@ -19,7 +21,6 @@ def rigidSolver(rho, omega, nu, g, L_raft, L_domain, sigma, x_A, F_A, n):
     - nu: kinematic viscosity (m^2/s)
     - sigma: surface tension (N)
     - n: number of points in raft
-    - p: total number of points in domain (x-direction) # TODO: probably change this to not get mixed up with the other p in type-up
     Outputs:
     - 
     '''
@@ -27,7 +28,6 @@ def rigidSolver(rho, omega, nu, g, L_raft, L_domain, sigma, x_A, F_A, n):
     ## Derived dimensional Parameters (SI Units)
     L_c = L_raft
     m_c = rho * L_c**2
-    t_c = 1/omega
 
     # Raft Points
     L_raft_adim = L_raft / L_c
@@ -43,6 +43,7 @@ def rigidSolver(rho, omega, nu, g, L_raft, L_domain, sigma, x_A, F_A, n):
 
     # Splitting N 
     L = (p - n)//2
+    print(f"L points: {L}")
   
     integral = simpson_weights(n, dx).reshape(1, n)  # Ensure integral is a row vector
 
@@ -91,14 +92,14 @@ def rigidSolver(rho, omega, nu, g, L_raft, L_domain, sigma, x_A, F_A, n):
     else:
         grid_x = jnp.round(x, 5)
 
-    # Derivative operators
-    d_dx = Diff(axis=0, grid=grid_x, acc=2, shape=(p,))
-
     # Used for E1, E3
-    d_dx_left = Diff(axis=0, grid=grid_x[0:(left_raft_boundary+1)], acc=2, shape=(sum(x_free)//2+1,))
+    # d_dx_left = Diff(axis=0, grid=grid_x[0:(left_raft_boundary+1)], acc=2, shape=(sum(x_free)//2+1,))
+
+    # why is this only for the left indices here
     d2_dx2_free = (1.0 * Diff(axis=0, grid=grid_x[0:(left_raft_boundary+1)], acc=2, shape=(sum(x_free)//2+1,))**2)[:-1, :]
-    print(f"d_dx_left: {d_dx_left.shape}")
-    print(f"left_raft_boundary: {left_raft_boundary}")
+    # print(f"d_dx_left: {d_dx_left.shape}")
+    # print(f"left_raft_boundary: {left_raft_boundary}")
+    
     #d_dx_right = Diff(axis=0, grid=grid_x[(right_raft_boundary-1): ], acc=2, shape=(sum(x_free)//2+1,))
     #print(f"d_dx_right: {d_dx_right.shape}")
     print(f"number of free points: {sum(x_free)//2}")
@@ -121,20 +122,28 @@ def rigidSolver(rho, omega, nu, g, L_raft, L_domain, sigma, x_A, F_A, n):
     # phi total: p unknowns, eta total: = p-n unknowns, zeta = 1 unknown, theta = 1 unknown
     # Total unknowns: 2p - n + 2
 
-    # Equation 1 # TODO: fix labeling...
+    # Equation 1
     # Bernoulli equation (2L equations)
     E1_Phi  = jnp.vstack([
         jnp.hstack([C13 * jnp.eye(L), jnp.zeros((L, p-L))]),
         jnp.hstack([jnp.zeros((L, p-L)), C13 * jnp.eye(L)])
     ], dtype=jnp.complex64)
+
     E1_Phi = E1_Phi.at[0:L,   0:(L+1)      ].add(C14 * d2_dx2_free)
     E1_Phi = E1_Phi.at[L:2*L, (p - L - 1):p].add(C14 * d2_dx2_free)
+    print("E1_Phi Shape:", E1_Phi.shape)
+
     E1_Phiz = jnp.vstack([
         jnp.hstack([C11 * jnp.eye(L), jnp.zeros((L, p-L))]),
         jnp.hstack([jnp.zeros((L, p-L)), C11 * jnp.eye(L)])
     ], dtype=jnp.complex64)
     E1_Phiz = E1_Phiz.at[0:L,   0:(L+1)      ].add(C12 * d2_dx2_free)
     E1_Phiz = E1_Phiz.at[L:2*L, (p - L - 1):p].add(C12 * d2_dx2_free)
+    print("E1_Phiz Shape:", E1_Phiz.shape)
+
+    # Testing
+    print("E1 Phi Shape, First Half:", jnp.hstack([C13 * jnp.eye(L), jnp.zeros((L, p-L))]).shape)
+    print("E1 Phi Shape:", E1_Phi.shape)
     
     E1 = jnp.hstack([
         E1_Phi, 
@@ -143,15 +152,25 @@ def rigidSolver(rho, omega, nu, g, L_raft, L_domain, sigma, x_A, F_A, n):
     ], dtype=jnp.complex64)
     
     # Boundary conditions
-    k = dispersion_k(omega, g, 100 * L_raft, nu, sigma, rho, k0 = omega**2/gx) # Complex wavenumber
+    k = dispersion_k(omega, g, 100 * L_raft, nu, sigma, rho, k0 = omega**2/g) # Complex wavenumber
     kbar = k * L_c
 
-    E1 = E1.at[[0, -1], :].set(0.0)
-    
+    # First Index
+    E1 = E1.at[0, :].set(0.0)
     E1 = E1.at[0, 0].set(-1.0j * kbar * dx - 1.0) 
     E1 = E1.at[0, 1].set(1.0) 
+
+    # Need to override bc. linear dependence...
+    # E1 = E1.at[L + 1:].set(0.0)
+    # E1 = E1.at[L + 1:p-L-1].set(-1.0)
+    # E1 = E1.at[L + 1:p-L].set(1.0)
+    
+    # Last Index
+    E1 = E1.at[-1, :].set(0.0)
     E1 = E1.at[-1, -2].set(-1.0) 
     E1 = E1.at[-1, -1].set(-1.0j * kbar * dx + 1.0) 
+
+    print("Rank skdjfhsd", jnp.linalg.matrix_rank(E1[1:-1, :]))
     
     # Equation 2 (Kinematic boundary condition inside the raft eta = zeta + x theta)
     E2_Eta   = C21 * jnp.hstack([jnp.zeros((n, L)), jnp.eye(n), jnp.zeros((n, L))], dtype=jnp.complex64)
@@ -221,48 +240,6 @@ def rigidSolver(rho, omega, nu, g, L_raft, L_domain, sigma, x_A, F_A, n):
         jnp.zeros((p, 2))
     ], dtype=jnp.complex64)
 
-    '''
-    # Stacking equations
-    # Zero matrices
-    O_NP = jnp.zeros((n, (p - n)//2))          # zero matrix of size (n) x (p-n)
-    O_PP = jnp.zeros(((p - n)//2, (p - n)//2)) # zero matrix of size (p-n)/2 x (p-n)/2
-    O_P1 = jnp.zeros(((p - n)//2, 1))          # zero matrix of size (p-n)/2 x 1
-    O_N1 = jnp.zeros((n, 1))                   # zero matrix of size (n) x 1
-    O_1N = jnp.zeros((1, n))                   # zero matrix of size 1 x (n)
-    O_1P = jnp.zeros((1, (p - n)//2))          # zero matrix of size 1 x (p-n)/2
-
-    # E1
-    E1_L = jnp.hstack([E11_1L, E11_1C, E11_1R, O_PP, O_PP, O_P1, O_P1])
-    # Boundary conditions
-    d2_dx2_free = d_dx_left**2; 
-    E1_L.at[0:((n-p)//2+1), (n-p)//2] = E1_L.at[0:((n-p)//2+1), (n-p)//2] + d2_dx2_free[:-1, -1] * (C12 * N11 + C14)
-    #E1_L = E1_L.at[-1].set([E11_1LB, O_1N, O_1P, O_1P, O_1P, E13, E14])
-
-    E1_R = jnp.hstack([E11_2L, E11_2C, E11_2R, O_PP, O_PP, O_P1, O_P1])
-    # Boundary conditions
-    #E1_R = E1_R.at[0].set([E11_1RB, O_1N, O_1P, O_1P, O_1P, E13, E14])
-
-    # E2 
-    E2 = jnp.hstack([C21 * N21, E21_C, C21 * N23, O_NP, O_NP, E23, E24])
-
-    # E3
-    E3_L = jnp.hstack([E31_L, C31 * N32, C31 * N33, E32_L, O_PP, O_P1, O_P1])
-    E3_R = jnp.hstack([N31, N32, E31_R, O_PP, E32_R, O_P1, O_P1])
-
-
-    # E4, E5
-    E4 = jnp.hstack([O_1P, E41_C, O_1P, O_1P, O_1P, E43, E44])
-    E5 = jnp.hstack([O_1P, E51_C, O_1P, O_1P, O_1P, E53, E54])
-    
-    print(f"E1_L shape: {E1_L.shape}")
-    print(f"E1_R shape: {E1_R.shape}")
-    print(f"E2 shape: {E2.shape}")
-    print(f"E3_L shape: {E3_L.shape}")
-    print(f"E3_R shape: {E3_R.shape}")
-    print(f"E4 shape: {E4.shape}")
-    print(f"E5 shape: {E5.shape}")  
-    '''
-
     # Concatenate 
     A = jnp.vstack([E1, E2, E3, E4, E5, E6], dtype=jnp.complex64)
 
@@ -275,25 +252,53 @@ def rigidSolver(rho, omega, nu, g, L_raft, L_domain, sigma, x_A, F_A, n):
     print(f"A shape: {A.shape}")
     print(f"b shape: {b.shape}")
 
-    print(f"Determinant of A: {jnp.linalg.det(A)}")
-    print("Any zero rows:", jnp.any(jnp.all(A == 0, axis=1)))
-    print("Any zero columns:", jnp.any(jnp.all(A == 0, axis=0)))
+    print(f"Determinant of A: {jnp.linalg.det(A)}") # alternate: jnp.linalg.slogdet(A) -> as long as ur log is not infinite, okay
 
-    print("Rank of matrix:", jnp.linalg.matrix_rank(A))
+    print("Rank of matrix:", jnp.linalg.matrix_rank(A)) # rank need to be equal to the matrix size 
+    
+    # test = jnp.vstack([E1, E2, E3, E6], dtype=jnp.complex64)
+    # print("Rank Test:", jnp.linalg.matrix_rank(test))
     print("Shape of matrix:", A.shape)
+
+    # DEBUGGING: Testing QR Decomposition (using Numpy rather than Jax)
+    def find_dependent_rows(A, tol=None):
+        """
+        Returns:
+        independent_rows : list of row indices forming a basis
+        dependent_rows   : list of row indices that are linear combinations of the independent ones
+        """
+        # QR with column pivoting on A^T → pivot rows of A
+        Q, R, pivots = qr(A.T, pivoting=True, mode='economic')
+        # Determine numerical rank
+        if tol is None:
+            tol = np.max(A.shape) * np.abs(R).max() * np.finfo(A.dtype).eps
+        diag_R = np.abs(np.diag(R))
+        rank = np.sum(diag_R > tol)
+        independent_rows = sorted(pivots[:rank])
+        dependent_rows   = sorted(pivots[rank:])
+
+        return independent_rows, dependent_rows
+    ind_rows, dep_rows = find_dependent_rows(np.asarray(A)) 
+    print("Dependent row indices:", dep_rows) 
+
+    ind_rows, dep_rows_dx2 = find_dependent_rows(np.asarray(d2_dx2_free)) 
+    print("Dependent row indices, dx2:", dep_rows_dx2) 
+
     if jnp.linalg.matrix_rank(A) < min(A.shape):
         print("Matrix has linearly dependent rows or columns.")
-
+    else: 
+        print("No linear dependence.")
+   
     solution = jax.numpy.linalg.solve(A, b)
 
-    # Splitting variables
+    # Splitting variables 
     phi = solution[0 : p]
     eta = solution[(-p-2) : -2]
     zeta = solution[-2]
     theta = solution[-1]
 
-    return (phi, eta, zeta, theta)
+    # returning A now for testing...
+    return [phi, eta, zeta, theta, A]
 
 if __name__ == "__main__":
     A = rigidSolver(1000, 10, 1e-6, 9.81, 0.05, 1, 0.072, 0.02, 1, 21)
-    print(A[0])
