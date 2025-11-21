@@ -12,16 +12,13 @@ if nargin < 2, export = false; end
 BASE_FONT   = 'Times';
 FIGSIZE_CM1 = [18 18.5];
 FIGSIZE_CM2 = [20 7.5];
-LINE_W      = 1.4;
+LINE_W      = 3.5;
 MK          = 5.5;
 GRID_ALPHA  = 0.2;
-C = [0.00 0.45 0.70;
-     0.65 0.10 0.60;
-     0.00 0.60 0.50;
-     0.95 0.90 0.25;
-     0.80 0.47 0.65;
-     0.00 0.00 0.00;
-     0.50 0.10 0.50];
+C = [0.93 0.69 0.13; % Thrust
+     0.49 0.18 0.56; % Power
+     0.47 0.67 0.19; % Asymmetry factor
+     0.85 0.33 0.10]; % Ft/Pt
 
 % ---- Load ----
 D = load('data/EI_sweep.mat');
@@ -44,7 +41,7 @@ TnPn  = unitmax(Tthr ./ Ppow);
 %E1n   = unitmax(E1);
 %Eendn = unitmax(Eend);
 
-% ====================== FIGURE 1 ======================
+%% ====================== FIGURE 1 ======================
 fig1 = figure('Units','centimeters','Position',[2 2 FIGSIZE_CM1], 'Color','w');
 
 subplot(3,1,1); hold on;
@@ -92,14 +89,14 @@ if export
     print(fig1, fullfile(saveDir,'EI_sweep_fig1.svg'), '-dsvg','-r300');
 end
 
-% ====================== FIGURE 2 ======================
+%% ====================== FIGURE 2 ======================
 
 
 fig2 = figure('Units','centimeters','Position',[2 2 FIGSIZE_CM2], 'Color','w');
-plot(xEI, Tn,   '-','LineWidth',1.8,'Color',C(1,:),'DisplayName','Thrust'); 
+plot(xEI, Tn,   '-','LineWidth',LINE_W,'Color',C(1,:),'DisplayName','Thrust'); 
 hold on;
 %plot(xEI, TnPn, '--','LineWidth',1.4,'Color',C(2,:),'DisplayName','$\overline{F}_T/\overline{P}_T$');
-plot(xEI, symFactor,  '-','LineWidth',1.8,'Marker','none','MarkerSize',MK,...
+plot(xEI, symFactor,  '-','LineWidth',LINE_W,'Marker','none','MarkerSize',MK,...
     'MarkerFaceColor',C(3,:),'MarkerEdgeColor','none','Color',C(3,:),'DisplayName','$\alpha$');
 %plot(xEI, Eendn,'-','LineWidth',1.4,'Marker','s','MarkerSize',MK,...
 %    'MarkerFaceColor',C(5,:),'MarkerEdgeColor','w','Color',C(5,:),'DisplayName','|eta(end)|');
@@ -124,7 +121,7 @@ end
 
 
 
-% ====================== FIGURE 3 ======================
+%% ====================== FIGURE 3 ======================
 fig3 = figure('Units','centimeters','Position',[4 4 FIGSIZE_CM1], 'Color','w');
 
 % Pre-create axes so we can control positions later
@@ -135,7 +132,7 @@ ax3 = subplot(3,1,3); hold(ax3,'on');
 % ---------- AXIS 1: Thrust ----------
 axes(ax1); % make sure
 xline(EIsurf, '--', 'DisplayName', 'Surferbot', 'LineWidth', 2, ...
-    'HandleVisibility', 'off');
+    'HandleVisibility', 'on');
 yline(0, '-', 'HandleVisibility', 'off', 'LineWidth', 0.5);
 plot(xEI, Tthr, '-', ...
     'LineWidth',LINE_W,'MarkerSize',MK, ...
@@ -145,7 +142,7 @@ set(ax1,'XScale','log');
 xlim(ax1,[min(xEI) max(xEI)]);
 grid(ax1,'on');
 ylabel(ax1,'Thrust (N/m)','FontName',BASE_FONT,'FontSize',14, 'interpreter', 'latex');
-legend(ax1,'Location','best','Box','off');
+legend(ax1,'Location','north','Box','off', 'FontSize', 18);
 style_axes(ax1,BASE_FONT,GRID_ALPHA);
 
 % ---------- AXIS 2: Power ----------
@@ -154,7 +151,8 @@ plot(xEI, -Ppow, '-', ...
     'LineWidth',LINE_W,'MarkerSize',MK, ...
     'Color',C(2,:),'MarkerFaceColor',C(2,:), ...
     'MarkerEdgeColor','w','HandleVisibility','off');
-xline(EIsurf, '--', 'DisplayName', 'Surferbot', 'LineWidth', 2);
+xline(EIsurf, '--', 'DisplayName', 'Surferbot', 'LineWidth', 2, ...
+    'HandleVisibility', 'off');
 set(ax2,'XScale','log','YScale','log');
 xlim(ax2,[min(xEI) max(xEI)]); ylim(ax2,[min(-Ppow) max(-Ppow*1.1)]);
 grid(ax2,'on');
@@ -172,7 +170,7 @@ plot(xEI, symFactor, '-', ...
     'Color',C(3,:),'MarkerFaceColor',C(3,:), ...
     'MarkerEdgeColor','w',...
     'DisplayName', '$\alpha$', 'HandleVisibility','on');
-plot(xEI, TnPn, '--','LineWidth',1.4,'Color',C(7,:),'DisplayName','$\overline{F}_T/\overline{P}_T$');
+plot(xEI, TnPn, '--','LineWidth',0.75*LINE_W,'Color',C(4,:),'DisplayName','$\overline{F}_T/\overline{P}_T$');
 set(ax3,'XScale','log');
 xlim(ax3,[min(xEI) max(xEI)]);
 grid(ax3,'on');
