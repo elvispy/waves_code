@@ -27,6 +27,8 @@ class TestDtN(unittest.TestCase):
         # constants shared by all tests
         cls.a      = 0.01
         cls.L      = 50
+        cls.k      = 200
+        cls.nu     = 1e-6
         cls.N      = 500
         cls.x_vals = jnp.linspace(-cls.L, cls.L, cls.N)
         cls.Dx     = cls.x_vals[1] - cls.x_vals[0]
@@ -62,8 +64,8 @@ class TestDtN(unittest.TestCase):
         self.run_relative_test(phi)
 
     def test_cos_exp_decay(self):
-        """φ(x)=cos(x)·exp(−(a x)^2)"""
-        phi = lambda x: jnp.cos(x) * jnp.exp(-(self.a*x)**2)
+        """φ(x)=cos(x)·exp(−(a x))"""
+        phi = lambda x: jnp.cos(x) * jnp.exp(-(self.a*x))
         self.run_relative_test(phi)
 
     def test_plain_sin(self):
