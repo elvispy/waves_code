@@ -1,3 +1,4 @@
+
 import jax
 import numpy as np
 from scipy.linalg import qr
@@ -8,21 +9,28 @@ from surferbot.integration import simpson_weights
 from surferbot.utils import dispersion_k
 from surferbot.constants import DEBUG
 
+jax.config.update("jax_enable_x64", True)
 
 def rigidSolver(rho, omega, nu, g, L_raft, L_domain, sigma, x_A, F_A, n):
     '''
     Inputs: 
-    - rho: density of fluid (kg/m^2)
+    - rho: density of fluid (kg/m^3)
     - omega: angular frequency (rad/s)
-    - g: gravity (m/s^2)
-    - L_raft: length of raft (m)
-    - L_domain: length of domain (m)
-    - motor_inertia: inertia of the motor (kg*m^2)
     - nu: kinematic viscosity (m^2/s)
-    - sigma: surface tension (N)
-    - n: number of points in raft
+    - g: gravitational acceleration (m/s^2)
+    - L_raft: length of the raft (m)
+    - L_domain: total horizontal domain length used for the DtN operator (m)
+    - sigma: surface tension (N/m)
+    - x_A: horizontal position of the forcing application point (m, measured in same frame as raft)
+    - F_A: amplitude of external horizontal forcing (N)
+    - n: number of grid points on the raft (contact region)
+
     Outputs:
-    - 
+    - phi   : complex velocity potential at all p grid points (JAX array of shape (p, 1))
+    - eta   : complex free-surface elevation at all p grid points (JAX array of shape (p, 1))
+    - zeta  : complex heave displacement of raft center (scalar)
+    - theta : complex pitch angle of raft (scalar)
+    - A     : assembled linear system matrix for debugging/analysis
     '''
 
     ## Derived dimensional Parameters (SI Units)
@@ -39,8 +47,8 @@ def rigidSolver(rho, omega, nu, g, L_raft, L_domain, sigma, x_A, F_A, n):
     # Equation setup
     DtN = DtN_generator(p)         # DtN operator mapping phi -> phi_z on free surface
     dx = 1 / n                     # non-dimensional spacing on the raft
-    N = DtN / (L_raft / n)         # rescaled DtN operator consistent with dimensionalization
-    print(f"N shape: {N.shape}")
+    DtN = DtN / (L_raft / n)         # rescaled DtN operator consistent with dimensionalization
+    print(f"N shape: {DtN.shape}")
 
     # Splitting N / domain into left-free, raft, right-free parts
     L = (p - n) // 2               # number of free-surface points on each side of raft
@@ -148,10 +156,10 @@ def rigidSolver(rho, omega, nu, g, L_raft, L_domain, sigma, x_A, F_A, n):
     #
     # [E11_L   0       E11_R   E12_L   0       E12_R   0        0        0        0     0]   | E1 (Bernoulli on free surface)
     # [ 0      0        0       0      0        0      0      E21_C      0       E22   E23]   | E2 (eta_C - zeta - x*theta = 0)
-    # [ 0      0        0      E31_L  E31_C   E31_R  E32_L   E32_C    E32_R      0     0]   | E3 (phi_z - i*eta = 0 on all p)
+    # [ 0      0        0      E31_L  E31_C   E31_R  E32_L   E32_C    E32_R       0     0]   | E3 (phi_z - i*eta = 0 on all p)
     # [ 0     E41_C     0       0      0        0      0        0        0      E43   E44]   | E4 (horizontal force balance)
     # [ 0     E51_C     0       0      0        0      0        0        0      E53   E54]   | E5 (moment balance)
-    # [E61_L E61_C   E61_R   E62_L  E62_C   E62_R    0        0        0        0     0]   | E6 (phi_z - N*phi = 0)
+    # [E61_L E61_C   E61_R   E62_L  E62_C   E62_R      0        0        0        0     0]   | E6 (phi_z - N*phi = 0)
     #
     # Dimensions / counts:
     #   E1: 2L equations   (Bernoulli on p - n = 2L free-surface points)
@@ -195,8 +203,8 @@ def rigidSolver(rho, omega, nu, g, L_raft, L_domain, sigma, x_A, F_A, n):
     ], dtype=jnp.complex64)
 
     # Add viscous term (second derivative) on each side of the free surface
-    E1_Phi = E1_Phi.at[0:L,   0:(L+1)      ].add(C14 * d2_dx2_free)
-    E1_Phi = E1_Phi.at[L:2*L, (p - L - 1):p].add(C14 * d2_dx2_free)
+    E1_Phi = E1_Phi.at[0:L,   0:(L+1)     ].add(C14 * d2_dx2_free)
+    E1_Phi = E1_Phi.at[L:2*L, (p - L - 1):].add(C14 * d2_dx2_free)
     print("E1_Phi Shape:", E1_Phi.shape)
 
     # Coefficients multiplying phi_z in Bernoulli equation
@@ -204,9 +212,10 @@ def rigidSolver(rho, omega, nu, g, L_raft, L_domain, sigma, x_A, F_A, n):
         jnp.hstack([C11 * jnp.eye(L), jnp.zeros((L, p-L))]),
         jnp.hstack([jnp.zeros((L, p-L)), C11 * jnp.eye(L)])
     ], dtype=jnp.complex64)
+
     # Add surface tension term via second derivative of phi_z
-    E1_Phiz = E1_Phiz.at[0:L,   0:(L+1)      ].add(C12 * d2_dx2_free)
-    E1_Phiz = E1_Phiz.at[L:2*L, (p - L - 1):p].add(C12 * d2_dx2_free)
+    E1_Phiz = E1_Phiz.at[0:L,   0:(L+1)     ].add(C12 * d2_dx2_free)
+    E1_Phiz = E1_Phiz.at[L:2*L, (p - L - 1):].add(C12 * d2_dx2_free)
     print("E1_Phiz Shape:", E1_Phiz.shape)
 
     # Testing shapes
@@ -231,10 +240,10 @@ def rigidSolver(rho, omega, nu, g, L_raft, L_domain, sigma, x_A, F_A, n):
 
     # Downstream radiation condition at right boundary
     E1 = E1.at[-1, :].set(0.0)
-    E1 = E1.at[-1, -2].set(-1.0) 
-    E1 = E1.at[-1, -1].set(-1.0j * kbar * dx + 1.0) 
+    E1 = E1.at[-1, p-2].set(-1.0) 
+    E1 = E1.at[-1, p-1].set(-1.0j * kbar * dx + 1.0) 
 
-    print("Rank skdjfhsd", jnp.linalg.matrix_rank(E1[1:-1, :]))
+    print("Rank mtx", jnp.linalg.matrix_rank(E1))
     
     # Equation 2: kinematic condition on raft (eta = zeta + x * theta) enforced on contact points
     E2_Eta   = C21 * jnp.hstack([jnp.zeros((n, L)), jnp.eye(n), jnp.zeros((n, L))], dtype=jnp.complex64)
@@ -320,42 +329,53 @@ def rigidSolver(rho, omega, nu, g, L_raft, L_domain, sigma, x_A, F_A, n):
     print("Rank of matrix:", jnp.linalg.matrix_rank(A)) 
     print("Shape of matrix:", A.shape)
 
-    # DEBUGGING: Testing QR Decomposition (using Numpy rather than Jax)
     def find_dependent_rows(A, tol=None):
         """
-        Identify linearly independent and dependent rows via QR decomposition.
+        Identify linearly independent and dependent rows via QR with column pivoting.
 
-        Returns:
-        independent_rows : list of row indices that form a basis
-        dependent_rows   : list of row indices that are linear combinations of the independent ones
+        Parameters
+        ----------
+        A : array_like
+            Matrix whose rows you want to analyze (can be real or complex).
+        tol : float or None
+            Threshold for singular values of R. If None, a default based on
+            matrix size and max diag(R) is used.
+
+        Returns
+        -------
+        independent_rows : list[int]
+            Indices of linearly independent rows of A.
+        dependent_rows : list[int]
+            Indices of rows that are linear combinations of the independent ones.
         """
+        # Ensure NumPy array with a complex-compatible dtype
+        A = np.asarray(A, dtype=np.complex128)
+        m, n = A.shape
         # QR with column pivoting on A^T → pivots correspond to row indices of A
         Q, R, pivots = qr(A.T, pivoting=True, mode='economic')
-        # Determine numerical rank
-        if tol is None:
-            tol = np.max(A.shape) * np.abs(R).max() * np.finfo(A.dtype).eps
+
         diag_R = np.abs(np.diag(R))
+        if tol is None:
+            # Similar scaling to SVD-based rank
+            eps = np.finfo(float).eps
+            tol = max(m, n) * diag_R.max() * eps
         rank = np.sum(diag_R > tol)
+
         independent_rows = sorted(pivots[:rank])
         dependent_rows   = sorted(pivots[rank:])
 
         return independent_rows, dependent_rows
 
     # Check for dependence in the full system matrix
-    ind_rows, dep_rows = find_dependent_rows(np.asarray(A)) 
+    ind_rows, dep_rows = find_dependent_rows(np.asarray(A), tol=1e-6) 
     print("Dependent row indices:", dep_rows) 
 
     # Check for dependence specifically in second-derivative free-surface operator
     ind_rows, dep_rows_dx2 = find_dependent_rows(np.asarray(d2_dx2_free)) 
     print("Dependent row indices, dx2:", dep_rows_dx2) 
 
-    if jnp.linalg.matrix_rank(A) < min(A.shape):
-        print("Matrix has linearly dependent rows or columns.")
-    else: 
-        print("No linear dependence.")
-   
     # Solve linear system for all unknowns
-    solution = jax.numpy.linalg.solve(A, b)
+    [solution, residual, _, _] = jax.numpy.linalg.lstsq(A, b)
 
     # Extract variables from solution vector
     phi = solution[0 : p]
@@ -368,5 +388,17 @@ def rigidSolver(rho, omega, nu, g, L_raft, L_domain, sigma, x_A, F_A, n):
 
 
 if __name__ == "__main__":
-    A = rigidSolver(1000, 10, 1e-6, 9.81, 0.05, 1, 0.072, 0.02, 1, 21)
+    A = rigidSolver(
+        rho=1000,        # density of fluid (kg/m^3)
+        omega=10,        # angular frequency (rad/s)
+        nu=1e-6,         # kinematic viscosity (m^2/s)
+        g=9.81,          # gravitational acceleration (m/s^2)
+        L_raft=0.05,     # length of the raft (m)
+        L_domain=0.25,   # total horizontal domain length (m)
+        sigma=0.072,     # surface tension (N/m)
+        x_A=0.02,        # position of forcing application point (m)
+        F_A=1,           # amplitude of external horizontal forcing (N)
+        n=41,            # number of grid points on the raft
+    )
+
 
