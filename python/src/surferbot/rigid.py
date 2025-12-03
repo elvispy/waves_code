@@ -79,8 +79,7 @@ def rigidSolver(rho, omega, nu, g, L_raft, L_domain, sigma, x_A, F_A, n):
     C42 = -F_A / (rho * L_c**3 * omega**2)  # constant forcing term in RHS
     C43 = 1.0j
     C44 = g / (omega**2 * L_c) 
-    C45 = 0.5 * g / (omega**2 * L_c)
-    C46 = 2 * nu / (omega * L_c**2)
+    C45 = 2 * nu / (omega * L_c**2)
 
     # Equation 5 (moment balance about raft center)
     C51 = -(1/12) * m_c
@@ -270,18 +269,22 @@ def rigidSolver(rho, omega, nu, g, L_raft, L_domain, sigma, x_A, F_A, n):
     # Equation 4: integrated horizontal force balance (translation)
     E4_Phi = jnp.hstack([
         jnp.zeros((1, L)),
-        integral @ (C43 + d_dx_raft**2 * C46),
+        integral @ (C43 + d_dx_raft**2 * C45),
         jnp.zeros((1, L))
     ])
-    E4_Theta = (integral @ (C45 * x[x_contact])).reshape(1, 1)  # contribution from pitch
-    # Heave/zeta term including weight through C44
-    E4_Zeta = C41 + integral @ (jnp.full((n, 1), C44))
+    E4_Eta = jnp.hstack([
+        jnp.zeros((1, L)),
+        C44 * integral,
+        jnp.zeros((1, L))
+    ])
+    E4_Zeta = jnp.complex64(C41).reshape(1, 1)
 
     E4 = jnp.hstack([
         E4_Phi,
-        jnp.zeros((1, 2*p)), 
-        E4_Zeta, 
-        E4_Theta
+        jnp.zeros((1, p)), 
+        E4_Eta,
+        jnp.zeros((1, 1)),
+        E4_Zeta,
     ], dtype=jnp.complex64)
 
     # Equation 5: integrated moment balance about raft center (rotation)
@@ -396,8 +399,8 @@ if __name__ == "__main__":
         L_raft=0.05,     # length of the raft (m)
         L_domain=0.25,   # total horizontal domain length (m)
         sigma=0.072,     # surface tension (N/m)
-        x_A=0.02,        # position of forcing application point (m)
-        F_A=1,           # amplitude of external horizontal forcing (N)
+        x_A=0.24*0.05/2, # position of forcing application point (m)
+        F_A=50e-6,       # amplitude of external horizontal forcing (N)
         n=41,            # number of grid points on the raft
     )
 
