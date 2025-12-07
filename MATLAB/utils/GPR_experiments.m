@@ -28,33 +28,47 @@
 
 
 addpath '../src'
+warning('off','all');
 
-L_raft = 0.01; % Size of surferbot
+
+L_raft = 0.015;
+E      = 330e3;     % Pa
+h      = 0.0015;     % m, thickness
+d      = 0.003;     % m, depth
+EI0    = E * d * h^3/12;
+omega0 = 2*pi*10;   % rad/s (reference)
+rho_oomoo = 1.34e3;   % kg/m3
+
+
 
 %% 1) Configure decision variables and constants
-decision = [ ... 
- struct('name','L_raft'         ,'range',[1e-3 10e-3],'transform','none')
- struct('name','motor_position','range',[0,L_raft/2]  ,'transform','none')
- struct('name','EI'            ,'range',[2e-3 10] * 3.0e9 * 3e-2 * (9.9e-4)^3 / 12, 'transform','log')];
+decision = [ ... %struct('name','L_raft'         ,'range',[L_raft/5 L_raft],'transform','none')
+ struct('name','motor_position' ,'range',0.95*[-L_raft/2,L_raft/2]  ,'transform','none')
+ struct('name','omega'          ,'range',2*pi*[5 40],  'transform','none') %struct('name','d'              ,'range',[d/10 d], 'transform','none')
+ ];
 
 
 fixed = struct( ...
   'sigma',72.2e-3, 'rho',1000.0, 'nu',0*1.0e-6, 'g',9.81, ...
-  'omega',2*pi*80, 'L_raft', L_raft,  ...
-  'rho_raft',0.052, 'motor_force',0.0821151086170634, ...
+  'EI', E * d * h^3/12, ...
+  'rho_raft', rho_oomoo * d * h, 'motor_force',50e-6, ...
   'BC','radiative');
 
 %% 2) Choose the metric and sense
 % Metric is a function of model output and parameters. Replace as needed.
 
-metric = @(out,params) (abs(out.eta(1))^2 - abs(out.eta(end))); %  ...
+alpha = -10;
+beta = -1;
+metric = @(out,params) -(abs(out.eta(1)) + abs(out.eta(end)))/out.args.L_raft;
+%alpha * (abs(out.eta(1)) - abs(out.eta(end)))^2 /out.args.L_raft^2 ...
+%     + beta *(abs(out.eta(1)) + abs(out.eta(end))) /out.args.L_raft; %  ...
     %/ (abs(out.eta(1))^2 + abs(out.eta(end))^2) * abs(out.U);     % e.g., minimize thrust U
 
 % Smooth scalar BO function
-epsilon = 1;
-beta = 100;
-metric = @(out, params) - abs(out.eta(end)) / (abs(out.eta(end)) + beta) * ...
-    exp(-abs(out.eta(1))/epsilon);
+%epsilon = 1;
+%beta = 100;
+%metric = @(out, params) - abs(out.eta(end)) / (abs(out.eta(end)) + beta) * ...
+%    exp(-abs(out.eta(1))/epsilon);
     
 maximize = false;                  % set true to maximize (the code flips sign)
 
@@ -68,9 +82,9 @@ obj = makeObjective(@flexible_surferbot_v2, fixed, metric, maximize);
 
 %% 5) Run BO
 results = bayesopt(obj, vars, ...
-  'MaxObjectiveEvaluations', 70, ...
+  'MaxObjectiveEvaluations', 200, ...
   'IsObjectiveDeterministic', true, ...
-  'ExplorationRatio', 0.5, ...
+  'ExplorationRatio', 0.4, ...
   'AcquisitionFunctionName','expected-improvement-plus', ...
   'UseParallel', true, ...
   'PlotFcn', {@plotMinObjective,@plotObjectiveModel,@plotAcquisitionFunction});
@@ -85,6 +99,7 @@ for i=1:numel(fn), bestParams.(fn{i}) = bestX{1,fn{i}}; end
 args = struct2nv(bestParams);
 [out_best] = flexible_surferbot_v2(args{:});
 
+warning('on','all');
 
 
 %% ---- Helpers ----
@@ -92,19 +107,55 @@ function obj = makeObjective(modelFcn, fixed, metric, maximize)
   obj = @(tbl) inner(tbl, modelFcn, fixed, metric, maximize);
 end
 
+
 function f = inner(tbl, modelFcn, fixed, metric, maximize)
-  % merge table overrides into fixed struct
-  p = fixed;
-  o = table2struct(tbl,'ToScalar',true);
-  n = fieldnames(o); for k=1:numel(n), p.(n{k}) = o.(n{k}); end
-  % call model with name-value pairs
-  nv = struct2nv(p);
-  if p.L_raft/2 < p.motor_position; f = Inf; return; end
-  [U,~,~,~,eta,args] = modelFcn(nv{:});
-  out = struct('U',U,'eta',eta,'args',args);
-  val = metric(out, p);
-  if maximize, val = -val; end
-  f = val;
+    % 1. Merge table overrides into fixed struct
+    p = fixed;
+    o = table2struct(tbl,'ToScalar',true);
+    n = fieldnames(o); 
+    for k=1:numel(n), p.(n{k}) = o.(n{k}); end
+    
+    % 2. Check Geometry Constraints
+    % If the motor is off the edge of the raft, return a bad penalty (Inf)
+    % instead of crashing the physics engine.
+    %if p.L_raft/2 < abs(p.motor_position)
+    %    f = Inf; 
+        %return; 
+    %end
+
+    % 3. RUN MODEL WITH ERROR TRAPPING
+    try
+        % Convert struct to Name-Value pairs for the function call
+        nv = struct2nv(p);
+        
+        % Call the physics model
+        [U,~,~,~,eta,args] = modelFcn(nv{:});
+        
+        % Calculate metric
+        out = struct('U',U,'eta',eta,'args',args);
+        val = metric(out, p);
+        
+        % Handle Maximization
+        if maximize, val = -val; end
+        f = val;
+
+    catch ME
+        % --- ERROR HANDLING ---
+        fprintf(2, '\n======================================\n');
+        fprintf(2, 'CRASH DETECTED inside flexible_surferbot_v2\n');
+        fprintf(2, 'Error Message: %s\n', ME.message);
+        fprintf(2, 'Line: %d in %s\n', ME.stack(1).line, ME.stack(1).name);
+        
+        fprintf('\n--- Parameters causing crash ---\n');
+        disp(p); 
+        
+        fprintf('Pausing execution. Check variables "p" or "ME" now.\n');
+        fprintf('Type "dbcont" to ignore and continue, or "dbquit" to stop.\n');
+        
+        keyboard; % <--- MATLAB WILL STOP HERE
+        
+        f = NaN; % Tell bayesopt this run failed
+    end
 end
 
 

@@ -48,6 +48,10 @@ function [U, x, z, phi, eta, args] = flexible_surferbot_v2(varargin)
         force = args.motor_force;
     end
     if isnan(args.d); args.d = 0.6 * args.L_raft; end
+    if abs(args.motor_position) > args.L_raft/2
+        args.motor_position = sign(args.motor_position) * args.L_raft/2; 
+        warning('motor position rescaled to inside the raft');
+    end
     
     L_c   = args.L_raft;
     t_c   = 1 / args.omega;
