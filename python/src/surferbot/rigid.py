@@ -109,7 +109,7 @@ def rigidSolver(rho, omega, nu, g, L_raft, L_domain, sigma, x_A, F_A, n):
     d2_dx2_free = (1.0 * Diff(axis=0,
                               grid=grid_x[0:(left_raft_boundary+1)],
                               acc=2,
-                              shape=(sum(x_free)//2+1,))**2)[:-1, :]
+                              shape=(L+1,))**2)[:-1, :]
     print(f"number of free points: {sum(x_free)//2}")
 
     # First/second derivatives on raft (used in integrated Newton equations)
