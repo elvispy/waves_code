@@ -34,7 +34,7 @@ warning('off','all');
 L_raft = 0.015;
 E      = 330e3;     % Pa
 h      = 0.0015;     % m, thickness
-d      = 0.003;     % m, depth
+d      = 0.0075;     % m, depth
 EI0    = E * d * h^3/12;
 omega0 = 2*pi*10;   % rad/s (reference)
 rho_oomoo = 1.34e3;   % kg/m3
@@ -42,9 +42,11 @@ rho_oomoo = 1.34e3;   % kg/m3
 
 
 %% 1) Configure decision variables and constants
-decision = [ ... %struct('name','L_raft'         ,'range',[L_raft/5 L_raft],'transform','none')
- struct('name','motor_position' ,'range',0.95*[-L_raft/2,L_raft/2]  ,'transform','none')
- struct('name','omega'          ,'range',2*pi*[5 40],  'transform','none') %struct('name','d'              ,'range',[d/10 d], 'transform','none')
+decision = [ ...
+    struct('name','L_raft'         ,'range',[L_raft/5 L_raft],'transform','none')
+    struct('name','motor_position' ,'range',[-L_raft/2,L_raft/2]  ,'transform','none')
+    struct('name','omega'          ,'range',2*pi*[5 80],  'transform','none') 
+    struct('name','d'              ,'range',[d/10 d], 'transform','none')
  ];
 
 
@@ -59,7 +61,7 @@ fixed = struct( ...
 
 alpha = -10;
 beta = -1;
-metric = @(out,params) -(abs(out.eta(1)) + abs(out.eta(end)))/out.args.L_raft;
+metric = @(out,params) -(abs(out.eta(1)));
 %alpha * (abs(out.eta(1)) - abs(out.eta(end)))^2 /out.args.L_raft^2 ...
 %     + beta *(abs(out.eta(1)) + abs(out.eta(end))) /out.args.L_raft; %  ...
     %/ (abs(out.eta(1))^2 + abs(out.eta(end))^2) * abs(out.U);     % e.g., minimize thrust U
