@@ -13,7 +13,7 @@ T = sweep_nd_groups(Gamma_vals, Fr_vals, Re_vals, Kappa_vals, We_vals, Lambda_va
 
 function T = sweep_nd_groups(Gamma_vals, Fr_vals, Re_vals, Kappa_vals, We_vals, Lambda_vals, MotorPosRatio_vals)
 
-    addpath('../src');
+    addpath('../../src');
 
     % --- fixed dimensional constants (edit as needed)
     base = struct( ...
@@ -223,7 +223,7 @@ function p = nd_to_dimensional(Gamma, Fr, Re, Kappa, We, Lambda, motor_pos_ratio
     p.g             = g;
     p.nu            = nu;
     p.L_raft        = L;
-    p.motor_position = motor_pos_ratio * L;   % swept ND motor position
+    p.motor_position = motor_pos_ratio * L/2;   % swept ND motor position
     p.d             = d;
     p.EI            = EI;
     p.rho_raft      = rho_raft;
