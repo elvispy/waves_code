@@ -3,14 +3,15 @@ addpath '../src'
 % Names of outputs you want
 names = {'U', 'x', 'z', 'phi', 'eta', 'args'};
 
-L_raft = 0.01;
-E      = 330e3;     % Pa
-h      = 0.0015;     % m, thickness
-d      = 0.003;     % m, depth
+L_raft = 0.0031148;
+E      = 330e3;       % Pa
+h      = 0.0015;      % m, thickness
+d      = 0.0021065;        % m, depth
 EI0    = E * d * h^3/12;
+omega0 = 63.299;     % rad/s (reference)
 rho_oomoo = 1.34e3;   % kg/m3
-omega0 = 86.024; %rad / s 
-motor_position = 0.00015941; %0.3 * L_raft/2;
+
+motor_position = -0.3205 * L_raft/2; %0.3 * L_raft/2;
 
 [out{1:numel(names)}] = flexible_surferbot_v2( ...
     'sigma'         , 72.2e-3      , ...   % [N/m] surface tension
