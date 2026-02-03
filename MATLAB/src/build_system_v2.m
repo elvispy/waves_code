@@ -100,7 +100,7 @@ S2D{3, 3} = sparse(nbContact, nbContact);
 S2D{3, 1} = sparse(nbContact, NP);
 S2D{3, 2} = sparse(nbContact, NP);
 %S2D{i, j} refers to the block of equations i, and j = 1 correspond to the
-%variable phi, whle j=2 corresponds to the variable phi_z, and j = 3 to M
+%variable phi, while j=2 corresponds to the variable phi_z, and j = 3 to M
 
 % ------------------------------------------------------------------------
 % 4.  Equation 1: Bernoulli on free surface  
@@ -143,11 +143,11 @@ S2D{1, 2}(idxContact(1), L)   = -1.0i * dx * Lambda / We * DxFree(end, :);
 S2D{1, 3}(idxContact(end), :) = DxRaft(end, :);
 S2D{1, 2}(idxContact(end), R) = -1.0i * dx * Lambda / We * DxFree(1, :);
 
-% Bending moment coupling equation (M = EI eta_xx)
+% Boundary conditions: Bending moment coupling equation (M = EI eta_xx)
 S2D{3, 2}(:, CC) = + 1.0i * Dx2Raft;
 S2D{3, 3} = (dx^2/kappa) * I_CC;
 % Boundary conditions: No bending moment
-S2D{3, 2}([1 end], :)       = 0;      % No eta_xx
+S2D{3, 2}([1 end], :)       = 0;      % No eta
 S2D{3, 3}([1 end], [1 end]) = eye(2); % M = 0 on ends
 
 
