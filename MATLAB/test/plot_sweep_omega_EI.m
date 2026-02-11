@@ -13,6 +13,10 @@ if nargin < 1, saveDir = 'data'; end
 if nargin < 2, export = false; end
 if ~exist(saveDir,'dir'), mkdir(saveDir); end
 
+% Ensure src helpers (e.g., dispersion_k) are discoverable.
+thisDir = fileparts(mfilename('fullpath'));
+addpath(fullfile(thisDir, '..', 'src'));
+
 % Handle S being a table (as produced at the end of Script 2) or struct
 D = load('data/sweeperEIOmega.mat');
 S = D.S;
@@ -38,6 +42,7 @@ C = [0.00 0.45 0.70;
  
 % ---- Load / Process Data ----
 % Get unique omega and EI values to build the grid
+all_args = [S.args];
 omega_list = unique([S.omega]);
 EI_list    = unique([S.EI]);
 n_omega    = numel(omega_list);
@@ -48,6 +53,7 @@ n_EI       = numel(EI_list);
 EI_grid         = reshape([S.EI], n_omega, n_EI);
 Omega_grid_rad  = reshape([S.omega], n_omega, n_EI);
 Omega_grid_hz   = Omega_grid_rad / (2*pi);
+k_grid          = reshape([all_args(:).k], n_omega, n_EI);
 
 % Data for Plot 1: Eta Edge Ratio
 eta_ratio         = reshape([S.eta_edge_ratio], n_omega, n_EI);
@@ -64,7 +70,7 @@ asymmetry_factor = -(eta_1_sq - eta_end_sq) ./ (eta_1_sq + eta_end_sq);
 EIsurf_val     = 3.0e9 * 3e-2 * (9.9e-4)^3 / 12;
 Omega_surf_val = 2*pi*80;
 
-all_args = [S.args]; 
+ 
 % Then we extract the 'power' field from that array
 all_power = [all_args.power];
 thrust_grid = reshape([S.thrust_N], n_omega, n_EI);
@@ -446,17 +452,26 @@ contourf(ax7, EI_grid, Omega_grid_hz, asymmetry_factor, n_fill_levels, ...
 % all_args was defined earlier in the script
 rho_r = all_args(1).rho_raft; 
 L_r   = all_args(1).L_raft;
-
+d     = all_args(1).d;
+rho   = all_args(1).rho;
+H     = all_args(1).domainDepth;
+g     = all_args(1).g;
+nu    = all_args(1).nu;
+sigma = all_args(1).sigma;
 % Calculate A
 % Note: 4.73 is approx beta*L for the first free-free beam mode
-beta_l = 7.85;
-A_val = (beta_l)^2 / (sqrt(rho_r) * L_r^2 * 2 * pi);
+beta_l = 4.73/L_r;
+k = beta_l;
+A_val = (beta_l)^2 / sqrt(rho_r);
 
 % Generate Smooth Curve Data
 % Use logspace for EI since the X-axis is logarithmic
-EI_curve_vec = logspace(log10(min(EI_grid(:))), log10(max(EI_grid(:))), 200);
-Omega_curve_rad = A_val * sqrt(EI_curve_vec);
+EI_curve_vec = logspace(log10(min(EI_grid(:))), log10(max(EI_grid(:))), 50);
+%Omega_curve_rad = A_val * sqrt(EI_curve_vec);
 
+%k_vec = interp1(EI_grid, k_grid, EI_curve_vec)
+Omega_curve_rad = sqrt((EI_curve_vec * beta_l^4 + d * rho * g) ./ ...
+    (rho_r + d * rho / (k * tanh(k * H))));
 % Convert to Hz for the plot
 Freq_curve_hz = Omega_curve_rad / (2*pi);
 
@@ -464,6 +479,66 @@ Freq_curve_hz = Omega_curve_rad / (2*pi);
 plot(ax7, EI_curve_vec, Freq_curve_hz, 'c-', 'LineWidth', 3, ...
     'DisplayName', sprintf('Resonant frequency (mode %.3f)', beta_l), ...
     'HandleVisibility', 'off');
+
+% --- 2b. Implicit resonance curve using k = k(omega) from dispersion ---
+% Solve, for each EI:
+% EI*beta_l^4 + d*rho*g - omega^2*(rho_r + d*rho/(k(omega)*tanh(k(omega)*H))) = 0
+if exist('dispersion_k', 'file') == 2 && false
+    omega_min = min(Omega_grid_rad(:));
+    omega_max = max(Omega_grid_rad(:));
+    Omega_curve_disp_rad = NaN(size(EI_curve_vec));
+    omega_scan = linspace(omega_min, omega_max, 80);
+    prev_root = NaN;
+
+    for iEI = 1:numel(EI_curve_vec)
+        EI_i = EI_curve_vec(iEI);
+        f_real = @(om) resonance_residual_real(om, EI_i, beta_l, rho_r, d, rho, g, H, nu, sigma);
+
+        % Prefer continuity in EI by first trying previous root.
+        root_i = NaN;
+        if isfinite(prev_root)
+            try
+                r_try = fzero(f_real, prev_root);
+                if isfinite(r_try) && r_try > 0
+                    root_i = r_try;
+                end
+            catch
+            end
+        end
+
+        % If continuation failed, bracket from a coarse scan and solve.
+        if ~isfinite(root_i)
+            vals = arrayfun(f_real, omega_scan);
+            valid = isfinite(vals);
+            idx = find(valid(1:end-1) & valid(2:end) & (vals(1:end-1).*vals(2:end) <= 0));
+            if ~isempty(idx)
+                mids = 0.5 * (omega_scan(idx) + omega_scan(idx+1));
+                [~, jbest] = min(abs(mids - Omega_curve_rad(iEI)));
+                a = omega_scan(idx(jbest));
+                b = omega_scan(idx(jbest)+1);
+                try
+                    r_try = fzero(f_real, [a, b]);
+                    if isfinite(r_try) && r_try > 0
+                        root_i = r_try;
+                    end
+                catch
+                end
+            end
+        end
+
+        if isfinite(root_i)
+            Omega_curve_disp_rad(iEI) = root_i;
+            prev_root = root_i;
+        end
+    end
+
+    Freq_curve_disp_hz = Omega_curve_disp_rad / (2*pi);
+    plot(ax7, EI_curve_vec, Freq_curve_disp_hz, 'k--', 'LineWidth', 2.2, ...
+        'DisplayName', 'Resonant frequency with k(\omega)', ...
+        'HandleVisibility', 'off');
+else
+    warning('dispersion_k.m not found on path. Skipping k(omega) resonance curve.');
+end
 
 % --- 3. Surferbot Reference Point ---
 scatter(ax7, EI_surferbot, Omega_surferbot_hz, 100, ...
@@ -520,6 +595,24 @@ set(ax,'XMinorTick','on','YMinorTick','on');
 grid(ax, 'on'); % Turn grid on
 end
 
+function val = resonance_residual_real(omega, EI, beta_l, rho_r, d, rho, g, H, nu, sigma)
+% Real-valued resonance residual using k = real(dispersion_k(omega,...)).
+if ~isfinite(omega) || omega <= 0
+    val = NaN;
+    return;
+end
+
+k_complex = dispersion_k(omega, g, H, nu, sigma, rho, beta_l);
+k_real = real(k_complex);
+if ~isfinite(k_real) || (k_real <= 0)
+    val = NaN;
+    return;
+end
+
+added_mass = d * rho / (k_real * tanh(k_real * H));
+val = EI * beta_l^4 + d * rho * g - omega^2 * (rho_r + added_mass);
+end
+
 function cmap = bwr_colormap(n_colors, gamma)
     % BWR-style diverging colormap with more contrast near endpoints.
     %
@@ -568,4 +661,3 @@ function cmap = bwr_colormap(n_colors, gamma)
     % Clamp to [0,1] to avoid numerical excursions
     cmap = max(min(cmap,1),0);
 end
-

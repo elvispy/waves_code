@@ -229,6 +229,37 @@ n_fill_levels = 50;
 contourf(ax4, EI_grid, MP_grid, thrust_over_power_norm, n_fill_levels, ...
     'LineStyle', 'none', 'HandleVisibility', 'off');
 
+% --- 2. Calculate and Plot Theoretical Curve ---
+% Equation: omega = A * sqrt(EI)
+% A = 2 * pi * (4.73)^2 / (rho^0.5 * L^2)
+
+% Extract parameters (assuming constant rho/L across the sweep)
+% all_args was defined earlier in the script
+rho_r = all_args(1).rho_raft; 
+L_r   = all_args(1).L_raft;
+d     = all_args(1).d;
+rho   = all_args(1).rho;
+H     = all_args(1).domainDepth;
+g     = all_args(1).g;
+omega = all_args(1).omega;
+% Calculate A
+% Note: 4.73 is approx beta*L for the first free-free beam mode
+beta_l = 7.85/L_r;
+m_a    = d* rho / (beta_l * tanh(beta_l * H));
+N_l    = 1;
+
+% Generate Smooth Curve Data
+% Use logspace for EI since the X-axis is logarithmic
+EI_curve_val = (omega^2 * (rho_r + m_a/N_l) - d * rho * g)/ beta_l^4;
+%Omega_curve_rad = A_val * sqrt(EI_curve_vec);
+%motor_curve = linspace(min(MP_grid(:)), max(MP_grid(:)), 200);
+
+% Plot the line (Cyan or Green usually pops well against Red/Blue)
+plot(ax4, EI_curve_val * ones(size(mp_list)), mp_list, 'c-', 'LineWidth', 3, ...
+    'DisplayName', sprintf('Resonant frequency (mode %.3f)', beta_l), ...
+    'HandleVisibility', 'off');
+
+
 % Line at base motor position
 %yline(MP_surferbot, 'k--', 'LineWidth', 2);
 
