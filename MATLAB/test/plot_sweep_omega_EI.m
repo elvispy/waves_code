@@ -483,7 +483,7 @@ plot(ax7, EI_curve_vec, Freq_curve_hz, 'c-', 'LineWidth', 3, ...
 % --- 2b. Implicit resonance curve using k = k(omega) from dispersion ---
 % Solve, for each EI:
 % EI*beta_l^4 + d*rho*g - omega^2*(rho_r + d*rho/(k(omega)*tanh(k(omega)*H))) = 0
-if true %exist('dispersion_k', 'file') == 2 && false
+if exist('dispersion_k', 'file') == 2 && true
     omega_min = min(Omega_grid_rad(:));
     omega_max = max(Omega_grid_rad(:));
     Omega_curve_disp_rad = NaN(size(EI_curve_vec));
@@ -606,8 +606,8 @@ end
 k_complex = dispersion_k(omega, g, H, nu, sigma, rho, beta_l);
 k_real = real(k_complex);
 
-%T = 0; h = 0.6*rho/rho_r;
-%k_real = dispersion_k2(omega, EI, g, H, rho, rho_r, h, T);
+T = 0; h = 0.1*rho/rho_r;
+k_real = dispersion_k2(omega, EI, g, H, rho, rho_r, h, T);
 
 if ~isfinite(k_real) || (k_real <= 0)
     val = NaN;

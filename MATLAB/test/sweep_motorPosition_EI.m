@@ -7,7 +7,7 @@ addpath('../src');
 L_raft = 0.05;
 base = struct( ...
     'sigma',72.2e-3, 'rho',1000, 'nu',0*1e-6, 'g',9.81, ...
-    'L_raft',L_raft, 'motor_position',0.24*L_raft/2, 'd',0.03, ...
+    'L_raft',L_raft, 'motor_position',0.24*L_raft/2, 'd',0*0.03, ...
     'EI',3.0e9*3e-2*(9.9e-4)^3/12, 'rho_raft',0.052, ...
     'domainDepth',nan, 'L_domain', nan, 'n',nan, 'M',nan, ...
     'motor_inertia',0.13e-3*2.5e-3, 'BC','radiative', ...
@@ -15,7 +15,7 @@ base = struct( ...
 
 % --- sweep lists (edit as needed)
 % positions as a fraction of half-raft length (meters)
-motor_position_list = (0.02:0.02:0.48) * L_raft;
+motor_position_list = (0.00:0.02:0.48) * L_raft;
 EI_list             = base.EI * 10.^linspace(-3, 1, 57);   % same EI grid
 
 % --- storage (2D: motor_position x EI)
@@ -33,7 +33,8 @@ max_retries = 3;
 growth      = 1.10;
 
 for ip = 1:numel(motor_position_list)
-    for ie = 1:numel(EI_list)
+    fprintf('%d/%d\n', ip, numel(motor_position_list));
+    parfor ie = 1:numel(EI_list)
         p = base;
         p.motor_position = motor_position_list(ip);
         p.EI             = EI_list(ie);
@@ -107,7 +108,7 @@ if ~isempty(idxSurferbot)
 end
 
 S = struct2table(S(:));
-save('data/sweepMotorPositionEI.mat', 'S');
+save('data/sweepMotorPositionEI2.mat', 'S');
 
 end
 

@@ -1,4 +1,4 @@
-function S = omega_motorPosition_sweep
+function S = sweep_omega_motorPosition
 % Sweep omega and motor_position. Retry runs with higher resolution if tail_flat_ratio > 0.05.
 
 addpath('../src');
@@ -15,7 +15,7 @@ base = struct( ...
 
 % --- sweep lists (edit as needed)
 omega_list           = 2*pi*(4:4:100);                 % rad/s
-motor_position_list  = (0.02:0.02:0.48) * (L_raft/2);  % meters
+motor_position_list  = (0.02:0.02:0.48) * (L_raft);  % meters
 
 % --- storage (2D: omega x motor_position)
 proto = struct('thrust_N',NaN,'N_x',NaN,'M_z',NaN, ...
@@ -32,7 +32,8 @@ max_retries = 3;
 growth      = 1.10;
 
 for iw = 1:numel(omega_list)
-    for ip = 1:numel(motor_position_list)
+    fprintf('%d/%d\n', iw, numel(omega_list));
+    parfor ip = 1:numel(motor_position_list)
         p = base;
         p.omega           = omega_list(iw);
         p.motor_position  = motor_position_list(ip);
@@ -107,6 +108,7 @@ if ~isempty(idxSurferbot)
 end
 
 S = struct2table(S(:));
+save('data/sweepOmegaMotorPosition.mat', 'S');
 
 end
 

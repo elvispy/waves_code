@@ -12,8 +12,8 @@ if nargin < 2, export = false; end
 if ~exist(saveDir,'dir'), mkdir(saveDir); end
 
 % Handle S being a table or struct; edit filename if needed
-D = load(fullfile(saveDir, 'sweepMotorPositionEI.mat'));
-S = D.S;
+D = load(fullfile(saveDir, 'sweepMotorPositionEI2.mat'));
+S = D.S; 
 if istable(S)
     S = table2struct(S);
 end
