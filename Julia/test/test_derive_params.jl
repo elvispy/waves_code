@@ -1,0 +1,32 @@
+using Test
+using Surferbot
+
+@testset "derive_params" begin
+    params = FlexibleParams(
+        omega = 2 * pi * 10.0,
+        L_raft = 0.05,
+        motor_position = 10.0,
+    )
+
+    derived = derive_params(params)
+
+    @test isapprox(derived.d, 0.6 * params.L_raft; atol=1e-12)
+    @test isapprox(derived.motor_force, params.motor_inertia * params.omega^2; rtol=1e-12)
+    @test derived.motor_position == params.L_raft / 2
+    @test derived.domain_depth > 0.0
+    @test derived.k isa Complex
+    @test derived.n isa Int
+    @test derived.M isa Int
+    @test derived.N isa Int
+    @test length(derived.x) == derived.N
+    @test length(derived.z) == derived.M
+    @test count(derived.x_contact) + count(derived.x_free) == derived.N - 2
+    x_contact = derived.x[derived.x_contact]
+    dx_contact = diff(x_contact)
+    weights = vcat(0.5 * dx_contact[1], 0.5 .* (dx_contact[1:(end - 1)] .+ dx_contact[2:end]), 0.5 * dx_contact[end])
+    @test isapprox(sum(derived.loads .* weights), derived.motor_force / derived.F_c; rtol=0.05)
+
+    nd = derived.nd_groups
+    @test isapprox(nd.Gamma, params.rho * params.L_raft^2 / params.rho_raft; rtol=1e-12)
+    @test isapprox(nd.Lambda, derived.d / params.L_raft; rtol=1e-12)
+end
