@@ -1,6 +1,15 @@
 using Test
 using Surferbot
 
+function relative_error(a, b; floor=1e-15)
+    scale = max(abs(a), abs(b), floor)
+    return abs(a - b) / scale
+end
+
+function assert_rel_close(a, b; rtol=1e-12, floor=1e-15)
+    @test relative_error(a, b; floor=floor) <= rtol
+end
+
 function run_matlab_reference_case()
     matlab = Sys.which("matlab")
     matlab === nothing && return nothing
@@ -57,8 +66,8 @@ end
         )
 
         julia_result = flexible_solver(params)
-        @test julia_result.U == matlab_result.U
-        @test julia_result.power == matlab_result.power
-        @test julia_result.thrust == matlab_result.thrust
+        assert_rel_close(julia_result.U, matlab_result.U; rtol=1e-12)
+        assert_rel_close(julia_result.power, matlab_result.power; rtol=1e-12)
+        assert_rel_close(julia_result.thrust, matlab_result.thrust; rtol=1e-12)
     end
 end

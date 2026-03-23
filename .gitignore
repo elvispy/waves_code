@@ -1,10 +1,20 @@
-**/__pycache__/
-**/*egg-info/
-**/*.m~
-files_content.md
-**/surferbot_results/
-**/.DS_Store
-.DS_Store
-*.asv
 
+.claude/
+.DS_Store
+.gemini/
+.idea/
+.requirements/
+.vscode/
+*.asv
+**/__pycache__/
+**/.DS_Store
+**/*_dump_cli.m
+**/*.m~
+**/*.pyc
+**/*egg-info/
+**/surferbot_results/
+# --- Bookkeeping ---
+files_content.md
+Julia/.julia*/
 sweep1.mat
+tmp/

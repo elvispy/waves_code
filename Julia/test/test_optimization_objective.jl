@@ -1,0 +1,42 @@
+using Test
+using Surferbot
+include(joinpath(@__DIR__, "..", "src", "optimization.jl"))
+const SBO = SurferbotOptimization
+
+const OPT_BASE_PARAMS = FlexibleParams(
+    sigma = 0.0,
+    rho = 1000.0,
+    nu = 1e-6,
+    g = 10 * 9.81,
+    L_raft = 0.1,
+    motor_position = 0.5 * 0.1 / 2,
+    d = 0.1 / 2,
+    EI = 100 * 3.0e9 * 3e-2 * (9.9e-4)^3 / 12,
+    rho_raft = 0.018 * 3.0,
+    domain_depth = 0.2,
+    n = 41,
+    M = 30,
+    motor_inertia = 0.13e-3 * 2.5e-3,
+    bc = :radiative,
+    omega = 2 * pi * 10,
+    L_domain = 0.3,
+)
+
+@testset "optimization objective surface" begin
+    theta = [0.012, log(OPT_BASE_PARAMS.EI)]
+    params = SBO.theta_to_params(theta, OPT_BASE_PARAMS)
+    @test params.motor_position == theta[1]
+    @test isapprox(params.EI, exp(theta[2]); atol=1e-12, rtol=1e-12)
+
+    @test SBO.softplus_penalty(0.5, 1.0, 10.0; beta=20.0) < 1e-6
+    @test SBO.softplus_penalty(1.5, 1.0, 10.0; beta=20.0) > 0.0
+
+    config = SBO.OptimizationConfig(Pmax = 1e-5, mu = 10.0, beta = 20.0)
+    value = SBO.thrust_objective(theta, OPT_BASE_PARAMS, config)
+    @test value isa Float64
+
+    opt_params = SBO.OptimizationParams(theta0 = copy(theta), lower = [0.0, log(1e-6)], upper = [0.05, log(10.0)])
+    result = SBO.run_thrust_optimization(OPT_BASE_PARAMS, opt_params, config; maxiter=1)
+    @test length(result.theta) == 2
+    @test result.objective isa Float64
+end
