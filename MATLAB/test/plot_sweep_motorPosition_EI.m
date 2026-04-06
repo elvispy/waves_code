@@ -1,4 +1,4 @@
-function plot_sweep_motorPosition_EI(saveDir, export)
+function plot_sweep_motorPosition_EI(saveDir, export, dataFile, edgeSource)
 % Create motorPosition–EI sweep figures (MATLAB 2018b-compatible, publication-ready)
 %
 % Usage (suggested):
@@ -6,13 +6,16 @@ function plot_sweep_motorPosition_EI(saveDir, export)
 %   %   save('data/sweepΩMotorPositionEI.mat','S');
 %   plot_sweep_motorPosition_EI;
 %   plot_sweep_motorPosition_EI('my_output_dir', true);
+%   plot_sweep_motorPosition_EI('data', false, 'sweepMotorPositionEI.mat', 'beam');
 
 if nargin < 1, saveDir = 'data'; end
 if nargin < 2, export = false; end
+if nargin < 3 || isempty(dataFile), dataFile = 'sweepMotorPositionEI2.mat'; end
+if nargin < 4 || isempty(edgeSource), edgeSource = 'domain'; end
 if ~exist(saveDir,'dir'), mkdir(saveDir); end
 
 % Handle S being a table or struct; edit filename if needed
-D = load(fullfile(saveDir, 'sweepMotorPositionEI2.mat'));
+D = load(fullfile(saveDir, dataFile));
 S = D.S; 
 if istable(S)
     S = table2struct(S);
@@ -48,14 +51,16 @@ n_EI     = numel(EI_list);
 EI_grid        = reshape([S.EI],             n_mp, n_EI);
 MP_grid        = reshape([S.motor_position]./S(1).args.L_raft, n_mp, n_EI);
 
+edgeFields = get_edge_fields(S, edgeSource);
+
 % Data for Plot 1: Eta Edge Ratio
-eta_ratio       = reshape([S.eta_edge_ratio], n_mp, n_EI);
+eta_ratio       = reshape([S.(edgeFields.ratio)], n_mp, n_EI);
 log10_eta_ratio = log10(eta_ratio);
 log10_eta_ratio(isinf(log10_eta_ratio)) = NaN; % Handle potential -Inf
 
 % Data for Plot 2: Asymmetry Factor
-eta_1_sq   = abs(reshape([S.eta_1],   n_mp, n_EI)).^2;
-eta_end_sq = abs(reshape([S.eta_end], n_mp, n_EI)).^2;
+eta_1_sq   = abs(reshape([S.(edgeFields.left)],  n_mp, n_EI)).^2;
+eta_end_sq = abs(reshape([S.(edgeFields.right)], n_mp, n_EI)).^2;
 asymmetry_factor = -(eta_1_sq - eta_end_sq) ./ (eta_1_sq + eta_end_sq);
 
 % ---- Find "Surferbot" reference point ----
@@ -91,6 +96,12 @@ EI_surferbot       = EI_grid(idx_mp, idx_EI);
 log10_eta_surferbot= log10_eta_ratio(idx_mp, idx_EI);
 asymm_surferbot    = asymmetry_factor(idx_mp, idx_EI);
 
+ratioLabel = sprintf('log_{10}(|%s / %s|)', edgeFields.label_left, edgeFields.label_right);
+outputSuffix = '';
+if strcmp(edgeSource, 'beam')
+    outputSuffix = '_beam';
+end
+
 %% ====================== FIGURE 1 (Eta Edge Ratio) ======================
 fig1 = figure('Color','w', 'Units','centimeters');
 set(fig1, 'PaperUnits', 'centimeters', 'PaperSize', FIGSIZE_3D_CM, ...
@@ -101,7 +112,7 @@ ax1 = gca;
 hold(ax1, 'on');
 
 surf(ax1, EI_grid, MP_grid, log10_eta_ratio, ...
-    'DisplayName', 'log_{10}(|\eta_1 / \eta_{end}|)', ...
+    'DisplayName', ratioLabel, ...
     'EdgeColor', 'none', 'FaceAlpha', 0.85);
 
 scatter3(ax1, EI_surferbot, MP_surferbot, log10_eta_surferbot, 100, ...
@@ -111,7 +122,7 @@ scatter3(ax1, EI_surferbot, MP_surferbot, log10_eta_surferbot, 100, ...
 set(ax1, 'XScale', 'log');
 xlabel(ax1, 'EI (N m^4)', 'FontName', BASE_FONT, 'FontSize', FONT_SIZE_AXIS);
 ylabel(ax1, 'Motor Position / Raft Length', 'FontName', BASE_FONT, 'FontSize', FONT_SIZE_AXIS);
-zlabel(ax1, 'log_{10}(|\eta_1 / \eta_{end}|)', 'FontName', BASE_FONT, 'FontSize', FONT_SIZE_AXIS);
+zlabel(ax1, ratioLabel, 'FontName', BASE_FONT, 'FontSize', FONT_SIZE_AXIS);
 
 caxis(ax1, [-1 1]);
 cb1 = colorbar(ax1);
@@ -125,8 +136,8 @@ view(ax1, -30, 25);
 style_axes_3d(ax1, BASE_FONT, FONT_SIZE_AXIS, GRID_ALPHA);
 
 if export
-    print(fig1, fullfile(saveDir,'plot_sweep_motorPosition_EI_fig1.pdf'), '-dpdf','-painters','-r300');
-    print(fig1, fullfile(saveDir,'plot_sweep_motorPosition_EI_fig1.svg'), '-dsvg','-r300');
+    print(fig1, fullfile(saveDir,['plot_sweep_motorPosition_EI' outputSuffix '_fig1.pdf']), '-dpdf','-painters','-r300');
+    print(fig1, fullfile(saveDir,['plot_sweep_motorPosition_EI' outputSuffix '_fig1.svg']), '-dsvg','-r300');
 end
 
 %% ====================== FIGURE 2 (Asymmetry Factor) ======================
@@ -167,8 +178,8 @@ view(ax2, -30, 25);
 style_axes_3d(ax2, BASE_FONT, FONT_SIZE_AXIS, GRID_ALPHA);
 
 if export
-    print(fig2, fullfile(saveDir,'plot_sweep_motorPosition_EI_fig2.pdf'), '-dpdf','-painters','-r300');
-    print(fig2, fullfile(saveDir,'plot_sweep_motorPosition_EI_fig2.svg'), '-dsvg','-r300');
+    print(fig2, fullfile(saveDir,['plot_sweep_motorPosition_EI' outputSuffix '_fig2.pdf']), '-dpdf','-painters','-r300');
+    print(fig2, fullfile(saveDir,['plot_sweep_motorPosition_EI' outputSuffix '_fig2.svg']), '-dsvg','-r300');
 end
 
 %% ====================== FIGURE 3 (2D Contour: Asymmetry) ======================
@@ -212,8 +223,8 @@ text(ax3, EI_surferbot * 1.15, 0.98*MP_surferbot, ' Surferbot', ...
 style_axes(ax3, BASE_FONT, GRID_ALPHA);
 
 if export
-    print(fig3, fullfile(saveDir,'plot_sweep_motorPosition_EI_fig3.pdf'), '-dpdf','-painters','-r300');
-    print(fig3, fullfile(saveDir,'plot_sweep_motorPosition_EI_fig3.svg'), '-dsvg','-r300');
+    print(fig3, fullfile(saveDir,['plot_sweep_motorPosition_EI' outputSuffix '_fig3.pdf']), '-dpdf','-painters','-r300');
+    print(fig3, fullfile(saveDir,['plot_sweep_motorPosition_EI' outputSuffix '_fig3.svg']), '-dsvg','-r300');
 end
 
 %% ====================== FIGURE 4 (Thrust/Power 2D Contour) ======================
@@ -288,8 +299,8 @@ text(ax4, EI_surferbot * 1.15, 0.98*MP_surferbot, ' Surferbot', ...
 style_axes(ax4, BASE_FONT, GRID_ALPHA);
 
 if export
-    print(fig4, fullfile(saveDir,'plot_sweep_motorPosition_EI_fig4.pdf'), '-dpdf','-painters','-r300');
-    print(fig4, fullfile(saveDir,'plot_sweep_motorPosition_EI_fig4.svg'), '-dsvg','-r300');
+    print(fig4, fullfile(saveDir,['plot_sweep_motorPosition_EI' outputSuffix '_fig4.pdf']), '-dpdf','-painters','-r300');
+    print(fig4, fullfile(saveDir,['plot_sweep_motorPosition_EI' outputSuffix '_fig4.svg']), '-dsvg','-r300');
 end
 
 %% ====================== FIGURE 5 (Thrust and Sxx vs. Motor Position) ======================
@@ -330,8 +341,8 @@ set(ax5, 'XScale', 'linear');
 yline(0, 'k:', 'HandleVisibility', 'off');
 
 if export
-    print(fig5, fullfile(saveDir,'plot_sweep_motorPosition_EI_fig5.pdf'), '-dpdf','-painters','-r300');
-    print(fig5, fullfile(saveDir,'plot_sweep_motorPosition_EI_fig5.svg'), '-dsvg','-r300');
+    print(fig5, fullfile(saveDir,['plot_sweep_motorPosition_EI' outputSuffix '_fig5.pdf']), '-dpdf','-painters','-r300');
+    print(fig5, fullfile(saveDir,['plot_sweep_motorPosition_EI' outputSuffix '_fig5.svg']), '-dsvg','-r300');
 end
 
 %% ====================== FIGURE 6 (Correlation Plot: Thrust vs Sxx) ======================
@@ -394,13 +405,41 @@ xlim(ax6, [min_val max_val]);
 ylim(ax6, [min_val max_val]);
 
 if export
-    print(fig6, fullfile(saveDir,'plot_sweep_motorPosition_EI_fig6.pdf'), '-dpdf','-painters','-r300');
-    print(fig6, fullfile(saveDir,'plot_sweep_motorPosition_EI_fig6.svg'), '-dsvg','-r300');
+    print(fig6, fullfile(saveDir,['plot_sweep_motorPosition_EI' outputSuffix '_fig6.pdf']), '-dpdf','-painters','-r300');
+    print(fig6, fullfile(saveDir,['plot_sweep_motorPosition_EI' outputSuffix '_fig6.svg']), '-dsvg','-r300');
 end
 
 end
 
 % ====================== Helper Functions ======================
+function edgeFields = get_edge_fields(S, edgeSource)
+edgeSource = lower(edgeSource);
+
+switch edgeSource
+    case 'domain'
+        edgeFields = struct( ...
+            'left', 'eta_1', ...
+            'right', 'eta_end', ...
+            'ratio', 'eta_edge_ratio', ...
+            'label_left', '\eta_{left,domain}', ...
+            'label_right', '\eta_{right,domain}');
+    case 'beam'
+        if ~isfield(S, 'eta_left_beam') || ~isfield(S, 'eta_right_beam') || ~isfield(S, 'eta_beam_ratio')
+            error('plot_sweep_motorPosition_EI:MissingBeamFields', ...
+                'Beam-edge fields are missing from the loaded dataset. Regenerate the sweep with the updated sweep script.');
+        end
+        edgeFields = struct( ...
+            'left', 'eta_left_beam', ...
+            'right', 'eta_right_beam', ...
+            'ratio', 'eta_beam_ratio', ...
+            'label_left', '\eta_{left,beam}', ...
+            'label_right', '\eta_{right,beam}');
+    otherwise
+        error('plot_sweep_motorPosition_EI:BadEdgeSource', ...
+            'edgeSource must be ''domain'' or ''beam''.');
+end
+end
+
 function style_axes_3d(ax, baseFont, fontSize, gridAlpha)
 set(ax, 'FontName', baseFont, 'FontSize', fontSize, 'LineWidth', 0.75, ...
     'TickDir', 'out', 'Box', 'on');
