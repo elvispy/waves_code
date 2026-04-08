@@ -4,6 +4,31 @@ using LinearAlgebra
 
 export calculate_surferbot_outputs
 
+"""
+    calculate_surferbot_outputs(args, phi, phi_z, getNonCompactFDmatrix, getNonCompactFDmatrix2D)
+
+Recover thrust, drift speed, mean input power, and surface fields from the
+harmonic solution of the coupled fluid-raft problem.
+
+The main postprocessing steps follow the paper and MATLAB implementation:
+
+1. Reconstruct the surface elevation from the kinematic relation
+   `eta_hat = phi_z / (i*omega)` in dimensional form.
+2. Restrict the solution to the raft-contact region and compute raft-only
+   slope and curvature operators.
+3. Reconstruct the harmonic pressure on the raft from the Bernoulli relation.
+4. Form the total raft load `Q`, combining the applied forcing and the fluid
+   pressure contribution.
+5. Compute the mean thrust from the load-slope work plus the capillary edge
+   correction.
+6. Infer the drift speed `U` from the drag-law closure.
+7. Compute the mean actuator power from the paper's cycle-averaged work-rate
+   formula.
+
+The returned `power` uses the same sign convention as the MATLAB solver. A
+separate helper should be used if a strictly positive input-power quantity is
+needed for optimization.
+"""
 function calculate_surferbot_outputs(args, phi, phi_z, getNonCompactFDmatrix, getNonCompactFDmatrix2D)
     N = args.N
     M = args.M
@@ -49,6 +74,11 @@ function calculate_surferbot_outputs(args, phi, phi_z, getNonCompactFDmatrix, ge
     return U, power, thrust, eta, p
 end
 
+"""
+    trapz(x, y)
+
+Simple trapezoidal quadrature used for raft-integrated thrust and power terms.
+"""
 function trapz(x::AbstractVector, y::AbstractVector)
     total = zero(promote_type(eltype(x), eltype(y)))
     for i in 1:(length(x) - 1)

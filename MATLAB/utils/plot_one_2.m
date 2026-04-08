@@ -7,11 +7,11 @@ L_raft = 0.05;
 %E      = 330e3;       % Pa
 %h      = 0.0015;      % m, thickness
 %d      = 0.0021065;        % m, depth
-EI0    = 1.55e-3; %E * d * h^3/12; 1.55e-3, 1.5e-4, 2.95e-5
+EI0    = 5e-4; %E * d * h^3/12; 1.55e-3, 1.5e-4, 2.95e-5
 omega0 = 2*pi*80;     % rad/s (reference)
 rho_oomoo = 1.34e3;   % kg/m3
 
-motor_position = 0.222 * L_raft; %0.3 * L_raft/2;
+motor_position = 0.185 * L_raft; %0.3 * L_raft/2;
 
 [out{1:numel(names)}] = flexible_surferbot_v2( ...
     'sigma'         , 72.2e-3      , ...   % [N/m] surface tension

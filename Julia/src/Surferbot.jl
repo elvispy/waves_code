@@ -27,6 +27,21 @@ export FlexibleParams,
        flexible_solver,
        flexible_surferbot_v2_julia
 
+"""
+    FlexibleParams
+
+Physical, geometric, and numerical parameters for the flexible Surferbot
+solver.
+
+This struct mirrors the MATLAB entry point `flexible_surferbot_v2` while giving
+the parameters explicit names and types. The most important groups are:
+
+- fluid properties: `sigma`, `rho`, `nu`, `g`
+- forcing: `omega`, `motor_position`, `motor_force`, `forcing_width`
+- raft properties: `L_raft`, `d`, `EI`, `rho_raft`
+- numerical resolution: `n`, `M`, `ooa`, `L_domain`, `domain_depth`
+- boundary condition: `bc`
+"""
 Base.@kwdef struct FlexibleParams
     sigma::Float64 = 72.2e-3
     rho::Float64 = 1000.0
@@ -49,6 +64,20 @@ Base.@kwdef struct FlexibleParams
     bc::Symbol = :radiative
 end
 
+"""
+    FlexibleResult
+
+Primary outputs of the flexible Surferbot solve.
+
+- `U`: drift speed inferred from the drag-law closure
+- `power`: mean actuator power returned by the current sign convention
+- `thrust`: mean wave-driven thrust
+- `phi`, `phi_z`: harmonic potential fields
+- `eta`, `pressure`: reconstructed free-surface elevation and raft pressure
+
+`metadata` stores the dimensional arguments used by the postprocessing layer
+and, optionally, the assembled linear system when `return_system=true`.
+"""
 struct FlexibleResult
     U::Float64
     power::Float64
@@ -62,6 +91,22 @@ struct FlexibleResult
     metadata::NamedTuple
 end
 
+"""
+    derive_params(params)
+
+Construct all derived scales, nondimensional groups, grids, and distributed
+loads needed by the linear solver.
+
+This is the Julia analogue of the MATLAB preprocessing logic before system
+assembly. In particular, it computes:
+
+- characteristic scales `L_c`, `t_c`, `m_c`, `F_c`
+- nondimensional groups `Gamma`, `Fr`, `Re`, `kappa`, `We`, `Lambda`
+- the weakly viscous gravity-capillary wavenumber `k`
+- the numerical grid in `x` and `z`
+- the raft-contact mask and the free-surface mask
+- the distributed motor forcing on the contact region
+"""
 function derive_params(params::FlexibleParams)
     motor_force = isnothing(params.motor_force) ? params.motor_inertia * params.omega^2 : params.motor_force
     d = isnothing(params.d) ? 0.6 * params.L_raft : params.d
@@ -81,11 +126,15 @@ function derive_params(params::FlexibleParams)
         Lambda = d / params.L_raft,
     )
 
-    domain_depth = isnothing(params.domain_depth) ? 2.5 * params.g / params.omega^2 : params.domain_depth
-    k = ComplexF64(dispersion_k(params.omega, params.g, domain_depth, params.nu, params.sigma, params.rho))
+    domain_depth = isnothing(params.domain_depth) ? NaN : params.domain_depth
+    k = ComplexF64(NaN + NaN * im)
     while isnan(real(k)) || tanh(real(k) * domain_depth) < 0.99
-        domain_depth *= 1.05
         k = ComplexF64(dispersion_k(params.omega, params.g, domain_depth, params.nu, params.sigma, params.rho))
+        if isnan(domain_depth)
+            domain_depth = 2.5 * params.g / params.omega^2
+        else
+            domain_depth *= 1.05
+        end
     end
 
     res = 80
@@ -146,6 +195,33 @@ function derive_params(params::FlexibleParams)
     )
 end
 
+"""
+    assemble_flexible_system(params)
+
+Assemble the sparse harmonic linear system for the coupled fluid-raft problem.
+
+The unknown vector is ordered as
+
+`[phi; phi_z; M]`
+
+where:
+
+- `phi` is the harmonic velocity potential on the 2D grid
+- `phi_z` is its vertical derivative
+- `M` is the raft bending-moment variable on the contact region
+
+The block matrix contains:
+
+- Bernoulli/free-surface rows on the uncovered interface
+- Euler-Bernoulli beam rows on the raft-contact region
+- Laplace rows in the fluid interior
+- impermeability rows at the bottom
+- side-wall or radiative boundary rows in `x`
+- derivative-constraint rows enforcing `phi_z - Dz*phi = 0`
+- bending-moment closure rows on the raft
+
+This is the Julia counterpart of MATLAB `build_system_v2.m`.
+"""
 function assemble_flexible_system(params::FlexibleParams)
     derived = derive_params(params)
     NP = derived.N * derived.M
@@ -158,6 +234,8 @@ function assemble_flexible_system(params::FlexibleParams)
     kappa = derived.nd_groups.kappa
     Lambda = derived.nd_groups.Lambda
     Re = derived.nd_groups.Re
+    I_NP = sparse(I, NP, NP)
+    I_CC = sparse(I, nb_contact, nb_contact)
 
     topMask = falses(derived.M, derived.N)
     topMask[end, 2:(end - 1)] .= true
@@ -200,19 +278,19 @@ function assemble_flexible_system(params::FlexibleParams)
     L = idxLeftFreeSurf
     DxFree = getNonCompactFDmatrix(nbLeft, 1.0, 1, derived.params.ooa)
     DxxFree = getNonCompactFDmatrix(nbLeft, 1.0, 2, derived.params.ooa)
-    S11[L[2:(end - 1)], L] = derived.dx^2 .* Matrix(I, nbLeft - 2, nbLeft) .+ (4im / Re) .* DxxFree[2:(end - 1), :]
-    S12[L[2:(end - 1)], L] = (-derived.dx^2 / Fr^2) .* Matrix(I, nbLeft - 2, nbLeft) .+ (1 / (We * Gamma)) .* DxxFree[2:(end - 1), :]
+    S11[L[2:(end - 1)], L] = derived.dx^2 .* I_NP[L[2:(end - 1)], L] .+ (4im / Re) .* DxxFree[2:(end - 1), :]
+    S12[L[2:(end - 1)], L] = (-derived.dx^2 / Fr^2) .* I_NP[L[2:(end - 1)], L] .+ (1 / (We * Gamma)) .* DxxFree[2:(end - 1), :]
 
     R = idxRightFreeSurf
-    S11[R[2:(end - 1)], R] = derived.dx^2 .* Matrix(I, nbLeft - 2, nbLeft) .+ (4im / Re) .* DxxFree[2:(end - 1), :]
-    S12[R[2:(end - 1)], R] = (-derived.dx^2 / Fr^2) .* Matrix(I, nbLeft - 2, nbLeft) .+ (1 / (We * Gamma)) .* DxxFree[2:(end - 1), :]
+    S11[R[2:(end - 1)], R] = derived.dx^2 .* I_NP[R[2:(end - 1)], R] .+ (4im / Re) .* DxxFree[2:(end - 1), :]
+    S12[R[2:(end - 1)], R] = (-derived.dx^2 / Fr^2) .* I_NP[R[2:(end - 1)], R] .+ (1 / (We * Gamma)) .* DxxFree[2:(end - 1), :]
 
     CC = idxContact
     DxRaft = getNonCompactFDmatrix(nb_contact, 1.0, 1, derived.params.ooa)
     Dx2Raft = getNonCompactFDmatrix(nb_contact, 1.0, 2, derived.params.ooa)
 
-    S11[CC, CC] = (1im * Lambda * Gamma * derived.dx^2) .* Matrix(I, nb_contact, nb_contact) .+ (2 * Gamma * Lambda / Re) .* Dx2Raft
-    S12[CC, CC] = ((1im - 1im * Gamma * Lambda / Fr^2) * derived.dx^2) .* Matrix(I, nb_contact, nb_contact)
+    S11[CC, CC] = (1im * Lambda * Gamma * derived.dx^2) .* I_NP[CC, CC] .+ (2 * Gamma * Lambda / Re) .* Dx2Raft
+    S12[CC, CC] = ((1im - 1im * Gamma * Lambda / Fr^2) * derived.dx^2) .* I_NP[CC, CC]
     S13[CC, :] = Dx2Raft
 
     boundary_contact = [1, nb_contact]
@@ -226,7 +304,7 @@ function assemble_flexible_system(params::FlexibleParams)
     S12[CC[end], R] = (-1im * derived.dx * Lambda / We) .* DxFree[1, :]
 
     S32[:, CC] = 1im .* Dx2Raft
-    S33 .= (derived.dx^2 / kappa) .* Matrix(I, nb_contact, nb_contact)
+    S33 .= (derived.dx^2 / kappa) .* I_CC
     S32[boundary_contact, :] .= 0
     S33[boundary_contact, :] .= 0
     S33[1, 1] = 1
@@ -235,7 +313,7 @@ function assemble_flexible_system(params::FlexibleParams)
     Dx, Dz = getNonCompactFDmatrix2D(derived.N, derived.M, 1.0, 1.0, 1, derived.params.ooa)
     Dxx, Dzz = getNonCompactFDmatrix2D(derived.N, derived.M, 1.0, 1.0, 2, derived.params.ooa)
     S11[idxBulk, :] = Dxx[idxBulk, :] .+ Dzz[idxBulk, :] .* (derived.dx / derived.dz)^2
-    S12[idxBottom, :] = sparse(I, length(idxBottom), NP)
+    S12[idxBottom, :] = I_NP[idxBottom, :]
 
     S12[idxLeftEdge, :] .= 0
     S12[idxRightEdge, :] .= 0
@@ -243,12 +321,12 @@ function assemble_flexible_system(params::FlexibleParams)
         S11[idxLeftEdge, :] = Dx[idxLeftEdge, :]
         S11[idxRightEdge, :] = Dx[idxRightEdge, :]
     elseif startswith(lowercase(BCtype), "r")
-        S11[idxLeftEdge, :] = (-1im * derived.k * derived.params.L_raft * derived.dx) .* sparse(I, length(idxLeftEdge), NP) .+ Dx[idxLeftEdge, :]
-        S11[idxRightEdge, :] = (1im * derived.k * derived.params.L_raft * derived.dx) .* sparse(I, length(idxRightEdge), NP) .+ Dx[idxRightEdge, :]
+        S11[idxLeftEdge, :] = (-1im * derived.k * derived.params.L_raft * derived.dx) .* I_NP[idxLeftEdge, :] .+ Dx[idxLeftEdge, :]
+        S11[idxRightEdge, :] = (1im * derived.k * derived.params.L_raft * derived.dx) .* I_NP[idxRightEdge, :] .+ Dx[idxRightEdge, :]
     end
 
     S21 = Dz
-    S22 = -derived.dz .* sparse(I, NP, NP)
+    S22 = -derived.dz .* I_NP
 
     b = zeros(ComplexF64, system_size)
     b[CC] = -derived.dx^2 .* ComplexF64.(derived.loads)
@@ -264,6 +342,15 @@ function assemble_flexible_system(params::FlexibleParams)
         A = sparse(ComplexF64.(A)),
         b = b,
         derived = derived,
+        masks = (
+            topMask = topMask,
+            freeMask = freeMask,
+            contactMask = contactMask,
+            bottomMask = bottomMask,
+            leftEdgeMask = leftEdgeMask,
+            rightEdgeMask = rightEdgeMask,
+            bulkMask = bulkMask,
+        ),
         indices = (
             idxBulk = idxBulk,
             idxBottom = idxBottom,
@@ -276,6 +363,23 @@ function assemble_flexible_system(params::FlexibleParams)
     )
 end
 
+"""
+    flexible_solver(params; return_system=false)
+
+Solve the coupled flexible Surferbot problem and postprocess the solution into
+physically meaningful outputs.
+
+The workflow is:
+
+1. derive scales, grids, and distributed loads
+2. assemble the sparse block system
+3. solve the harmonic linear problem
+4. reconstruct `phi`, `phi_z`, `eta`, and pressure
+5. compute thrust, drift speed, and mean power input
+
+If `return_system=true`, the assembled system and derived quantities are also
+returned for debugging, parity testing, and optimization.
+"""
 function flexible_solver(params::FlexibleParams; return_system::Bool=false)
     system = assemble_flexible_system(params)
     solution = solve_tensor_system(system.A, system.b)
@@ -332,6 +436,14 @@ function flexible_solver(params::FlexibleParams; return_system::Bool=false)
     return return_system ? (result = result, system = system) : result
 end
 
+"""
+    flexible_surferbot_v2_julia(; kwargs...)
+
+MATLAB-style compatibility wrapper around `flexible_solver`.
+
+This preserves the feel of the original MATLAB entry point while the typed
+Julia API remains the primary interface for new code.
+"""
 function flexible_surferbot_v2_julia(; kwargs...)
     result = flexible_solver(FlexibleParams(; kwargs...))
     args = result.metadata.args
