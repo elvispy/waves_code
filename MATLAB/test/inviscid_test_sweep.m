@@ -58,6 +58,7 @@ for inu = 1:numel(nu_values)
 
     for iw = 1:n_omega
         fprintf('%s: %d/%d omega slices\n', label, iw, n_omega);
+        slice_data(1, n_mp * n_EI) = proto; %#ok<AGROW>
         parfor idx = 1:(n_mp * n_EI)
             [ip, ie] = ind2sub([n_mp, n_EI], idx);
             p = base;
@@ -66,8 +67,9 @@ for inu = 1:numel(nu_values)
             p.motor_position = motor_position_list(ip);
             p.EI = EI_list(ie);
 
-            data(iw, ip, ie) = run_case(p);
+            slice_data(idx) = run_case(p);
         end
+        data(iw, :, :) = reshape(slice_data, [1, n_mp, n_EI]);
     end
 
     results.(label) = data;
