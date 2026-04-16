@@ -9,6 +9,7 @@ include("analysis.jl")
 include("modal.jl")
 include("postprocess.jl")
 include("sweep.jl")
+include("video.jl")
 include("utils.jl")
 
 using .Analysis: beam_asymmetry,
@@ -33,6 +34,10 @@ using .Sweep: SweepSummary,
               sweep_parameters,
               save_sweep,
               load_sweep
+using .RunVideo: SurferbotRunRecord,
+                 normalize_run,
+                 write_provenance_json,
+                 render_surferbot_run
 using .Utils: dispersion_k, gaussian_load, solve_tensor_system
 
 export FlexibleParams,
@@ -60,6 +65,10 @@ export FlexibleParams,
        sweep_parameters,
        save_sweep,
        load_sweep,
+       SurferbotRunRecord,
+       normalize_run,
+       write_provenance_json,
+       render_surferbot_run,
        dispersion_k,
        gaussian_load,
        solve_tensor_system,
@@ -447,6 +456,7 @@ function flexible_solver(params::FlexibleParams; return_system::Bool=false)
         x_contact = system.derived.x_contact,
         x = x,
         loads = system.derived.loads .* system.derived.F_c ./ system.derived.L_c,
+        motor_position = params.motor_position,
         N = system.derived.N,
         M = system.derived.M,
         dx = system.derived.dx .* system.derived.L_c,

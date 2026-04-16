@@ -11,6 +11,7 @@ include("test_flexible_solver.jl")
 include("test_analysis_helpers.jl")
 include("test_modal_decomposition.jl")
 include("test_sweep.jl")
+include("test_video.jl")
 include("test_optimization_objective.jl")
 include("test_optimization_gradients.jl")
 if get(ENV, "SURFERBOT_ENABLE_FULL_PARITY", "0") == "1"
