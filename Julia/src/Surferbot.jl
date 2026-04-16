@@ -5,11 +5,24 @@ using LinearAlgebra
 
 include("fd.jl")
 include("integration.jl")
+include("analysis.jl")
+include("modal.jl")
 include("postprocess.jl")
 include("utils.jl")
 
+using .Analysis: beam_asymmetry,
+                 beam_edge_metrics,
+                 default_uncoupled_motor_position_EI_sweep,
+                 symmetric_antisymmetric_ratio,
+                 extract_lowest_beam_curve
 using .FD: getNonCompactFDMWeights, getNonCompactFDmatrix, getNonCompactFDmatrix2D
 using .Integration: simpson_weights
+using .Modal: ModalDecomposition,
+              decompose_raft_freefree_modes,
+              trapz_weights,
+              freefree_betaL_roots,
+              freefree_mode_shape,
+              weighted_mgs
 using .PostProcess: calculate_surferbot_outputs
 using .Utils: dispersion_k, gaussian_load, solve_tensor_system
 
@@ -19,6 +32,17 @@ export FlexibleParams,
        getNonCompactFDmatrix,
        getNonCompactFDmatrix2D,
        simpson_weights,
+       beam_asymmetry,
+       beam_edge_metrics,
+       default_uncoupled_motor_position_EI_sweep,
+       symmetric_antisymmetric_ratio,
+       extract_lowest_beam_curve,
+       ModalDecomposition,
+       decompose_raft_freefree_modes,
+       trapz_weights,
+       freefree_betaL_roots,
+       freefree_mode_shape,
+       weighted_mgs,
        dispersion_k,
        gaussian_load,
        solve_tensor_system,
@@ -400,6 +424,8 @@ function flexible_solver(params::FlexibleParams; return_system::Bool=false)
         g = params.g,
         L_raft = params.L_raft,
         d = system.derived.d,
+        EI = params.EI,
+        rho_raft = params.rho_raft,
         nd_groups = system.derived.nd_groups,
         x_contact = system.derived.x_contact,
         x = x,
