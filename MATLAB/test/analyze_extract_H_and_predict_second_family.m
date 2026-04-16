@@ -1,4 +1,4 @@
-function extract_H_and_predict(saveDir)
+function analyze_extract_H_and_predict_second_family(saveDir)
 % Extract hydrodynamic coupling matrix H by least squares, then predict
 % the second-family curve via S_far(x_M,EI) = a^T*(K(EI)-H)^{-1}*F(x_M) = 0.
 %

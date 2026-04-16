@@ -20,7 +20,7 @@ function run_matlab_reference_case()
 
     tmpdir = mktempdir()
     outfile = joinpath(tmpdir, "matlab_parity.csv")
-    batch = "addpath('$matlab_src'); addpath('$matlab_test'); run_reference_case_cli"
+    batch = "addpath('$matlab_src'); addpath('$matlab_test'); debug_parity_reference_case_cli"
 
     cmd = addenv(`$matlab -batch $batch`,
         "SURFERBOT_PARITY_OUTPUT" => outfile,

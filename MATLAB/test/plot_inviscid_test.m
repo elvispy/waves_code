@@ -1,9 +1,9 @@
-function inviscid_test_postprocess(saveDir)
+function plot_inviscid_test(saveDir)
 %INVISCID_TEST_POSTPROCESS Compare viscous and inviscid coarse sweep results.
 
 if nargin < 1, saveDir = 'data'; end
 
-D = load(fullfile(saveDir, 'inviscid_test_sweep.mat'));
+D = load(fullfile(saveDir, 'sweep_inviscid_test.mat'));
 results = D.results;
 
 omega_list = results.omega_list;
@@ -13,8 +13,8 @@ EI_list = results.EI_list;
 visc = results.viscous;
 inv = results.inviscid;
 
-Sxx_visc = reshape([visc.Sxx], size(visc));
-Sxx_inv = reshape([inv.Sxx], size(inv));
+thrust_visc = reshape([visc.thrust_N], size(visc));
+thrust_inv = reshape([inv.thrust_N], size(inv));
 alpha_visc = reshape([visc.alpha_beam], size(visc));
 alpha_inv = reshape([inv.alpha_beam], size(inv));
 etaL_visc = abs(reshape([visc.eta_left_beam], size(visc)));
@@ -22,16 +22,16 @@ etaL_inv = abs(reshape([inv.eta_left_beam], size(inv)));
 etaR_visc = abs(reshape([visc.eta_right_beam], size(visc)));
 etaR_inv = abs(reshape([inv.eta_right_beam], size(inv)));
 
-rel_Sxx = relative_change(Sxx_visc, Sxx_inv, 1e-6 * max(abs([Sxx_visc(:); Sxx_inv(:)])));
+rel_thrust = relative_change(thrust_visc, thrust_inv, 1e-6 * max(abs([thrust_visc(:); thrust_inv(:)])));
 rel_alpha = relative_change(alpha_visc, alpha_inv, 0.05);
 rel_etaL = relative_change(etaL_visc, etaL_inv, 1e-6 * max([etaL_visc(:); etaL_inv(:)]));
 rel_etaR = relative_change(etaR_visc, etaR_inv, 1e-6 * max([etaR_visc(:); etaR_inv(:)]));
 rel_eta_beam = max(rel_etaL, rel_etaR);
 
-summary_names = {'rel_Sxx'; 'rel_alpha_beam'; 'rel_eta_beam'};
-summary_max = [max(rel_Sxx(:)); max(rel_alpha(:)); max(rel_eta_beam(:))];
-summary_median = [median(rel_Sxx(:)); median(rel_alpha(:)); median(rel_eta_beam(:))];
-summary_p90 = [prctile(rel_Sxx(:), 90); prctile(rel_alpha(:), 90); prctile(rel_eta_beam(:), 90)];
+summary_names = {'rel_thrust'; 'rel_alpha_beam'; 'rel_eta_beam'};
+summary_max = [max(rel_thrust(:)); max(rel_alpha(:)); max(rel_eta_beam(:))];
+summary_median = [median(rel_thrust(:)); median(rel_alpha(:)); median(rel_eta_beam(:))];
+summary_p90 = [prctile(rel_thrust(:), 90); prctile(rel_alpha(:), 90); prctile(rel_eta_beam(:), 90)];
 
 T = table(summary_names, summary_max, summary_median, summary_p90, ...
     'VariableNames', {'metric', 'max_rel_change', 'median_rel_change', 'p90_rel_change'});
@@ -39,8 +39,8 @@ csv_path = fullfile(saveDir, 'inviscid_test_summary.csv');
 writetable(T, csv_path);
 disp(T);
 
-plot_omega_slices(EI_list, motor_position_list, omega_list, rel_Sxx, ...
-    'Relative change in S_{xx}', fullfile(saveDir, 'inviscid_test_rel_Sxx.pdf'));
+plot_omega_slices(EI_list, motor_position_list, omega_list, rel_thrust, ...
+    'Relative change in thrust', fullfile(saveDir, 'inviscid_test_rel_thrust.pdf'));
 plot_omega_slices(EI_list, motor_position_list, omega_list, rel_alpha, ...
     'Relative change in \alpha_{beam}', fullfile(saveDir, 'inviscid_test_rel_alpha_beam.pdf'));
 plot_omega_slices(EI_list, motor_position_list, omega_list, rel_eta_beam, ...

@@ -1,4 +1,4 @@
-function decompose_along_curve(saveDir)
+function analyze_modal_decomposition_along_curve(saveDir)
 % Re-run solver at points along the lowest S~0 curve,
 % decompose into free-free modes, and look for patterns.
 %
@@ -192,7 +192,7 @@ axis equal; grid on; set(ax,'FontSize',11);
 
 sgtitle('Modal decomposition along lowest S\approx0 curve', 'FontSize',13,'FontWeight','bold');
 
-outfile = fullfile(saveDir, 'decompose_along_curve.pdf');
+outfile = fullfile(saveDir, 'analyze_modal_decomposition_along_curve.pdf');
 set(fig,'PaperUnits','centimeters','PaperSize',[30 22],'PaperPosition',[0 0 30 22]);
 print(fig, outfile, '-dpdf','-painters','-r300');
 fprintf('\nSaved to %s\n', outfile);

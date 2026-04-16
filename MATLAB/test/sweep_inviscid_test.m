@@ -1,4 +1,4 @@
-function inviscid_test_sweep(saveDir)
+function sweep_inviscid_test(saveDir)
 %INVISCID_TEST_SWEEP Run a paired coarse 3D sweep with and without viscosity.
 %
 % The sweep reuses the trusted parameter ranges from the existing 2D sweep
@@ -75,8 +75,8 @@ for inu = 1:numel(nu_values)
     results.(label) = data;
 end
 
-save(fullfile(saveDir, 'inviscid_test_sweep.mat'), 'results');
-fprintf('Saved %s\n', fullfile(saveDir, 'inviscid_test_sweep.mat'));
+save(fullfile(saveDir, 'sweep_inviscid_test.mat'), 'results');
+fprintf('Saved %s\n', fullfile(saveDir, 'sweep_inviscid_test.mat'));
 end
 
 function out = run_case(p)
@@ -87,7 +87,7 @@ function out = run_case(p)
     'L_domain',p.L_domain,'n',p.n,'M',p.M, ...
     'motor_inertia',p.motor_inertia,'BC',p.BC,'ooa',p.ooa);
 
-    metrics = extract_eta_edge_metrics(eta, args);
+    metrics = debug_extract_eta_edge_metrics(eta, args);
     idx0 = max(1, ceil(0.05 * numel(eta)));
     tail = abs(eta(1:idx0));
     tail_ratio = std(tail) / max(eps, mean(tail));

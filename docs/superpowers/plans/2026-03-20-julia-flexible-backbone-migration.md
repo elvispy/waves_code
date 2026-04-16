@@ -64,9 +64,9 @@
   Contains a direct solve wrapper, Gaussian load, and dispersion relation.
 - `Julia/src/rigid.jl`
   Rigid solver prototype and the closest local style reference.
-- `Julia/test/implicitAD.jl`
+- `Julia/test/debug_implicit_ad_experiment.jl`
   Experimental implicit differentiation sketch.
-- `Julia/test/zygotest.jl`
+- `Julia/test/debug_zygote_experiment.jl`
   Experimental reverse-mode sparse solve sketch.
 
 ### Immediate package gaps
@@ -286,8 +286,8 @@ git commit -m "feat: add julia flexible solver with matlab parity tests"
 - Modify: `Julia/src/flexible.jl`
 - Modify: `Julia/src/flexible_system.jl`
 - Test: `Julia/test/test_ad.jl`
-- Reference: `Julia/test/implicitAD.jl`
-- Reference: `Julia/test/zygotest.jl`
+- Reference: `Julia/test/debug_implicit_ad_experiment.jl`
+- Reference: `Julia/test/debug_zygote_experiment.jl`
 
 - [ ] **Step 1: Write failing AD tests for scalar objectives of the flexible solver**
 

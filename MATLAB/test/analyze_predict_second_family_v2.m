@@ -1,4 +1,4 @@
-function predict_second_family_v2(saveDir)
+function analyze_predict_second_family_v2(saveDir)
 % Strategy: extract EVERYTHING from the solver at points along the curve.
 % For each mode n at each (EI, x_M) point:
 %   q_n = -F_n / D_n   =>   D_n = -F_n / q_n
@@ -227,7 +227,7 @@ legend('show','Location','northeast','FontSize',11);
 set(ax,'FontSize',12);
 xlim([min(EI_list) max(EI_list)]); ylim([0 0.5]);
 
-outfile = fullfile(saveDir, 'predict_second_family_v2.pdf');
+outfile = fullfile(saveDir, 'analyze_predict_second_family_v2.pdf');
 set(fig,'PaperUnits','centimeters','PaperSize',[24 16],'PaperPosition',[0 0 24 16]);
 print(fig, outfile, '-dpdf','-painters','-r300');
 fprintf('\nSaved to %s\n', outfile);

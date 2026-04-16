@@ -1,9 +1,11 @@
-function decompose_along_beam_curve(saveDir)
-%DECOMPOSE_ALONG_BEAM_CURVE Re-run the solver along the lowest beam-end
-%second-family curve, then decompose the raft response into free-free modes.
+function analyze_modal_decomposition_along_beam_curve_uncoupled(saveDir)
+%ANALYZE_MODAL_DECOMPOSITION_ALONG_BEAM_CURVE_UNCOUPLED Re-run the solver
+%along the lowest uncoupled beam-end white curve, then decompose the raft
+%response into free-free modes.
 %
-% This is the beam-end analogue of decompose_along_curve.m. The white curve
-% is extracted from the coupled x_M-EI sweep using beam-end amplitudes:
+% This is the uncoupled d = 0 analogue of
+% analyze_modal_decomposition_along_beam_curve.m. The alpha_beam = 0 curve
+% is extracted from the uncoupled x_M-EI sweep using beam-end amplitudes:
 %   alpha_beam = -( |eta_left_beam|^2 - |eta_right_beam|^2 ) / ...
 %                 ( |eta_left_beam|^2 + |eta_right_beam|^2 )
 
@@ -11,15 +13,15 @@ if nargin < 1, saveDir = 'data'; end
 script_dir = fileparts(mfilename('fullpath'));
 addpath(fullfile(script_dir, '..', 'src'));
 
-Dat = load(fullfile(saveDir, 'sweepMotorPositionEI.mat'));
+Dat = load(fullfile(saveDir, 'sweepMotorPositionEI2.mat'));
 St = Dat.S;
 if istable(St), St = table2struct(St); end
 
 required = {'eta_left_beam','eta_right_beam'};
 for i = 1:numel(required)
     if ~isfield(St, required{i})
-        error('decompose_along_beam_curve:MissingField', ...
-            'Field %s is missing. Regenerate the coupled sweep with the updated sweep script.', ...
+        error('analyze_modal_decomposition_along_beam_curve_uncoupled:MissingField', ...
+            'Field %s is missing. Regenerate the uncoupled sweep with the updated sweep script.', ...
             required{i});
     end
 end
@@ -71,7 +73,7 @@ sample_idx = round(linspace(1, numel(curve_EI), n_sample));
 sample_EI = curve_EI(sample_idx);
 sample_mp = curve_mp(sample_idx);
 
-fprintf('Sampling %d points along lowest beam-end S~0 curve\n\n', n_sample);
+fprintf('Sampling %d points along lowest uncoupled beam-end S~0 curve\n\n', n_sample);
 
 base = St(1).args;
 n_modes = 8;
@@ -84,6 +86,7 @@ mode_types = cell(n_modes, 1);
 for ip = 1:n_sample
     EI_val = sample_EI(ip);
     mp_val = sample_mp(ip) * L_raft;
+    fprintf('  case %d / %d: EI = %.3e, x_M/L = %.4f\n', ip, n_sample, EI_val, sample_mp(ip));
 
     [~, x, ~, ~, eta, args] = flexible_surferbot_v2( ...
         'sigma', base.sigma, 'rho', base.rho, 'nu', base.nu, ...
@@ -147,9 +150,10 @@ xlabel('Re(q_n)'); ylabel('Im(q_n)');
 title(sprintf('Complex q_n at EI=%.2e', sample_EI(mid)));
 axis equal; grid on; set(ax,'FontSize',11);
 
-sgtitle('Modal decomposition along lowest beam-end S\approx0 curve', 'FontSize',13,'FontWeight','bold');
+sgtitle('Modal decomposition along lowest uncoupled beam-end S\approx0 curve', ...
+    'FontSize',13,'FontWeight','bold');
 
-outfile = fullfile(saveDir, 'decompose_along_beam_curve.pdf');
+outfile = fullfile(saveDir, 'analyze_modal_decomposition_along_beam_curve_uncoupled.pdf');
 set(fig,'PaperUnits','centimeters','PaperSize',[30 22],'PaperPosition',[0 0 30 22]);
 print(fig, outfile, '-dpdf','-painters','-r300');
 fprintf('\nSaved to %s\n', outfile);

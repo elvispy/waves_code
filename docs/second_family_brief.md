@@ -128,7 +128,7 @@ where $a_n$ (complex) are radiation coefficients quantifying how efficiently eac
 
 The rigid translation mode radiates ~10$\times$ more efficiently than the elastic symmetric modes. All $a_n$ share a common complex phase ($\approx -30°$ for elastic modes, $\approx 150°$ for rigid), so $S_{\mathrm{far}} = 0$ reduces to a single real equation.
 
-The analysis script is `MATLAB/test/predict_second_family.m`.
+The analysis script is `MATLAB/test/analyze_predict_second_family.m`.
 
 ### 4. Modal energy distribution along the curve
 
@@ -137,7 +137,7 @@ From the same 15 solver runs, the modal energy fractions $|q_n|^2 / \sum |q_n|^2
 - Mid EI ($\sim 10^{-4}$): mode 3 (2nd elastic, antisymmetric) dominates at 75–85%
 - High EI ($\sim 10^{-2}$): mode 1 (rigid rotation, antisymmetric) dominates at 85–91%, with mode 2 (1st elastic, symmetric) as secondary at 9–15%
 
-The analysis script is `MATLAB/test/decompose_along_curve.m`.
+The analysis script is `MATLAB/test/analyze_modal_decomposition_along_curve.m`.
 
 ## The implicit equation and what is missing
 
@@ -159,7 +159,7 @@ Uses a single added mass $m_a = d\rho/(k\tanh kH)$ for all modes (plane-wave app
 
 **Attempt 2 — fit $D_n(EI) = \beta_n^4 EI + C_n$ from solver data:**
 
-Extract $D_n = -\hat{F}_n / q_n$ at 20 points along the curve and fit a linear model in EI. Result: good fit for mode 2 (coefficient of variation 4.7%) but mode 0 has CoV 149% and modes 4, 6 exceed 400%. The rigid mode $D_0$ ($\beta_0 = 0$, so no EI dependence from the beam equation) varies by an order of magnitude along the curve, proving that $D_n$ depends on $x_M$ through the hydrodynamic coupling. Prediction: zero at $x_M/L \approx 0.02$ across all EI, completely wrong. **Falsified.** Script: `MATLAB/test/predict_second_family_v2.m`.
+Extract $D_n = -\hat{F}_n / q_n$ at 20 points along the curve and fit a linear model in EI. Result: good fit for mode 2 (coefficient of variation 4.7%) but mode 0 has CoV 149% and modes 4, 6 exceed 400%. The rigid mode $D_0$ ($\beta_0 = 0$, so no EI dependence from the beam equation) varies by an order of magnitude along the curve, proving that $D_n$ depends on $x_M$ through the hydrodynamic coupling. Prediction: zero at $x_M/L \approx 0.02$ across all EI, completely wrong. **Falsified.** Script: `MATLAB/test/analyze_predict_second_family_v2.m`.
 
 ### The missing piece: off-diagonal hydrodynamic coupling
 
@@ -203,8 +203,8 @@ $\mathbf{H}$ can be obtained either:
 | Modal decomposition | `MATLAB/src/decompose_raft_freefree_modes.m` |
 | S/A analysis | `MATLAB/test/analyze_second_family_EI.m` |
 | Hypothesis test (S$\approx$0 vs phase) | `MATLAB/test/test_hypothesis_v3.m` |
-| Modal decomposition along curve | `MATLAB/test/decompose_along_curve.m` |
-| Prediction attempts | `MATLAB/test/predict_second_family.m`, `predict_second_family_v2.m` |
+| Modal decomposition along curve | `MATLAB/test/analyze_modal_decomposition_along_curve.m` |
+| Prediction attempts | `MATLAB/test/analyze_predict_second_family.m`, `analyze_predict_second_family_v2.m` |
 | Resonance theory (first family) | `/Users/eaguerov/Library/Mobile Documents/iCloud~md~obsidian/Documents/BrownObsidian/Research/Surferbot/Resonance distilled 2.md` |
 
 ## Parameters for the sweep

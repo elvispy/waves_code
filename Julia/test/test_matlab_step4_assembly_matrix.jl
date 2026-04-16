@@ -10,7 +10,7 @@ function run_matlab_step4_dump(matlab_dir)
     repo_root = normpath(joinpath(@__DIR__, "..", ".."))
     matlab_src = replace(joinpath(repo_root, "MATLAB", "src"), "\\" => "/")
     matlab_test = replace(joinpath(repo_root, "MATLAB", "test"), "\\" => "/")
-    batch = "addpath('$matlab_src'); addpath('$matlab_test'); run_assembly_step4_dump_cli"
+    batch = "addpath('$matlab_src'); addpath('$matlab_test'); debug_parity_assembly_step4_dump_cli"
 
     cmd = addenv(`$matlab -batch $batch`,
         "SURFERBOT_PARITY_DUMP_DIR" => matlab_dir,

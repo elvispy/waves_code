@@ -1,4 +1,4 @@
-function predict_second_family(saveDir)
+function analyze_predict_second_family(saveDir)
 % Build an operational prediction f(x_M, EI) = 0 for the lowest S~0 curve.
 %
 % Strategy:
@@ -236,7 +236,7 @@ title('f(x_M, EI) = \Sigma a_n W_n(x_M) / D_n(EI) = 0');
 legend('show','Location','northeast','FontSize',11);
 set(ax,'FontSize',12);
 
-outfile = fullfile(saveDir, 'predict_second_family.pdf');
+outfile = fullfile(saveDir, 'analyze_predict_second_family.pdf');
 set(fig,'PaperUnits','centimeters','PaperSize',[24 16],'PaperPosition',[0 0 24 16]);
 print(fig, outfile, '-dpdf','-painters','-r300');
 fprintf('\nSaved to %s\n', outfile);

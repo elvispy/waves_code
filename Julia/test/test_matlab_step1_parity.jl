@@ -8,7 +8,7 @@ function run_matlab_step1_dump(matlab_dir)
     repo_root = normpath(joinpath(@__DIR__, "..", ".."))
     matlab_src = replace(joinpath(repo_root, "MATLAB", "src"), "\\" => "/")
     matlab_test = replace(joinpath(repo_root, "MATLAB", "test"), "\\" => "/")
-    batch = "addpath('$matlab_src'); addpath('$matlab_test'); run_reference_case_step1_dump_cli"
+    batch = "addpath('$matlab_src'); addpath('$matlab_test'); debug_parity_reference_case_step1_dump_cli"
 
     cmd = addenv(`$matlab -batch $batch`,
         "SURFERBOT_PARITY_DUMP_DIR" => matlab_dir,
@@ -29,7 +29,7 @@ function run_julia_step1_dump(julia_dir)
     julia_project = joinpath(repo_root, "Julia")
     julia_bin = get(ENV, "SURFERBOT_JULIA_BIN", "/Users/eaguerov/.julia/juliaup/julia-1.12.1+0.x64.apple.darwin14/bin/julia")
     julia_depot = joinpath(julia_project, ".julia_depot") * ":/Users/eaguerov/.julia"
-    script = joinpath(julia_project, "scripts", "dump_reference_case_step1.jl")
+    script = joinpath(julia_project, "scripts", "debug_dump_reference_case_step1.jl")
     cmd = addenv(`$julia_bin --project=$julia_project $script`,
         "SURFERBOT_PARITY_DUMP_DIR" => julia_dir,
         "JULIA_DEPOT_PATH" => julia_depot,

@@ -163,7 +163,7 @@ function S = run_once(p)
         'L_domain', p.L_domain, 'n',p.n,'M',p.M, ...
         'motor_inertia',p.motor_inertia,'BC',p.BC);
 
-    metrics = extract_eta_edge_metrics(eta, args);
+    metrics = debug_extract_eta_edge_metrics(eta, args);
 
     % tail flatness on first 5% of points near the left boundary
     idx0 = max(1, ceil(0.05*numel(eta)));

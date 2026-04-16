@@ -1,4 +1,4 @@
-function run_reference_case_cli
+function debug_parity_reference_case_cli
 % Headless MATLAB reference case for Julia parity checks.
 % Writes a single CSV line to the path in SURFERBOT_PARITY_OUTPUT:
 % U,power,thrust

@@ -12,7 +12,7 @@ function main()
     julia_bin = get(ENV, "SURFERBOT_JULIA_BIN", "/Users/eaguerov/.julia/juliaup/julia-1.12.1+0.x64.apple.darwin14/bin/julia")
     julia_project = joinpath(root, "Julia")
     julia_depot = joinpath(julia_project, ".julia_depot") * ":/Users/eaguerov/.julia"
-    julia_cmd = `$julia_bin --project=$julia_project $(joinpath(root, "Julia", "scripts", "dump_reference_case.jl"))`
+    julia_cmd = `$julia_bin --project=$julia_project $(joinpath(root, "Julia", "scripts", "debug_dump_reference_case.jl"))`
     Base.run(addenv(julia_cmd,
         "SURFERBOT_PARITY_DUMP_DIR" => julia_dir,
         "JULIA_DEPOT_PATH" => julia_depot,

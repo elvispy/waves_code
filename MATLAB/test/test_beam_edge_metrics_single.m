@@ -10,7 +10,7 @@ addpath('.');
     'EI',3.0e9*3e-2*(9.9e-4)^3/12, 'rho_raft',0.052, ...
     'motor_inertia',0.13e-3*2.5e-3, 'BC','radiative');
 
-metrics = extract_eta_edge_metrics(eta, args);
+metrics = debug_extract_eta_edge_metrics(eta, args);
 left_idx = find(args.x_contact, 1, 'first');
 right_idx = find(args.x_contact, 1, 'last');
 

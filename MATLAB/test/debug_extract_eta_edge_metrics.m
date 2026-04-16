@@ -1,4 +1,4 @@
-function metrics = extract_eta_edge_metrics(eta, args)
+function metrics = debug_extract_eta_edge_metrics(eta, args)
 %EXTRACT_ETA_EDGE_METRICS Collect domain-edge and beam-edge eta metrics.
 %   METRICS = EXTRACT_ETA_EDGE_METRICS(ETA, ARGS) returns the left/right
 %   free-surface amplitudes at the computational-domain edges and at the
@@ -12,7 +12,7 @@ left_beam_idx = find(x_contact, 1, 'first');
 right_beam_idx = find(x_contact, 1, 'last');
 
 assert(~isempty(left_beam_idx) && ~isempty(right_beam_idx), ...
-    'extract_eta_edge_metrics:NoBeamContact', ...
+    'debug_extract_eta_edge_metrics:NoBeamContact', ...
     'args.x_contact must contain at least one raft-contact node.');
 
 eta_left_domain = eta(1);
