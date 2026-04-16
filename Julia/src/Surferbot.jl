@@ -8,6 +8,7 @@ include("integration.jl")
 include("analysis.jl")
 include("modal.jl")
 include("postprocess.jl")
+include("sweep.jl")
 include("utils.jl")
 
 using .Analysis: beam_asymmetry,
@@ -24,6 +25,14 @@ using .Modal: ModalDecomposition,
               freefree_mode_shape,
               weighted_mgs
 using .PostProcess: calculate_surferbot_outputs
+using .Sweep: SweepSummary,
+              SweepArtifact,
+              apply_parameter_overrides,
+              expand_parameter_grid,
+              summarize_result,
+              sweep_parameters,
+              save_sweep,
+              load_sweep
 using .Utils: dispersion_k, gaussian_load, solve_tensor_system
 
 export FlexibleParams,
@@ -43,6 +52,14 @@ export FlexibleParams,
        freefree_betaL_roots,
        freefree_mode_shape,
        weighted_mgs,
+       SweepSummary,
+       SweepArtifact,
+       apply_parameter_overrides,
+       expand_parameter_grid,
+       summarize_result,
+       sweep_parameters,
+       save_sweep,
+       load_sweep,
        dispersion_k,
        gaussian_load,
        solve_tensor_system,

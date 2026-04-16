@@ -1,4 +1,3 @@
-using JLD2
 using Plots
 using Surferbot
 
@@ -8,18 +7,10 @@ function ensure_dir(path::AbstractString)
 end
 
 function load_uncoupled_sweep(path::AbstractString)
-    data = JLD2.load(path)
-    required = (
-        "base_params",
-        "motor_position_list",
-        "EI_list",
-        "eta_left_beam",
-        "eta_right_beam",
-    )
-    for key in required
-        haskey(data, key) || error("Missing `$key` in $path. Regenerate the Julia uncoupled sweep artifact.")
-    end
-    return data
+    artifact = load_sweep(path)
+    hasproperty(artifact.parameter_axes, :motor_position) || error("Missing `motor_position` axis in $path.")
+    hasproperty(artifact.parameter_axes, :EI) || error("Missing `EI` axis in $path.")
+    return artifact
 end
 
 function write_modal_summary_csv(path::AbstractString, sample_EI, sample_mp, mode_types, all_q, all_energy, all_phase)
@@ -58,13 +49,14 @@ function main(
 )
     data_dir = ensure_dir(normpath(data_dir))
     sweep_path = joinpath(data_dir, sweep_file)
-    data = load_uncoupled_sweep(sweep_path)
+    artifact = load_uncoupled_sweep(sweep_path)
 
-    base = NamedTuple(data["base_params"])
-    motor_position_list = vec(Float64.(data["motor_position_list"]))
-    EI_list = vec(Float64.(data["EI_list"]))
-    eta_left_beam = ComplexF64.(data["eta_left_beam"])
-    eta_right_beam = ComplexF64.(data["eta_right_beam"])
+    base = artifact.base_params
+    motor_position_list = vec(Float64.(artifact.parameter_axes.motor_position))
+    EI_list = vec(Float64.(artifact.parameter_axes.EI))
+    summaries = artifact.summaries
+    eta_left_beam = map(s -> s.eta_left_beam, summaries)
+    eta_right_beam = map(s -> s.eta_right_beam, summaries)
 
     mp_norm_list = motor_position_list ./ base.L_raft
     curve_EI, curve_mp, _, _ = extract_lowest_beam_curve(mp_norm_list, EI_list, eta_left_beam, eta_right_beam)
@@ -86,25 +78,7 @@ function main(
         EI_val = sample_EI[ip]
         mp_norm = sample_mp[ip]
         println("  case $ip / $(length(sample_idx)): EI = $(EI_val), x_M/L = $(round(mp_norm; digits=4))")
-        params = FlexibleParams(;
-            sigma=base.sigma,
-            rho=base.rho,
-            nu=base.nu,
-            g=base.g,
-            L_raft=base.L_raft,
-            motor_position=mp_norm * base.L_raft,
-            d=base.d,
-            EI=EI_val,
-            rho_raft=base.rho_raft,
-            domain_depth=base.domain_depth,
-            L_domain=base.L_domain,
-            n=base.n,
-            M=base.M,
-            motor_inertia=base.motor_inertia,
-            bc=base.bc,
-            omega=base.omega,
-            ooa=base.ooa,
-        )
+        params = apply_parameter_overrides(base, (motor_position = mp_norm * base.L_raft, EI = EI_val))
         result = flexible_solver(params)
         modal = decompose_raft_freefree_modes(result; num_modes=n_modes, verbose=false)
 
