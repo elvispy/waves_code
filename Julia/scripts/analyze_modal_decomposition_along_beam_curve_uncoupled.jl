@@ -125,5 +125,6 @@ end
 
 if abspath(PROGRAM_FILE) == @__FILE__
     data_dir = length(ARGS) >= 1 ? ARGS[1] : joinpath(@__DIR__, "..", "output")
-    main(data_dir)
+    sweep_file = length(ARGS) >= 2 ? ARGS[2] : "sweep_motorPosition_EI_uncoupled.jld2"
+    main(data_dir; sweep_file=sweep_file)
 end

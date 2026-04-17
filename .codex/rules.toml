@@ -1,4 +1,0 @@
-[[rules]]
-command_prefix = "matlab"
-sandbox_mode = "danger-full-access"
-approval_policy = "untrusted"

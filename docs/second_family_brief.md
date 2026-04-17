@@ -79,9 +79,13 @@ At resonance ($D_n^{(0)} = 0$), mode $n$ dominates all others. A single symmetri
 
 ### Second family (open problem): non-vertical curves
 
-Curves $x_M = f(EI)$ that cross all vertical lines and span $EI$ over 3+ decades. They depend on both $EI$ and $x_M$. Two sweep datasets confirm that these curves **vanish when $d = 0$** (uncoupled case): `sweepMotorPositionEI.mat` ($d = 0.03$, rich non-vertical structure) vs `sweepMotorPositionEI2.mat` ($d = 0$, only vertical features remain). Both datasets are at `MATLAB/test/data/`.
+Curves $x_M = f(EI)$ that cross all vertical lines and span $EI$ over 3+ decades. They depend on both $EI$ and $x_M$. Two sweep datasets confirm that these curves **vanish when $d = 0$** (uncoupled case), but ONLY BECAUSE THE WAVE AMPLITUDE IS BEING MEASURED AT THE DOMAIN END. If you measure $\alpha$ relative to the raft ends, they are still there. 
+
+**Audit note (2026-04-17):** The coupled part of this statement is fine: the $d=0.03$ dataset does contain clear non-vertical curves. The uncoupled sentence is too strong as written. Direct contour extraction from `sweepMotorPositionEI2.mat` under the original domain-end definition still shows non-vertical $\alpha=0$ segments with substantial `x_M/L` span, so "vanish when $d=0$" is currently falsified in the historical setup.
 
 ## Established results for the second family
+
+Obs: all of this below is assuming $\eta$ was measured at the end of the computational domain. If we want to simplify the structure of the problem and study the uncoupled case $d = 0$, #\eta$ has to be measured from the raft end. 
 
 ### 1. Symmetric/antisymmetric far-field decomposition
 
@@ -95,7 +99,11 @@ $$|\eta_{\mathrm{end}}|^2 - |\eta_1|^2 = 4\operatorname{Re}(S A^*)$$
 
 so $\alpha = 0 \iff \operatorname{Re}(S A^*) = 0$.
 
+**Audit note (2026-04-17):** Confirmed. This is an algebraic identity under the original domain-end definition of $\alpha$ and does not depend on any branch-classification heuristic.
+
 ### 2. The mechanism is $|S| \approx 0$ or $|A| \approx 0$, not phase matching
+
+**Audit note (2026-04-17):** Not yet independently confirmed. The decomposition into `S` and `A` is the right framework, but the historical classifier in `MATLAB/test/test_hypothesis_v3.m` is brittle and visibly misclassifies some $\alpha=0$ points. So the strong conclusion "rules out phase matching" is not justified yet from the reproduced evidence. This subsection should currently be treated as a plausible hypothesis, not a settled result.
 
 **Method:** From the sweep data (`sweepMotorPositionEI.mat`, grid of 24 motor positions $\times$ 57 EI values), $S$ and $A$ are computed at every grid point from the stored $\eta_1$ and $\eta_{\mathrm{end}}$. Zero crossings of $\alpha$ are extracted column-by-column (for each EI value, scan $x_M$ for sign changes in $\alpha$). Each crossing is tagged with $\log_{10}(|S|/|A|)$ interpolated from the grid.
 
@@ -108,6 +116,8 @@ This rules out the phase-matching hypothesis ($|S| \approx |A|$ with $\angle(S/A
 The analysis script is `MATLAB/test/test_hypothesis_v3.m`.
 
 ### 3. Radiation coefficients
+
+**Audit note (2026-04-17):** Still open. The reproduced run of `MATLAB/test/analyze_predict_second_family.m` completed and regenerated the figure, but I have not yet captured the fit residual and coefficient table cleanly enough to confirm the quoted numbers in this subsection. Do not treat the numerical values below as independently verified yet.
 
 By symmetry, symmetric raft modes radiate symmetric far-field waves and antisymmetric modes radiate antisymmetric waves. Therefore:
 
@@ -132,12 +142,14 @@ The analysis script is `MATLAB/test/analyze_predict_second_family.m`.
 
 ### 4. Modal energy distribution along the curve
 
+**Audit note (2026-04-17):** Largely confirmed. The saved modal amplitude table and regenerated decomposition are consistent with the qualitative trend stated here: low EI is dominated by higher elastic modes, mid EI by mode 3, and high EI by rigid rotation mode 1 with mode 2 as the main secondary contribution. The detailed percentages should still be treated as approximate until re-tabulated from a fresh run.
+
 From the same 15 solver runs, the modal energy fractions $|q_n|^2 / \sum |q_n|^2$ show:
 - Low EI ($\sim 10^{-5}$): higher elastic modes dominate near their resonances (e.g., mode 5 at 90%)
 - Mid EI ($\sim 10^{-4}$): mode 3 (2nd elastic, antisymmetric) dominates at 75–85%
 - High EI ($\sim 10^{-2}$): mode 1 (rigid rotation, antisymmetric) dominates at 85–91%, with mode 2 (1st elastic, symmetric) as secondary at 9–15%
 
-The analysis script is `MATLAB/test/analyze_modal_decomposition_along_curve.m`.
+The analysis script is `MATLAB/test/analyze_modal_decomposition_along_beam_curve.m`.
 
 ## The implicit equation and what is missing
 
@@ -153,15 +165,21 @@ where $D_n$ is the effective modal impedance including hydrodynamic coupling. If
 
 **Attempt 1 — mode-independent diagonal $D_n$:**
 
+**Audit note (2026-04-17):** Confirmed. `MATLAB/test/test_two_mode_K_v2.m` reproduces a clear failure of this diagonal model: the predicted red curve is visibly off the data family, and the script reports $|S_{\mathrm{pred}}|/\max|\text{contrib}| \approx 1$, not near zero, along the extracted curve.
+
 $$D_n^{(0)} = EI \beta_n^4 + d\rho g - \omega^2\left(\rho_R + \frac{d\rho}{k\tanh(kH)}\right)$$
 
 Uses a single added mass $m_a = d\rho/(k\tanh kH)$ for all modes (plane-wave approximation). Prediction: zero found only in a tiny EI region near one resonance, at the wrong $x_M$. **Falsified.** Script: `MATLAB/test/test_two_mode_K_v2.m`.
 
 **Attempt 2 — fit $D_n(EI) = \beta_n^4 EI + C_n$ from solver data:**
 
+**Audit note (2026-04-17):** Still open. I have not yet extracted the fresh numerical output from `MATLAB/test/analyze_predict_second_family_v2.m`, so the coefficient-of-variation and "mode 0 varies by an order of magnitude" statements have not been independently rechecked yet.
+
 Extract $D_n = -\hat{F}_n / q_n$ at 20 points along the curve and fit a linear model in EI. Result: good fit for mode 2 (coefficient of variation 4.7%) but mode 0 has CoV 149% and modes 4, 6 exceed 400%. The rigid mode $D_0$ ($\beta_0 = 0$, so no EI dependence from the beam equation) varies by an order of magnitude along the curve, proving that $D_n$ depends on $x_M$ through the hydrodynamic coupling. Prediction: zero at $x_M/L \approx 0.02$ across all EI, completely wrong. **Falsified.** Script: `MATLAB/test/analyze_predict_second_family_v2.m`.
 
 ### The missing piece: off-diagonal hydrodynamic coupling
+
+**Audit note (2026-04-17):** Plausible, but not established. What is currently supported is the weaker statement that simple diagonal modal-impedance models are insufficient. That does not yet prove that off-diagonal hydrodynamic coupling is the explanation. This subsection should be read as the current leading hypothesis rather than a confirmed conclusion.
 
 The pressure projection $\hat{Q}_n$ couples all modes through the fluid:
 
@@ -198,12 +216,12 @@ $\mathbf{H}$ can be obtained either:
 | Sweep data ($d = 0.03$) | `MATLAB/test/data/sweepMotorPositionEI.mat` |
 | Sweep data ($d = 0$) | `MATLAB/test/data/sweepMotorPositionEI2.mat` |
 | Sweep script | `MATLAB/test/sweep_motorPosition_EI.m` |
-| Plot script | `MATLAB/test/plot_sweep_motorPosition_EI.m` |
+| Plot script | `MATLAB/test/plot_sweep_motorPosition_EI_beam_end.m` |
 | Solver | `MATLAB/src/flexible_surferbot_v2.m` |
 | Modal decomposition | `MATLAB/src/decompose_raft_freefree_modes.m` |
 | S/A analysis | `MATLAB/test/analyze_second_family_EI.m` |
 | Hypothesis test (S$\approx$0 vs phase) | `MATLAB/test/test_hypothesis_v3.m` |
-| Modal decomposition along curve | `MATLAB/test/analyze_modal_decomposition_along_curve.m` |
+| Modal decomposition along curve | `MATLAB/test/analyze_modal_decomposition_along_beam_curve.m` |
 | Prediction attempts | `MATLAB/test/analyze_predict_second_family.m`, `analyze_predict_second_family_v2.m` |
 | Resonance theory (first family) | `/Users/eaguerov/Library/Mobile Documents/iCloud~md~obsidian/Documents/BrownObsidian/Research/Surferbot/Resonance distilled 2.md` |
 
