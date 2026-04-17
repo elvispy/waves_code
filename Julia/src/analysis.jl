@@ -2,6 +2,7 @@ module Analysis
 
 export beam_asymmetry,
        beam_edge_metrics,
+       default_coupled_motor_position_EI_sweep,
        default_uncoupled_motor_position_EI_sweep,
        symmetric_antisymmetric_ratio,
        extract_lowest_beam_curve
@@ -41,6 +42,39 @@ function beam_edge_metrics(result)
         eta_beam_ratio = abs(eta_left_beam) / max(eps(), abs(eta_right_beam)),
         eta_domain_ratio = abs(eta_left_domain) / max(eps(), abs(eta_right_domain)),
     )
+end
+
+"""
+    default_coupled_motor_position_EI_sweep()
+
+Return the Julia-native counterpart of the MATLAB coupled `x_M`-`EI` sweep
+definition used for the beam-end analysis, with `d = 0.03`.
+"""
+function default_coupled_motor_position_EI_sweep()
+    L_raft = 0.05
+    base_EI = 3.0e9 * 3e-2 * (9.9e-4)^3 / 12
+    base_params = (
+        sigma = 72.2e-3,
+        rho = 1000.0,
+        nu = 0.0,
+        g = 9.81,
+        L_raft = L_raft,
+        motor_position = 0.24 * L_raft / 2,
+        d = 0.03,
+        EI = base_EI,
+        rho_raft = 0.052,
+        domain_depth = nothing,
+        L_domain = nothing,
+        n = nothing,
+        M = nothing,
+        motor_inertia = 0.13e-3 * 2.5e-3,
+        bc = :radiative,
+        omega = 2 * π * 80,
+        ooa = 4,
+    )
+    motor_position_list = collect((0.00:0.02:0.48) .* L_raft)
+    EI_list = base_EI .* 10 .^ collect(range(-3, 1; length=57))
+    return (; base_params, motor_position_list, EI_list)
 end
 
 """

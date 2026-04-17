@@ -9,11 +9,13 @@ include("analysis.jl")
 include("modal.jl")
 include("postprocess.jl")
 include("sweep.jl")
+include("migration.jl")
 include("video.jl")
 include("utils.jl")
 
 using .Analysis: beam_asymmetry,
                  beam_edge_metrics,
+                 default_coupled_motor_position_EI_sweep,
                  default_uncoupled_motor_position_EI_sweep,
                  symmetric_antisymmetric_ratio,
                  extract_lowest_beam_curve
@@ -25,6 +27,9 @@ using .Modal: ModalDecomposition,
               freefree_betaL_roots,
               freefree_mode_shape,
               weighted_mgs
+using .Migration: matlab_motor_position_ei_sources,
+                  load_motor_position_ei_export,
+                  artifact_from_motor_position_ei_export
 using .PostProcess: calculate_surferbot_outputs
 using .Sweep: SweepSummary,
               SweepArtifact,
@@ -48,9 +53,13 @@ export FlexibleParams,
        simpson_weights,
        beam_asymmetry,
        beam_edge_metrics,
+       default_coupled_motor_position_EI_sweep,
        default_uncoupled_motor_position_EI_sweep,
        symmetric_antisymmetric_ratio,
        extract_lowest_beam_curve,
+       matlab_motor_position_ei_sources,
+       load_motor_position_ei_export,
+       artifact_from_motor_position_ei_export,
        ModalDecomposition,
        decompose_raft_freefree_modes,
        trapz_weights,

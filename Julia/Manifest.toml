@@ -2,7 +2,7 @@
 
 julia_version = "1.12.1"
 manifest_format = "2.0"
-project_hash = "8b274732eb2ce92df899fdf724ca1be8c9c78195"
+project_hash = "45626b466e03815370fbe473a40b6be28177464e"
 
 [[deps.ADTypes]]
 git-tree-sha1 = "27cecae79e5cc9935255f90c53bb831cc3c870d7"
@@ -1426,7 +1426,7 @@ uuid = "bea87d4a-7f5b-5778-9afe-8cc45184846c"
 version = "7.8.3+2"
 
 [[deps.Surferbot]]
-deps = ["ChainRules", "Dates", "FiniteDifferences", "ForwardDiff", "JLD2", "LinearAlgebra", "LinearSolve", "Plots", "Printf", "SparseArrays", "Statistics", "Zygote"]
+deps = ["ChainRules", "Dates", "DelimitedFiles", "FiniteDifferences", "ForwardDiff", "JLD2", "LinearAlgebra", "LinearSolve", "Plots", "Printf", "SparseArrays", "Statistics", "Zygote"]
 path = "."
 uuid = "47375c33-a407-4615-9edd-1a89c86d239f"
 version = "0.0.0"
