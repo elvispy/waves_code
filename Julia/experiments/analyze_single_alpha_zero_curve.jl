@@ -28,6 +28,14 @@ function edge_fields(summary, edge_source::Symbol)
     error("edge_source must be :domain or :beam")
 end
 
+function build_scalar_fields(left_grid::AbstractMatrix, right_grid::AbstractMatrix)
+    alpha_grid = beam_asymmetry.(left_grid, right_grid)
+    S_grid = (right_grid .+ left_grid) ./ 2
+    A_grid = (right_grid .- left_grid) ./ 2
+    sa_ratio_grid = log10.(abs.(S_grid) ./ (abs.(A_grid) .+ eps()))
+    return alpha_grid, sa_ratio_grid
+end
+
 function collect_zero_crossings(mp_norm_list, EI_list, left_grid::AbstractMatrix, right_grid::AbstractMatrix)
     asymmetry = beam_asymmetry.(left_grid, right_grid)
     S_grid = (right_grid .+ left_grid) ./ 2
@@ -108,10 +116,7 @@ function refine_crossing_rbf(mp_norm_list, values, im::Int; stencil_radius::Int=
 end
 
 function collect_zero_crossings_refined(mp_norm_list, EI_list, left_grid::AbstractMatrix, right_grid::AbstractMatrix)
-    asymmetry = beam_asymmetry.(left_grid, right_grid)
-    S_grid = (right_grid .+ left_grid) ./ 2
-    A_grid = (right_grid .- left_grid) ./ 2
-    SA_ratio = log10.(abs.(S_grid) ./ (abs.(A_grid) .+ eps()))
+    asymmetry, SA_ratio = build_scalar_fields(left_grid, right_grid)
 
     crossings = NamedTuple[]
     for ie in eachindex(EI_list)
@@ -128,34 +133,204 @@ function collect_zero_crossings_refined(mp_norm_list, EI_list, left_grid::Abstra
     return crossings
 end
 
-function select_lowest_curve(crossings; sa_filter::Symbol=:negative)
+function fit_gp2d(x::AbstractVector, y::AbstractVector, values::AbstractVector)
+    n = length(values)
+    mean_value = mean(values)
+    centered = collect(Float64.(values .- mean_value))
+
+    dx = diff(sort(unique(Float64.(x))))
+    dy = diff(sort(unique(Float64.(y))))
+    dx = dx[dx .> 0]
+    dy = dy[dy .> 0]
+    lx = isempty(dx) ? 0.05 : max(0.02, 4 * median(dx))
+    ly = isempty(dy) ? 0.15 : max(0.05, 4 * median(dy))
+    sigma_f = max(std(values), 1e-3)
+    noise = max(1e-6, 1e-3 * sigma_f)
+
+    K = Matrix{Float64}(undef, n, n)
+    @inbounds for i in 1:n, j in i:n
+        r2 = ((Float64(x[i]) - Float64(x[j])) / lx)^2 + ((Float64(y[i]) - Float64(y[j])) / ly)^2
+        kij = sigma_f^2 * exp(-0.5 * r2)
+        K[i, j] = kij
+        K[j, i] = kij
+    end
+    @inbounds for i in 1:n
+        K[i, i] += noise^2 + 1e-10
+    end
+
+    F = cholesky(Symmetric(K))
+    weights = F \ centered
+    return (x = Float64.(x), y = Float64.(y), weights = weights, mean = mean_value, lx = lx, ly = ly, sigma_f2 = sigma_f^2)
+end
+
+function predict_gp2d(model, xq::Real, yq::Real)
+    acc = 0.0
+    @inbounds for i in eachindex(model.weights)
+        r2 = ((xq - model.x[i]) / model.lx)^2 + ((yq - model.y[i]) / model.ly)^2
+        acc += model.weights[i] * (model.sigma_f2 * exp(-0.5 * r2))
+    end
+    return model.mean + acc
+end
+
+function collect_zero_crossings_gp(mp_norm_list, EI_list, left_grid::AbstractMatrix, right_grid::AbstractMatrix;
+                                   mp_count::Int=201, logEI_count::Int=201)
+    alpha_grid, sa_ratio_grid = build_scalar_fields(left_grid, right_grid)
+    logEI_list = log10.(Float64.(EI_list))
+
+    xtrain = Float64[]
+    ytrain = Float64[]
+    alpha_train = Float64[]
+    sa_train = Float64[]
+    for ie in eachindex(logEI_list), im in eachindex(mp_norm_list)
+        push!(xtrain, Float64(mp_norm_list[im]))
+        push!(ytrain, Float64(logEI_list[ie]))
+        push!(alpha_train, Float64(alpha_grid[im, ie]))
+        push!(sa_train, Float64(sa_ratio_grid[im, ie]))
+    end
+
+    alpha_gp = fit_gp2d(xtrain, ytrain, alpha_train)
+    sa_gp = fit_gp2d(xtrain, ytrain, sa_train)
+
+    mp_dense = collect(range(minimum(Float64.(mp_norm_list)), maximum(Float64.(mp_norm_list)); length=mp_count))
+    logEI_dense = collect(range(minimum(logEI_list), maximum(logEI_list); length=logEI_count))
+
+    crossings = NamedTuple[]
+    alpha_row = zeros(Float64, length(mp_dense))
+    sa_row = zeros(Float64, length(mp_dense))
+    for logEI in logEI_dense
+        @inbounds for i in eachindex(mp_dense)
+            alpha_row[i] = predict_gp2d(alpha_gp, mp_dense[i], logEI)
+            sa_row[i] = predict_gp2d(sa_gp, mp_dense[i], logEI)
+        end
+        for im in 1:(length(mp_dense) - 1)
+            if alpha_row[im] == 0
+                push!(crossings, (EI = 10.0^logEI, xM_over_L = mp_dense[im], sa_ratio = sa_row[im]))
+            elseif alpha_row[im] * alpha_row[im + 1] < 0
+                t = alpha_row[im] / (alpha_row[im] - alpha_row[im + 1])
+                mp_zero = mp_dense[im] + t * (mp_dense[im + 1] - mp_dense[im])
+                sa_zero = sa_row[im] + t * (sa_row[im + 1] - sa_row[im])
+                push!(crossings, (EI = 10.0^logEI, xM_over_L = mp_zero, sa_ratio = sa_zero))
+            end
+        end
+    end
+    return crossings
+end
+
+function filter_candidates(candidates; sa_filter::Symbol=:negative)
+    if sa_filter == :negative
+        return filter(c -> c.sa_ratio < 0, candidates)
+    elseif sa_filter == :positive
+        return filter(c -> c.sa_ratio > 0, candidates)
+    elseif sa_filter == :none
+        return candidates
+    end
+    error("sa_filter must be :negative, :positive, or :none")
+end
+
+function group_crossings_by_EI(crossings)
     by_EI = Dict{Float64, Vector{NamedTuple}}()
     for cross in crossings
         push!(get!(by_EI, cross.EI, NamedTuple[]), cross)
     end
-
-    selected = NamedTuple[]
-    for EI in sort(collect(keys(by_EI)))
-        candidates = by_EI[EI]
-        if sa_filter == :negative
-            candidates = filter(c -> c.sa_ratio < 0, candidates)
-        elseif sa_filter == :positive
-            candidates = filter(c -> c.sa_ratio > 0, candidates)
-        elseif sa_filter != :none
-            error("sa_filter must be :negative, :positive, or :none")
-        end
-        isempty(candidates) && continue
-        push!(selected, reduce((a, b) -> a.xM_over_L <= b.xM_over_L ? a : b, candidates))
+    for vals in values(by_EI)
+        sort!(vals; by=c -> c.xM_over_L)
     end
-    return selected
+    return by_EI
+end
+
+function predict_next_x(curve_points, next_logEI)
+    if length(curve_points) == 1
+        return curve_points[end].xM_over_L
+    end
+    p1 = curve_points[end - 1]
+    p2 = curve_points[end]
+    y1 = log10(p1.EI)
+    y2 = log10(p2.EI)
+    if isapprox(y2, y1; atol=1e-14)
+        return p2.xM_over_L
+    end
+    slope = (p2.xM_over_L - p1.xM_over_L) / (y2 - y1)
+    return p2.xM_over_L + slope * (next_logEI - y2)
+end
+
+function track_branch(crossings; sa_filter::Symbol=:negative, jump_factor::Real=4.0, min_jump_tol::Real=0.05)
+    by_EI = group_crossings_by_EI(crossings)
+    EI_desc = sort(collect(keys(by_EI)); rev=true)
+    isempty(EI_desc) && return NamedTuple[]
+
+    curve_points = NamedTuple[]
+    accepted_steps = Float64[]
+
+    seed_candidates = NamedTuple[]
+    seed_idx = nothing
+    for (i, EI) in pairs(EI_desc)
+        candidates = filter_candidates(by_EI[EI]; sa_filter=sa_filter)
+        if !isempty(candidates)
+            seed_candidates = candidates
+            seed_idx = i
+            break
+        end
+    end
+    isempty(seed_candidates) && return NamedTuple[]
+    seed = reduce((a, b) -> a.xM_over_L <= b.xM_over_L ? a : b, seed_candidates)
+    push!(curve_points, seed)
+
+    for EI in EI_desc[(seed_idx + 1):end]
+        candidates = filter_candidates(by_EI[EI]; sa_filter=sa_filter)
+        isempty(candidates) && continue
+
+        y = log10(EI)
+        x_pred = predict_next_x(curve_points, y)
+        chosen = reduce((a, b) ->
+            abs(a.xM_over_L - x_pred) <= abs(b.xM_over_L - x_pred) ? a : b,
+            candidates,
+        )
+
+        jump = abs(chosen.xM_over_L - curve_points[end].xM_over_L)
+        local_scale = isempty(accepted_steps) ? min_jump_tol : max(min_jump_tol, jump_factor * median(accepted_steps))
+
+        if jump <= local_scale
+            push!(curve_points, chosen)
+            push!(accepted_steps, jump)
+        end
+    end
+
+    return sort(curve_points; by = p -> p.EI)
 end
 
 function sample_curve_points(curve_points; n_sample::Int)
     isempty(curve_points) && error("No curve points were available for sampling.")
-    count = min(n_sample, length(curve_points))
-    count == 1 && return [curve_points[1]]
-    idx = unique(round.(Int, range(1, length(curve_points); length=count)))
-    return curve_points[idx]
+    n_sample >= 1 || error("n_sample must be positive.")
+    length(curve_points) == 1 && return [(; curve_points[1]..., curve_point_index = 1)]
+
+    ys = log10.([p.EI for p in curve_points])
+    xs = [p.xM_over_L for p in curve_points]
+    seglen = [hypot(xs[i + 1] - xs[i], ys[i + 1] - ys[i]) for i in 1:(length(curve_points) - 1)]
+    s = vcat(0.0, cumsum(seglen))
+    total = s[end]
+
+    if total <= 0
+        return [(; curve_points[1]..., curve_point_index = 1) for _ in 1:n_sample]
+    end
+
+    targets = collect(range(0.0, total; length=n_sample))
+    sampled = NamedTuple[]
+    j = 1
+    for t in targets
+        while j < length(s) - 1 && s[j + 1] < t
+            j += 1
+        end
+        s0 = s[j]
+        s1 = s[j + 1]
+        p0 = curve_points[j]
+        p1 = curve_points[j + 1]
+        τ = isapprox(s1, s0; atol=1e-14) ? 0.0 : (t - s0) / (s1 - s0)
+        EI = 10.0^((1 - τ) * log10(p0.EI) + τ * log10(p1.EI))
+        xM_over_L = (1 - τ) * p0.xM_over_L + τ * p1.xM_over_L
+        sa_ratio = (1 - τ) * p0.sa_ratio + τ * p1.sa_ratio
+        push!(sampled, (EI = EI, xM_over_L = xM_over_L, sa_ratio = sa_ratio, curve_point_index = j))
+    end
+    return sampled
 end
 
 function tail_flat_ratio(result)
@@ -266,7 +441,7 @@ function build_row(sample_index, curve_points, point, artifact, edge_source::Sym
 
     return (
         sample_index = sample_index,
-        curve_point_index = findfirst(==(point), curve_points),
+        curve_point_index = get(point, :curve_point_index, 0),
         EI = point.EI,
         xM_over_L = point.xM_over_L,
         motor_position = params.motor_position,
@@ -300,7 +475,9 @@ end
          output_file="single_alpha_zero_curve_details.csv")
 
 Extract one `alpha = 0` curve from a saved sweep artifact and write a detailed
-per-sample CSV after rerunning the Julia solver and modal decomposition.
+per-sample CSV after rerunning the Julia solver and modal decomposition. The
+curve is extracted from a 2D GP surrogate in `(x_M/L, log10(EI))`, then
+tracked from high `EI` to low `EI`.
 
 Inputs:
 - `data_dir`: directory containing the input sweep artifact and receiving the CSV.
@@ -336,12 +513,12 @@ function main(
         left_grid[idx], right_grid[idx] = edge_fields(summaries[idx], edge_source)
     end
 
-    crossings = collect_zero_crossings_refined(mp_norm_list, EI_list, left_grid, right_grid)
-    curve_points = select_lowest_curve(crossings; sa_filter=sa_filter)
+    crossings = collect_zero_crossings_gp(mp_norm_list, EI_list, left_grid, right_grid)
+    curve_points = track_branch(crossings; sa_filter=sa_filter)
     sampled = sample_curve_points(curve_points; n_sample=n_sample)
 
     println("Selected $(length(curve_points)) points on the extracted curve")
-    println("Sampling $(length(sampled)) points from $(basename(joinpath(data_dir, sweep_file))) using edge_source=$(edge_source), sa_filter=$(sa_filter)")
+    println("Sampling $(length(sampled)) points from $(basename(joinpath(data_dir, sweep_file))) using edge_source=$(edge_source), sa_filter=$(sa_filter), backend=gpr2d")
 
     BLAS.set_num_threads(1)
     rows = Vector{Any}(undef, length(sampled))
