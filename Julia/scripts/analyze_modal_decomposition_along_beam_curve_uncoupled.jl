@@ -40,7 +40,7 @@ function write_modal_summary_csv(path::AbstractString, sample_EI, sample_mp, mod
 end
 
 function main(
-    data_dir::AbstractString=joinpath(@__DIR__, "..", "data");
+    data_dir::AbstractString=joinpath(@__DIR__, "..", "output");
     sweep_file::AbstractString="sweep_motorPosition_EI_uncoupled.jld2",
     n_sample::Int=12,
     n_modes::Int=8,
@@ -124,6 +124,6 @@ function main(
 end
 
 if abspath(PROGRAM_FILE) == @__FILE__
-    data_dir = length(ARGS) >= 1 ? ARGS[1] : joinpath(@__DIR__, "..", "data")
+    data_dir = length(ARGS) >= 1 ? ARGS[1] : joinpath(@__DIR__, "..", "output")
     main(data_dir)
 end

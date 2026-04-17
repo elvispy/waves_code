@@ -6,7 +6,7 @@ function ensure_dir(path::AbstractString)
 end
 
 function main(
-    save_dir::AbstractString=joinpath(@__DIR__, "..", "data");
+    save_dir::AbstractString=joinpath(@__DIR__, "..", "output");
     base_params_override=nothing,
     motor_position_list_override=nothing,
     EI_list_override=nothing,
@@ -37,6 +37,6 @@ function main(
 end
 
 if abspath(PROGRAM_FILE) == @__FILE__
-    save_dir = length(ARGS) >= 1 ? ARGS[1] : joinpath(@__DIR__, "..", "data")
+    save_dir = length(ARGS) >= 1 ? ARGS[1] : joinpath(@__DIR__, "..", "output")
     main(save_dir)
 end

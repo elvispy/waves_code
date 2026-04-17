@@ -5,7 +5,7 @@ function ensure_dir(path::AbstractString)
     return path
 end
 
-function main(save_dir::AbstractString=joinpath(@__DIR__, "..", "data"))
+function main(save_dir::AbstractString=joinpath(@__DIR__, "..", "output"))
     save_dir = ensure_dir(normpath(save_dir))
 
     # Edit `base_params` and `grid` to define the sweep you want to run.
@@ -37,6 +37,6 @@ function main(save_dir::AbstractString=joinpath(@__DIR__, "..", "data"))
 end
 
 if abspath(PROGRAM_FILE) == @__FILE__
-    save_dir = length(ARGS) >= 1 ? ARGS[1] : joinpath(@__DIR__, "..", "data")
+    save_dir = length(ARGS) >= 1 ? ARGS[1] : joinpath(@__DIR__, "..", "output")
     main(save_dir)
 end
