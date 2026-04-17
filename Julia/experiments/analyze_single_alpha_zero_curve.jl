@@ -1,6 +1,7 @@
 using Surferbot
 using Statistics
 using LinearAlgebra
+using Base.Threads
 
 function ensure_dir(path::AbstractString)
     isdir(path) || mkpath(path)
@@ -148,6 +149,7 @@ end
 function sample_curve_points(curve_points; n_sample::Int)
     isempty(curve_points) && error("No curve points were available for sampling.")
     count = min(n_sample, length(curve_points))
+    count == 1 && return [curve_points[1]]
     idx = unique(round.(Int, range(1, length(curve_points); length=count)))
     return curve_points[idx]
 end
@@ -242,6 +244,47 @@ function write_curve_csv(path::AbstractString, rows, n_modes::Int)
     end
 end
 
+function build_row(sample_index, curve_points, point, artifact, edge_source::Symbol, n_modes::Int)
+    params = apply_parameter_overrides(
+        artifact.base_params,
+        (motor_position = point.xM_over_L * artifact.base_params.L_raft, EI = point.EI),
+    )
+    result = flexible_solver(params)
+    modal = decompose_raft_freefree_modes(result; num_modes=n_modes, verbose=false)
+    metrics = beam_edge_metrics(result)
+    S_domain = (metrics.eta_right_domain + metrics.eta_left_domain) / 2
+    A_domain = (metrics.eta_right_domain - metrics.eta_left_domain) / 2
+    S_beam = (metrics.eta_right_beam + metrics.eta_left_beam) / 2
+    A_beam = (metrics.eta_right_beam - metrics.eta_left_beam) / 2
+    alpha_selected = edge_source == :domain ?
+        beam_asymmetry(metrics.eta_left_domain, metrics.eta_right_domain) :
+        beam_asymmetry(metrics.eta_left_beam, metrics.eta_right_beam)
+
+    return (
+        sample_index = sample_index,
+        curve_point_index = findfirst(==(point), curve_points),
+        EI = point.EI,
+        xM_over_L = point.xM_over_L,
+        motor_position = params.motor_position,
+        omega = params.omega,
+        U = result.U,
+        power = result.power,
+        power_input = -result.power,
+        thrust = result.thrust,
+        tail_flat_ratio = tail_flat_ratio(result),
+        eta_left_domain = metrics.eta_left_domain,
+        eta_right_domain = metrics.eta_right_domain,
+        eta_left_beam = metrics.eta_left_beam,
+        eta_right_beam = metrics.eta_right_beam,
+        alpha = alpha_selected,
+        alpha_domain = beam_asymmetry(metrics.eta_left_domain, metrics.eta_right_domain),
+        alpha_beam = beam_asymmetry(metrics.eta_left_beam, metrics.eta_right_beam),
+        sa_ratio_domain = log10(abs(S_domain) / (abs(A_domain) + eps())),
+        sa_ratio_beam = log10(abs(S_beam) / (abs(A_beam) + eps())),
+        modal = modal,
+    )
+end
+
 function main(
     data_dir::AbstractString=joinpath(@__DIR__, "..", "output");
     sweep_file::AbstractString="sweep_motorPosition_EI_coupled_from_matlab.jld2",
@@ -249,6 +292,7 @@ function main(
     sa_filter::Symbol=:negative,
     n_sample::Int=12,
     n_modes::Int=8,
+    parallel::Bool=false,
     output_file::AbstractString="single_alpha_zero_curve_details.csv",
 )
     data_dir = ensure_dir(normpath(data_dir))
@@ -272,45 +316,34 @@ function main(
     println("Selected $(length(curve_points)) points on the extracted curve")
     println("Sampling $(length(sampled)) points from $(basename(joinpath(data_dir, sweep_file))) using edge_source=$(edge_source), sa_filter=$(sa_filter)")
 
-    rows = NamedTuple[]
-    for (sample_index, point) in enumerate(sampled)
-        params = apply_parameter_overrides(
-            artifact.base_params,
-            (motor_position = point.xM_over_L * artifact.base_params.L_raft, EI = point.EI),
-        )
-        println("  case $sample_index / $(length(sampled)): EI=$(point.EI), x_M/L=$(round(point.xM_over_L; digits=4))")
-        result = flexible_solver(params)
-        modal = decompose_raft_freefree_modes(result; num_modes=n_modes, verbose=false)
-        metrics = beam_edge_metrics(result)
-        S_domain = (metrics.eta_right_domain + metrics.eta_left_domain) / 2
-        A_domain = (metrics.eta_right_domain - metrics.eta_left_domain) / 2
-        S_beam = (metrics.eta_right_beam + metrics.eta_left_beam) / 2
-        A_beam = (metrics.eta_right_beam - metrics.eta_left_beam) / 2
-        push!(rows, (
-            sample_index = sample_index,
-            curve_point_index = findfirst(==(point), curve_points),
-            EI = point.EI,
-            xM_over_L = point.xM_over_L,
-            motor_position = params.motor_position,
-            omega = params.omega,
-            U = result.U,
-            power = result.power,
-            power_input = -result.power,
-            thrust = result.thrust,
-            tail_flat_ratio = tail_flat_ratio(result),
-            eta_left_domain = metrics.eta_left_domain,
-            eta_right_domain = metrics.eta_right_domain,
-            eta_left_beam = metrics.eta_left_beam,
-            eta_right_beam = metrics.eta_right_beam,
-            alpha = edge_source == :domain ?
-                beam_asymmetry(metrics.eta_left_domain, metrics.eta_right_domain) :
-                beam_asymmetry(metrics.eta_left_beam, metrics.eta_right_beam),
-            alpha_domain = beam_asymmetry(metrics.eta_left_domain, metrics.eta_right_domain),
-            alpha_beam = beam_asymmetry(metrics.eta_left_beam, metrics.eta_right_beam),
-            sa_ratio_domain = log10(abs(S_domain) / (abs(A_domain) + eps())),
-            sa_ratio_beam = log10(abs(S_beam) / (abs(A_beam) + eps())),
-            modal = modal,
-        ))
+    BLAS.set_num_threads(1)
+    rows = Vector{Any}(undef, length(sampled))
+    log_lock = ReentrantLock()
+
+    if parallel && nthreads() > 1
+        println("Running sampled cases in parallel across $(nthreads()) Julia threads")
+        @threads for i in eachindex(sampled)
+            point = sampled[i]
+            row = build_row(i, curve_points, point, artifact, edge_source, n_modes)
+            rows[i] = row
+            lock(log_lock) do
+                println(
+                    "  case $(i) / $(length(sampled)): " *
+                    "EI=$(point.EI), x_M/L=$(round(point.xM_over_L; digits=4)), " *
+                    "alpha=$(round(row.alpha; sigdigits=6))"
+                )
+            end
+        end
+    else
+        for (sample_index, point) in enumerate(sampled)
+            row = build_row(sample_index, curve_points, point, artifact, edge_source, n_modes)
+            rows[sample_index] = row
+            println(
+                "  case $sample_index / $(length(sampled)): " *
+                "EI=$(point.EI), x_M/L=$(round(point.xM_over_L; digits=4)), " *
+                "alpha=$(round(row.alpha; sigdigits=6))"
+            )
+        end
     end
 
     output_path = joinpath(data_dir, output_file)
@@ -326,5 +359,6 @@ if abspath(PROGRAM_FILE) == @__FILE__
     sa_filter = length(ARGS) >= 4 ? Symbol(ARGS[4]) : :negative
     n_sample = length(ARGS) >= 5 ? parse(Int, ARGS[5]) : 12
     output_file = length(ARGS) >= 6 ? ARGS[6] : "single_alpha_zero_curve_details.csv"
-    main(data_dir; sweep_file=sweep_file, edge_source=edge_source, sa_filter=sa_filter, n_sample=n_sample, output_file=output_file)
+    parallel = length(ARGS) >= 7 ? lowercase(ARGS[7]) in ("1", "true", "yes", "y", "parallel") : false
+    main(data_dir; sweep_file=sweep_file, edge_source=edge_source, sa_filter=sa_filter, n_sample=n_sample, output_file=output_file, parallel=parallel)
 end
