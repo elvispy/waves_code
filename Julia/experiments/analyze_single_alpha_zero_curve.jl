@@ -2,6 +2,7 @@ using Surferbot
 using Statistics
 using LinearAlgebra
 using Base.Threads
+using DelimitedFiles
 
 # Purpose: extract one `alpha = 0` curve from a saved Julia sweep artifact,
 # resimulate sampled points on that curve, and dump a detailed CSV for
@@ -173,7 +174,7 @@ function predict_gp2d(model, xq::Real, yq::Real)
 end
 
 function collect_zero_crossings_gp(mp_norm_list, EI_list, left_grid::AbstractMatrix, right_grid::AbstractMatrix;
-                                   mp_count::Int=201, logEI_count::Int=201)
+                                   mp_count::Int=201, logEI_count::Int=201, extra_points=nothing)
     alpha_grid, sa_ratio_grid = build_scalar_fields(left_grid, right_grid)
     logEI_list = log10.(Float64.(EI_list))
 
@@ -186,6 +187,13 @@ function collect_zero_crossings_gp(mp_norm_list, EI_list, left_grid::AbstractMat
         push!(ytrain, Float64(logEI_list[ie]))
         push!(alpha_train, Float64(alpha_grid[im, ie]))
         push!(sa_train, Float64(sa_ratio_grid[im, ie]))
+    end
+    if !isnothing(extra_points)
+        xextra, yextra, alpha_extra, sa_extra = extra_points
+        append!(xtrain, xextra)
+        append!(ytrain, yextra)
+        append!(alpha_train, alpha_extra)
+        append!(sa_train, sa_extra)
     end
 
     alpha_gp = fit_gp2d(xtrain, ytrain, alpha_train)
@@ -343,6 +351,98 @@ function format_complex(z)
     return string(real(z), ",", imag(z), ",", abs(z), ",", rad2deg(angle(z)))
 end
 
+function parse_complex_columns(row::Dict{String, String}, prefix::AbstractString)
+    return ComplexF64(
+        parse(Float64, row["$(prefix)_re"]),
+        parse(Float64, row["$(prefix)_im"]),
+    )
+end
+
+function load_cached_curve_rows(path::AbstractString, n_modes::Int)
+    isfile(path) || return NamedTuple[]
+    lines = readlines(path)
+    isempty(lines) && return NamedTuple[]
+    header = split(lines[1], ",")
+    rows = NamedTuple[]
+    for line in lines[2:end]
+        isempty(strip(line)) && continue
+        values = split(line, ",")
+        length(values) == length(header) || continue
+        row = Dict(header[i] => values[i] for i in eachindex(header))
+        modal = (
+            q = ComplexF64[parse_complex_columns(row, "q$(j)") for j in 0:(n_modes - 1)],
+            Q = ComplexF64[parse_complex_columns(row, "Q$(j)") for j in 0:(n_modes - 1)],
+            F = ComplexF64[parse_complex_columns(row, "F$(j)") for j in 0:(n_modes - 1)],
+            balance_residual = ComplexF64[parse_complex_columns(row, "residual$(j)") for j in 0:(n_modes - 1)],
+            energy_frac = Float64[parse(Float64, row["energy_frac$(j)"]) for j in 0:(n_modes - 1)],
+            n = Int[parse(Int, row["mode_index$(j)"]) for j in 0:(n_modes - 1)],
+            mode_type = String[row["mode_type$(j)"] for j in 0:(n_modes - 1)],
+        )
+        push!(rows, (
+            sample_index = parse(Int, row["sample_index"]),
+            curve_point_index = parse(Int, row["curve_point_index"]),
+            EI = parse(Float64, row["EI"]),
+            xM_over_L = parse(Float64, row["xM_over_L"]),
+            motor_position = parse(Float64, row["motor_position"]),
+            omega = parse(Float64, row["omega"]),
+            U = parse(Float64, row["U"]),
+            power = parse(Float64, row["power"]),
+            power_input = parse(Float64, row["power_input"]),
+            thrust = parse(Float64, row["thrust"]),
+            tail_flat_ratio = parse(Float64, row["tail_flat_ratio"]),
+            eta_left_domain = parse_complex_columns(row, "eta_left_domain"),
+            eta_right_domain = parse_complex_columns(row, "eta_right_domain"),
+            eta_left_beam = parse_complex_columns(row, "eta_left_beam"),
+            eta_right_beam = parse_complex_columns(row, "eta_right_beam"),
+            alpha = parse(Float64, row["alpha"]),
+            alpha_domain = parse(Float64, row["alpha_domain"]),
+            alpha_beam = parse(Float64, row["alpha_beam"]),
+            sa_ratio_domain = parse(Float64, row["sa_ratio_domain"]),
+            sa_ratio_beam = parse(Float64, row["sa_ratio_beam"]),
+            modal = modal,
+        ))
+    end
+    return rows
+end
+
+function cached_training_points(rows, edge_source::Symbol)
+    x = Float64[]
+    y = Float64[]
+    alpha = Float64[]
+    sa = Float64[]
+    for row in rows
+        push!(x, row.xM_over_L)
+        push!(y, log10(row.EI))
+        if edge_source == :domain
+            push!(alpha, row.alpha_domain)
+            push!(sa, row.sa_ratio_domain)
+        else
+            push!(alpha, row.alpha_beam)
+            push!(sa, row.sa_ratio_beam)
+        end
+    end
+    return x, y, alpha, sa
+end
+
+function find_reusable_cached_row(rows, point; x_tol::Real=0.01, logEI_tol::Real=0.03, alpha_accept_tol::Real=5e-2)
+    isempty(rows) && return nothing
+    target_y = log10(point.EI)
+    best = nothing
+    best_score = Inf
+    for row in rows
+        dx = abs(row.xM_over_L - point.xM_over_L)
+        dy = abs(log10(row.EI) - target_y)
+        if dx <= x_tol && dy <= logEI_tol && abs(row.alpha) <= alpha_accept_tol
+            score = dx / x_tol + dy / logEI_tol
+            if score < best_score
+                best = row
+                best_score = score
+            end
+        end
+    end
+    return best
+end
+
 function write_curve_csv(path::AbstractString, rows, n_modes::Int)
     open(path, "w") do io
         header = [
@@ -487,6 +587,9 @@ Inputs:
 - `n_sample`: number of curve points to rerun in detail.
 - `n_modes`: number of modal coefficients retained in the CSV.
 - `parallel`: whether to parallelize sampled cases across Julia threads.
+- `cache_file`: optional CSV of previously evaluated curve points used to augment
+  the GP training set and to reuse acceptable rows without rerunning the solver.
+- `alpha_accept_tol`: cached rows with `|alpha| <= alpha_accept_tol` may be reused.
 - `output_file`: output CSV filename.
 """
 function main(
@@ -497,10 +600,19 @@ function main(
     n_sample::Int=12,
     n_modes::Int=8,
     parallel::Bool=false,
+    cache_file=nothing,
+    alpha_accept_tol::Real=5e-2,
     output_file::AbstractString="single_alpha_zero_curve_details.csv",
 )
     data_dir = ensure_dir(normpath(data_dir))
     artifact = load_sweep_artifact(joinpath(data_dir, sweep_file))
+    cache_path = if isnothing(cache_file)
+        candidate = joinpath(data_dir, output_file)
+        isfile(candidate) ? candidate : nothing
+    else
+        joinpath(data_dir, String(cache_file))
+    end
+    cached_rows = isnothing(cache_path) ? NamedTuple[] : load_cached_curve_rows(cache_path, n_modes)
 
     summaries = artifact.summaries
     motor_position_list = vec(Float64.(artifact.parameter_axes.motor_position))
@@ -513,12 +625,14 @@ function main(
         left_grid[idx], right_grid[idx] = edge_fields(summaries[idx], edge_source)
     end
 
-    crossings = collect_zero_crossings_gp(mp_norm_list, EI_list, left_grid, right_grid)
+    extra_points = isempty(cached_rows) ? nothing : cached_training_points(cached_rows, edge_source)
+    crossings = collect_zero_crossings_gp(mp_norm_list, EI_list, left_grid, right_grid; extra_points=extra_points)
     curve_points = track_branch(crossings; sa_filter=sa_filter)
     sampled = sample_curve_points(curve_points; n_sample=n_sample)
 
     println("Selected $(length(curve_points)) points on the extracted curve")
     println("Sampling $(length(sampled)) points from $(basename(joinpath(data_dir, sweep_file))) using edge_source=$(edge_source), sa_filter=$(sa_filter), backend=gpr2d")
+    !isempty(cached_rows) && println("Using $(length(cached_rows)) cached evaluated points from $(basename(cache_path))")
 
     BLAS.set_num_threads(1)
     rows = Vector{Any}(undef, length(sampled))
@@ -528,24 +642,28 @@ function main(
         println("Running sampled cases in parallel across $(nthreads()) Julia threads")
         @threads for i in eachindex(sampled)
             point = sampled[i]
-            row = build_row(i, curve_points, point, artifact, edge_source, n_modes)
+            cached = find_reusable_cached_row(cached_rows, point; alpha_accept_tol=alpha_accept_tol)
+            row = isnothing(cached) ? build_row(i, curve_points, point, artifact, edge_source, n_modes) : merge(cached, (sample_index=i, curve_point_index=point.curve_point_index))
             rows[i] = row
             lock(log_lock) do
                 println(
                     "  case $(i) / $(length(sampled)): " *
                     "EI=$(point.EI), x_M/L=$(round(point.xM_over_L; digits=4)), " *
-                    "alpha=$(round(row.alpha; sigdigits=6))"
+                    "alpha=$(round(row.alpha; sigdigits=6))" *
+                    (isnothing(cached) ? "" : " [cached]")
                 )
             end
         end
     else
         for (sample_index, point) in enumerate(sampled)
-            row = build_row(sample_index, curve_points, point, artifact, edge_source, n_modes)
+            cached = find_reusable_cached_row(cached_rows, point; alpha_accept_tol=alpha_accept_tol)
+            row = isnothing(cached) ? build_row(sample_index, curve_points, point, artifact, edge_source, n_modes) : merge(cached, (sample_index=sample_index, curve_point_index=point.curve_point_index))
             rows[sample_index] = row
             println(
                 "  case $sample_index / $(length(sampled)): " *
                 "EI=$(point.EI), x_M/L=$(round(point.xM_over_L; digits=4)), " *
-                "alpha=$(round(row.alpha; sigdigits=6))"
+                "alpha=$(round(row.alpha; sigdigits=6))" *
+                (isnothing(cached) ? "" : " [cached]")
             )
         end
     end
@@ -564,5 +682,7 @@ if abspath(PROGRAM_FILE) == @__FILE__
     n_sample = length(ARGS) >= 5 ? parse(Int, ARGS[5]) : 12
     output_file = length(ARGS) >= 6 ? ARGS[6] : "single_alpha_zero_curve_details.csv"
     parallel = length(ARGS) >= 7 ? lowercase(ARGS[7]) in ("1", "true", "yes", "y", "parallel") : false
-    main(data_dir; sweep_file=sweep_file, edge_source=edge_source, sa_filter=sa_filter, n_sample=n_sample, output_file=output_file, parallel=parallel)
+    cache_file = length(ARGS) >= 8 ? ARGS[8] : nothing
+    alpha_accept_tol = length(ARGS) >= 9 ? parse(Float64, ARGS[9]) : 5e-2
+    main(data_dir; sweep_file=sweep_file, edge_source=edge_source, sa_filter=sa_filter, n_sample=n_sample, output_file=output_file, parallel=parallel, cache_file=cache_file, alpha_accept_tol=alpha_accept_tol)
 end
