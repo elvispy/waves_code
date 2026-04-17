@@ -1,10 +1,19 @@
 using DelimitedFiles
 using Surferbot
 
+# Purpose: dump the derived-parameter stage of the Julia reference case to CSV
+# files for parity checks against MATLAB step 1.
+
 function write_vec(path, data)
     writedlm(path, reshape(data, :, 1), ',')
 end
 
+"""
+    main()
+
+Write the Julia reference-case derived quantities into the directory pointed to
+by `ENV["SURFERBOT_PARITY_DUMP_DIR"]`.
+"""
 function main()
     outdir = get(ENV, "SURFERBOT_PARITY_DUMP_DIR", nothing)
     outdir === nothing && error("SURFERBOT_PARITY_DUMP_DIR is not set.")

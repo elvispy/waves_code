@@ -1,5 +1,9 @@
 using Surferbot
 
+# Purpose: one-off migration helper that exports the historical MATLAB
+# `motorPosition-EI` sweeps and converts them into native Julia `JLD2`
+# sweep artifacts.
+
 function ensure_dir(path::AbstractString)
     isdir(path) || mkpath(path)
     return path
@@ -34,6 +38,16 @@ function build_base_params(kind::Symbol)
     return FlexibleParams(; preset.base_params...)
 end
 
+"""
+    main(root=normpath(joinpath(@__DIR__, "..", "..")))
+
+Translate the historical coupled and uncoupled MATLAB `motorPosition-EI` sweep
+artifacts into Julia-native `JLD2` sweep files.
+
+Inputs:
+- `root`: repository root containing both the MATLAB source sweep files and the
+  Julia output directory.
+"""
 function main(root::AbstractString=normpath(joinpath(@__DIR__, "..", "..")))
     root = normpath(root)
     helper_path = joinpath(root, "MATLAB", "test", "debug_export_motorPosition_EI_table_for_julia.m")

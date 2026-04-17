@@ -1,10 +1,24 @@
 using Surferbot
 
+# Purpose: run a generic parameter sweep with the Julia solver and save a native
+# `JLD2` sweep artifact in `Julia/output` by default.
+
 function ensure_dir(path::AbstractString)
     isdir(path) || mkpath(path)
     return path
 end
 
+"""
+    main(save_dir=joinpath(@__DIR__, "..", "output"))
+
+Run a small generic sweep and save the resulting native Julia sweep artifact.
+
+Inputs:
+- `save_dir`: directory where the `.jld2` sweep artifact should be written.
+
+Edit the `base_params` and `grid` definitions in this script to change the
+simulation family being swept.
+"""
 function main(save_dir::AbstractString=joinpath(@__DIR__, "..", "output"))
     save_dir = ensure_dir(normpath(save_dir))
 

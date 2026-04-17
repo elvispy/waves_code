@@ -1,5 +1,14 @@
 using Surferbot
 
+# Purpose: generate side-by-side Julia and MATLAB parity dumps for one shared
+# reference case under `tmp/parity_dump/`.
+
+"""
+    main()
+
+Write Julia and, when available, MATLAB parity dumps for the shared reference
+case into `tmp/parity_dump/`.
+"""
 function main()
     root = normpath(joinpath(@__DIR__, "..", ".."))
     dump_root = joinpath(root, "tmp", "parity_dump")

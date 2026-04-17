@@ -2,6 +2,9 @@ using SparseArrays, LinearAlgebra
 using LinearSolve              # Krylov methods
 using ForwardDiff              # for ∂b/∂x and (∂A/∂x)·y via AD
 
+# Purpose: sandbox experiment for implicit-differentiation formulas on a toy
+# sparse nonlinear linear-system solve. Not a production solver entrypoint.
+
 # --- Toy sparse pattern (scale n up as you like)
 function laplace1d(n)
     I = Int[]

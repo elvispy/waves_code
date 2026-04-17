@@ -1,6 +1,9 @@
 using Plots
 using Surferbot
 
+# Purpose: extract the lowest uncoupled beam-end `alpha = 0` curve from a native
+# Julia sweep artifact, rerun sampled points, and summarize their modal content.
+
 function ensure_dir(path::AbstractString)
     isdir(path) || mkpath(path)
     return path
@@ -39,6 +42,24 @@ function write_modal_summary_csv(path::AbstractString, sample_EI, sample_mp, mod
     end
 end
 
+"""
+    main(data_dir=joinpath(@__DIR__, "..", "output");
+         sweep_file="sweep_motorPosition_EI_uncoupled.jld2",
+         n_sample=12,
+         n_modes=8,
+         pdf_file="analyze_modal_decomposition_along_beam_curve_uncoupled.pdf",
+         csv_file="analyze_modal_decomposition_along_beam_curve_uncoupled.csv")
+
+Analyze one uncoupled beam-end `alpha = 0` curve from a saved sweep artifact.
+
+Inputs:
+- `data_dir`: directory containing the input sweep artifact and receiving outputs.
+- `sweep_file`: native Julia sweep artifact to analyze.
+- `n_sample`: number of points sampled along the extracted curve.
+- `n_modes`: number of free-free modes retained in each decomposition.
+- `pdf_file`: output figure filename.
+- `csv_file`: output modal-summary table filename.
+"""
 function main(
     data_dir::AbstractString=joinpath(@__DIR__, "..", "output");
     sweep_file::AbstractString="sweep_motorPosition_EI_uncoupled.jld2",

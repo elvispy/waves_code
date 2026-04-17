@@ -2,6 +2,10 @@ using Zygote
 using ChainRules
 using LinearAlgebra
 using SparseArrays
+
+# Purpose: minimal Zygote-on-sparse-linear-solve experiment kept only for AD
+# debugging. Not used by the production Surferbot workflow.
+
 #-------------------------------------------------------
 function test_func(x)
 

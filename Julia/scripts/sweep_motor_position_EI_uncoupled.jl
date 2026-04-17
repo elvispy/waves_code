@@ -1,10 +1,29 @@
 using Surferbot
 
+# Purpose: generate the default uncoupled `(x_M, EI)` sweep with the Julia
+# solver and save it as a native `JLD2` artifact.
+
 function ensure_dir(path::AbstractString)
     isdir(path) || mkpath(path)
     return path
 end
 
+"""
+    main(save_dir=joinpath(@__DIR__, "..", "output");
+         base_params_override=nothing,
+         motor_position_list_override=nothing,
+         EI_list_override=nothing,
+         outfile="sweep_motorPosition_EI_uncoupled.jld2")
+
+Run the default uncoupled motor-position / stiffness sweep.
+
+Inputs:
+- `save_dir`: directory where the sweep artifact is written.
+- `base_params_override`: optional replacement for the preset base parameter set.
+- `motor_position_list_override`: optional list of motor positions to sweep.
+- `EI_list_override`: optional list of flexural rigidities to sweep.
+- `outfile`: output artifact filename within `save_dir`.
+"""
 function main(
     save_dir::AbstractString=joinpath(@__DIR__, "..", "output");
     base_params_override=nothing,

@@ -1,5 +1,23 @@
 using Surferbot
 
+# Purpose: render a stationary-domain MP4 animation for one Surferbot run,
+# writing `basename.mp4` plus a same-stem provenance JSON sidecar.
+
+"""
+    main(input; outdir=nothing, basename="waves", fps=30,
+         duration_periods=10, nframes=nothing)
+
+Render a headless video for one saved or in-memory Surferbot run.
+
+Inputs:
+- `input`: run directory, run artifact path, or in-memory run object accepted by
+  `render_surferbot_run`.
+- `outdir`: output directory. Defaults to the input directory when possible.
+- `basename`: shared basename for the generated `.mp4` and `.json` files.
+- `fps`: video frame rate.
+- `duration_periods`: simulated periods to cover in the animation.
+- `nframes`: optional explicit frame count overriding `fps * duration`.
+"""
 function main(input; outdir=nothing, basename::AbstractString="waves", fps::Int=30, duration_periods::Real=10, nframes=nothing)
     if outdir === nothing
         outdir = input isa AbstractString ? (isdir(input) ? input : dirname(input)) : pwd()
@@ -25,4 +43,3 @@ if abspath(PROGRAM_FILE) == @__FILE__
     nframes = length(ARGS) >= 6 ? parse(Int, ARGS[6]) : nothing
     main(input; outdir=outdir, basename=basename, fps=fps, duration_periods=duration_periods, nframes=nframes)
 end
-

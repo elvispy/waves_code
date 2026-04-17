@@ -3,6 +3,10 @@ using Statistics
 using LinearAlgebra
 using Base.Threads
 
+# Purpose: extract one `alpha = 0` curve from a saved Julia sweep artifact,
+# resimulate sampled points on that curve, and dump a detailed CSV for
+# mechanism-level analysis.
+
 function ensure_dir(path::AbstractString)
     isdir(path) || mkpath(path)
     return path
@@ -285,6 +289,29 @@ function build_row(sample_index, curve_points, point, artifact, edge_source::Sym
     )
 end
 
+"""
+    main(data_dir=joinpath(@__DIR__, "..", "output");
+         sweep_file="sweep_motorPosition_EI_coupled_from_matlab.jld2",
+         edge_source=:domain,
+         sa_filter=:negative,
+         n_sample=12,
+         n_modes=8,
+         parallel=false,
+         output_file="single_alpha_zero_curve_details.csv")
+
+Extract one `alpha = 0` curve from a saved sweep artifact and write a detailed
+per-sample CSV after rerunning the Julia solver and modal decomposition.
+
+Inputs:
+- `data_dir`: directory containing the input sweep artifact and receiving the CSV.
+- `sweep_file`: native Julia sweep artifact used to extract the curve.
+- `edge_source`: `:domain` or `:beam`, selecting which edge definition defines `alpha`.
+- `sa_filter`: `:negative`, `:positive`, or `:none`, used to keep one family of crossings.
+- `n_sample`: number of curve points to rerun in detail.
+- `n_modes`: number of modal coefficients retained in the CSV.
+- `parallel`: whether to parallelize sampled cases across Julia threads.
+- `output_file`: output CSV filename.
+"""
 function main(
     data_dir::AbstractString=joinpath(@__DIR__, "..", "output");
     sweep_file::AbstractString="sweep_motorPosition_EI_coupled_from_matlab.jld2",
