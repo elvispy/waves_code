@@ -3,6 +3,7 @@ using Statistics
 using LinearAlgebra
 using Base.Threads
 using DelimitedFiles
+using Plots
 
 # Purpose: extract one `alpha = 0` curve from a saved Julia sweep artifact,
 # resimulate sampled points on that curve, and dump a detailed CSV for
@@ -173,8 +174,7 @@ function predict_gp2d(model, xq::Real, yq::Real)
     return model.mean + acc
 end
 
-function collect_zero_crossings_gp(mp_norm_list, EI_list, left_grid::AbstractMatrix, right_grid::AbstractMatrix;
-                                   mp_count::Int=201, logEI_count::Int=201, extra_points=nothing)
+function gp_training_points(mp_norm_list, EI_list, left_grid::AbstractMatrix, right_grid::AbstractMatrix; extra_points=nothing)
     alpha_grid, sa_ratio_grid = build_scalar_fields(left_grid, right_grid)
     logEI_list = log10.(Float64.(EI_list))
 
@@ -195,6 +195,13 @@ function collect_zero_crossings_gp(mp_norm_list, EI_list, left_grid::AbstractMat
         append!(alpha_train, alpha_extra)
         append!(sa_train, sa_extra)
     end
+    return xtrain, ytrain, alpha_train, sa_train, logEI_list
+end
+
+function collect_zero_crossings_gp(mp_norm_list, EI_list, left_grid::AbstractMatrix, right_grid::AbstractMatrix;
+                                   mp_count::Int=201, logEI_count::Int=201, extra_points=nothing)
+    xtrain, ytrain, alpha_train, sa_train, logEI_list =
+        gp_training_points(mp_norm_list, EI_list, left_grid, right_grid; extra_points=extra_points)
 
     alpha_gp = fit_gp2d(xtrain, ytrain, alpha_train)
     sa_gp = fit_gp2d(xtrain, ytrain, sa_train)
@@ -222,6 +229,73 @@ function collect_zero_crossings_gp(mp_norm_list, EI_list, left_grid::AbstractMat
         end
     end
     return crossings
+end
+
+function write_alpha_overlay_plot(path::AbstractString, mp_norm_list, EI_list, left_grid::AbstractMatrix, right_grid::AbstractMatrix,
+                                  sampled, rows; extra_points=nothing, edge_source::Symbol=:domain,
+                                  mp_count::Int=241, logEI_count::Int=241, bad_alpha_tol::Real=5e-2)
+    xtrain, ytrain, alpha_train, _, logEI_list =
+        gp_training_points(mp_norm_list, EI_list, left_grid, right_grid; extra_points=extra_points)
+    alpha_gp = fit_gp2d(xtrain, ytrain, alpha_train)
+
+    mp_dense = collect(range(minimum(Float64.(mp_norm_list)), maximum(Float64.(mp_norm_list)); length=mp_count))
+    logEI_dense = collect(range(minimum(logEI_list), maximum(logEI_list); length=logEI_count))
+    alpha_pred = Matrix{Float64}(undef, length(mp_dense), length(logEI_dense))
+    @inbounds for j in eachindex(logEI_dense), i in eachindex(mp_dense)
+        alpha_pred[i, j] = predict_gp2d(alpha_gp, mp_dense[i], logEI_dense[j])
+    end
+
+    plt = contourf(
+        mp_dense,
+        logEI_dense,
+        alpha_pred';
+        levels=31,
+        c=:balance,
+        xlabel="x_M / L",
+        ylabel="log10(EI)",
+        colorbar_title="alpha ($(edge_source))",
+        title="Predicted alpha field with traced branch",
+        size=(1000, 700),
+    )
+    contour!(
+        plt,
+        mp_dense,
+        logEI_dense,
+        alpha_pred';
+        levels=[0.0],
+        color=:white,
+        linewidth=2,
+        label="GP alpha=0",
+    )
+
+    sampled_x = [p.xM_over_L for p in sampled]
+    sampled_y = log10.([p.EI for p in sampled])
+    scatter!(
+        plt,
+        sampled_x,
+        sampled_y;
+        color=:black,
+        markersize=3,
+        markerstrokewidth=0,
+        label="predicted samples",
+    )
+
+    bad_rows = filter(r -> abs(r.alpha) > bad_alpha_tol, rows)
+    if !isempty(bad_rows)
+        scatter!(
+            plt,
+            [r.xM_over_L for r in bad_rows],
+            log10.([r.EI for r in bad_rows]);
+            markershape=:xcross,
+            markersize=6,
+            markercolor=:yellow,
+            markerstrokecolor=:black,
+            label="|alpha| > $(bad_alpha_tol)",
+        )
+    end
+
+    savefig(plt, path)
+    return path
 end
 
 function filter_candidates(candidates; sa_filter::Symbol=:negative)
@@ -707,9 +781,22 @@ function main(
     write_curve_csv(output_path, rows, n_modes)
     beam_output_path = beam_csv_path(output_path)
     write_beam_curve_csv(beam_output_path, rows)
+    overlay_path = replace(output_path, r"\.csv$" => "_overlay.pdf")
+    write_alpha_overlay_plot(
+        overlay_path,
+        mp_norm_list,
+        EI_list,
+        left_grid,
+        right_grid,
+        sampled,
+        rows;
+        extra_points=extra_points,
+        edge_source=edge_source,
+    )
     println("Saved $(output_path)")
     println("Saved $(beam_output_path)")
-    return (curve_csv = output_path, beam_csv = beam_output_path)
+    println("Saved $(overlay_path)")
+    return (curve_csv = output_path, beam_csv = beam_output_path, overlay = overlay_path)
 end
 
 if abspath(PROGRAM_FILE) == @__FILE__
