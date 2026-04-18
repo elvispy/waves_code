@@ -351,12 +351,13 @@ function format_complex(z)
     return string(real(z), ",", imag(z), ",", abs(z), ",", rad2deg(angle(z)))
 end
 
-function parse_complex_columns(row::Dict{String, String}, prefix::AbstractString)
+function parse_complex_columns(row::AbstractDict{<:AbstractString, <:AbstractString}, prefix::AbstractString)
     return ComplexF64(
         parse(Float64, row["$(prefix)_re"]),
         parse(Float64, row["$(prefix)_im"]),
     )
 end
+
 
 function load_cached_curve_rows(path::AbstractString, n_modes::Int)
     isfile(path) || return NamedTuple[]
