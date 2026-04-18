@@ -231,6 +231,12 @@ function collect_zero_crossings_gp(mp_norm_list, EI_list, left_grid::AbstractMat
     return crossings
 end
 
+function nontrivial_candidates(candidates; boundary_band::Real)
+    isempty(candidates) && return candidates
+    sorted = sort(candidates; by = c -> c.xM_over_L)
+    return filter(c -> c.xM_over_L > boundary_band, sorted)
+end
+
 function write_alpha_overlay_plot(path::AbstractString, mp_norm_list, EI_list, left_grid::AbstractMatrix, right_grid::AbstractMatrix,
                                   sampled, rows; extra_points=nothing, edge_source::Symbol=:domain,
                                   mp_count::Int=241, logEI_count::Int=241, bad_alpha_tol::Real=5e-2)
@@ -324,7 +330,7 @@ function predict_next_x(curve_points, next_logEI)
     return p2.xM_over_L + slope * (next_logEI - y2)
 end
 
-function track_branch(crossings; branch_index::Int=1, jump_factor::Real=4.0, min_jump_tol::Real=0.05, x_eps::Real=1e-8)
+function track_branch(crossings; branch_index::Int=1, jump_factor::Real=4.0, min_jump_tol::Real=0.05, boundary_band::Real=0.0)
     branch_index >= 1 || error("branch_index must be >= 1")
     by_EI = group_crossings_by_EI(crossings)
     EI_desc = sort(collect(keys(by_EI)); rev=true)
@@ -336,7 +342,7 @@ function track_branch(crossings; branch_index::Int=1, jump_factor::Real=4.0, min
     seed_candidates = NamedTuple[]
     seed_idx = nothing
     for (i, EI) in pairs(EI_desc)
-        candidates = filter(c -> c.xM_over_L > x_eps, by_EI[EI])
+        candidates = nontrivial_candidates(by_EI[EI]; boundary_band=boundary_band)
         if length(candidates) >= branch_index
             seed_candidates = candidates
             seed_idx = i
@@ -348,7 +354,7 @@ function track_branch(crossings; branch_index::Int=1, jump_factor::Real=4.0, min
     push!(curve_points, seed)
 
     for EI in EI_desc[(seed_idx + 1):end]
-        candidates = filter(c -> c.xM_over_L > x_eps, by_EI[EI])
+        candidates = nontrivial_candidates(by_EI[EI]; boundary_band=boundary_band)
         length(candidates) < branch_index && continue
         chosen = candidates[branch_index]
 
@@ -590,6 +596,15 @@ function beam_csv_path(path::AbstractString)
     return stem * "_beam" * ext
 end
 
+function default_curve_basename(sweep_file::AbstractString)
+    return occursin("uncoupled", lowercase(sweep_file)) ?
+        "single_alpha_zero_curve_details_uncoupled" :
+        "single_alpha_zero_curve_details"
+end
+
+default_output_file(sweep_file::AbstractString) = default_curve_basename(sweep_file) * "_refined.csv"
+default_cache_file(sweep_file::AbstractString) = default_curve_basename(sweep_file) * ".csv"
+
 function write_beam_curve_csv(path::AbstractString, rows)
     open(path, "w") do io
         println(io, "sample_index,curve_point_index,EI,log10_EI,xM_over_L,motor_position,omega,U,power,power_input,thrust,tail_flat_ratio,eta_left_beam_re,eta_left_beam_im,eta_left_beam_abs,eta_left_beam_phase_deg,eta_right_beam_re,eta_right_beam_im,eta_right_beam_abs,eta_right_beam_phase_deg,alpha_beam,sa_ratio_beam")
@@ -668,13 +683,14 @@ end
          n_sample=100,
          n_modes=8,
          parallel=(nthreads() > 1),
-         output_file="single_alpha_zero_curve_details.csv")
+         output_file=default_output_file(sweep_file))
 
 Extract one `alpha = 0` curve from a saved sweep artifact and write a detailed
 per-sample CSV after rerunning the Julia solver and modal decomposition. The
 curve is extracted from a 2D GP surrogate in `(x_M/L, log10(EI))`, then
 tracked from high `EI` to low `EI`. By default, the script extracts the first
-positive branch, i.e. the leftmost nontrivial surrogate root in each `EI` slice.
+nontrivial branch. The boundary-connected root at `x_M = 0` is treated as
+branch `0` and discarded from the physical branch numbering.
 
 Inputs:
 - `data_dir`: directory containing the input sweep artifact and receiving the CSV.
@@ -686,8 +702,9 @@ Inputs:
 - `parallel`: whether to parallelize sampled cases across Julia threads. Defaults to `true` when Julia is started with more than one thread.
 - `cache_file`: optional CSV of previously evaluated curve points used to augment
   the GP training set and to reuse acceptable rows without rerunning the solver.
+  If omitted, the script chooses a dataset-matched cache file automatically.
 - `alpha_accept_tol`: cached rows with `|alpha| <= alpha_accept_tol` may be reused.
-- `output_file`: output CSV filename.
+- `output_file`: output CSV filename. If omitted, the script chooses a dataset-matched refined filename automatically.
 
 Example with all arguments explicit:
 `main("output"; sweep_file="sweep_motorPosition_EI_uncoupled_from_matlab.jld2", edge_source=:beam, branch_index=2, n_sample=150, n_modes=8, parallel=true, cache_file="single_alpha_zero_curve_details_uncoupled.csv", alpha_accept_tol=0.005, output_file="single_alpha_zero_curve_details_uncoupled_refined.csv")`
@@ -702,12 +719,13 @@ function main(
     parallel::Bool=(nthreads() > 1),
     cache_file=nothing,
     alpha_accept_tol::Real=5e-3,
-    output_file::AbstractString="single_alpha_zero_curve_details.csv",
+    output_file::AbstractString="",
 )
     data_dir = ensure_dir(normpath(data_dir))
     artifact = load_sweep_artifact(joinpath(data_dir, sweep_file))
+    output_name = isempty(output_file) ? default_output_file(sweep_file) : String(output_file)
     cache_path = if isnothing(cache_file)
-        candidate = joinpath(data_dir, output_file)
+        candidate = joinpath(data_dir, default_cache_file(sweep_file))
         isfile(candidate) ? candidate : nothing
     else
         joinpath(data_dir, String(cache_file))
@@ -727,7 +745,8 @@ function main(
 
     extra_points = isempty(cached_rows) ? nothing : cached_training_points(cached_rows, edge_source)
     crossings = collect_zero_crossings_gp(mp_norm_list, EI_list, left_grid, right_grid; extra_points=extra_points)
-    curve_points = track_branch(crossings; branch_index=branch_index)
+    boundary_band = length(mp_norm_list) >= 2 ? (maximum(mp_norm_list) - minimum(mp_norm_list)) / (201 - 1) : 0.0
+    curve_points = track_branch(crossings; branch_index=branch_index, boundary_band=boundary_band)
     sampled = sample_curve_points(curve_points; n_sample=n_sample)
 
     println("Selected $(length(curve_points)) points on the extracted curve")
@@ -768,7 +787,7 @@ function main(
         end
     end
 
-    output_path = joinpath(data_dir, output_file)
+    output_path = joinpath(data_dir, output_name)
     write_curve_csv(output_path, rows, n_modes)
     beam_output_path = beam_csv_path(output_path)
     write_beam_curve_csv(beam_output_path, rows)
@@ -796,7 +815,7 @@ if abspath(PROGRAM_FILE) == @__FILE__
     edge_source = length(ARGS) >= 3 ? Symbol(ARGS[3]) : :domain
     branch_index = length(ARGS) >= 4 ? parse(Int, ARGS[4]) : 1
     n_sample = length(ARGS) >= 5 ? parse(Int, ARGS[5]) : 100
-    output_file = length(ARGS) >= 6 ? ARGS[6] : "single_alpha_zero_curve_details.csv"
+    output_file = length(ARGS) >= 6 ? ARGS[6] : ""
     parallel = length(ARGS) >= 7 ? lowercase(ARGS[7]) in ("1", "true", "yes", "y", "parallel") : (nthreads() > 1)
     cache_file = length(ARGS) >= 8 ? ARGS[8] : nothing
     alpha_accept_tol = length(ARGS) >= 9 ? parse(Float64, ARGS[9]) : 5e-3
