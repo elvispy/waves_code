@@ -246,22 +246,22 @@ function write_alpha_overlay_plot(path::AbstractString, mp_norm_list, EI_list, l
     end
 
     plt = contourf(
-        mp_dense,
         logEI_dense,
-        alpha_pred';
+        mp_dense,
+        alpha_pred;
         levels=31,
         c=:balance,
-        xlabel="x_M / L",
-        ylabel="log10(EI)",
+        xlabel="log10(EI)",
+        ylabel="x_M / L",
         colorbar_title="alpha ($(edge_source))",
         title="Predicted alpha field with traced branch",
         size=(1000, 700),
     )
     contour!(
         plt,
-        mp_dense,
         logEI_dense,
-        alpha_pred';
+        mp_dense,
+        alpha_pred;
         levels=[0.0],
         color=:white,
         linewidth=2,
@@ -272,8 +272,8 @@ function write_alpha_overlay_plot(path::AbstractString, mp_norm_list, EI_list, l
     sampled_y = log10.([p.EI for p in sampled])
     scatter!(
         plt,
-        sampled_x,
-        sampled_y;
+        sampled_y,
+        sampled_x;
         color=:black,
         markersize=3,
         markerstrokewidth=0,
@@ -284,8 +284,8 @@ function write_alpha_overlay_plot(path::AbstractString, mp_norm_list, EI_list, l
     if !isempty(bad_rows)
         scatter!(
             plt,
-            [r.xM_over_L for r in bad_rows],
-            log10.([r.EI for r in bad_rows]);
+            log10.([r.EI for r in bad_rows]),
+            [r.xM_over_L for r in bad_rows];
             markershape=:xcross,
             markersize=6,
             markercolor=:yellow,
@@ -296,17 +296,6 @@ function write_alpha_overlay_plot(path::AbstractString, mp_norm_list, EI_list, l
 
     savefig(plt, path)
     return path
-end
-
-function filter_candidates(candidates; sa_filter::Symbol=:negative)
-    if sa_filter == :negative
-        return filter(c -> c.sa_ratio < 0, candidates)
-    elseif sa_filter == :positive
-        return filter(c -> c.sa_ratio > 0, candidates)
-    elseif sa_filter == :none
-        return candidates
-    end
-    error("sa_filter must be :negative, :positive, or :none")
 end
 
 function group_crossings_by_EI(crossings)
@@ -335,7 +324,8 @@ function predict_next_x(curve_points, next_logEI)
     return p2.xM_over_L + slope * (next_logEI - y2)
 end
 
-function track_branch(crossings; sa_filter::Symbol=:negative, jump_factor::Real=4.0, min_jump_tol::Real=0.05)
+function track_branch(crossings; branch_index::Int=1, jump_factor::Real=4.0, min_jump_tol::Real=0.05, x_eps::Real=1e-8)
+    branch_index >= 1 || error("branch_index must be >= 1")
     by_EI = group_crossings_by_EI(crossings)
     EI_desc = sort(collect(keys(by_EI)); rev=true)
     isempty(EI_desc) && return NamedTuple[]
@@ -346,32 +336,29 @@ function track_branch(crossings; sa_filter::Symbol=:negative, jump_factor::Real=
     seed_candidates = NamedTuple[]
     seed_idx = nothing
     for (i, EI) in pairs(EI_desc)
-        candidates = filter_candidates(by_EI[EI]; sa_filter=sa_filter)
-        if !isempty(candidates)
+        candidates = filter(c -> c.xM_over_L > x_eps, by_EI[EI])
+        if length(candidates) >= branch_index
             seed_candidates = candidates
             seed_idx = i
             break
         end
     end
     isempty(seed_candidates) && return NamedTuple[]
-    seed = reduce((a, b) -> a.xM_over_L <= b.xM_over_L ? a : b, seed_candidates)
+    seed = seed_candidates[branch_index]
     push!(curve_points, seed)
 
     for EI in EI_desc[(seed_idx + 1):end]
-        candidates = filter_candidates(by_EI[EI]; sa_filter=sa_filter)
-        isempty(candidates) && continue
+        candidates = filter(c -> c.xM_over_L > x_eps, by_EI[EI])
+        length(candidates) < branch_index && continue
+        chosen = candidates[branch_index]
 
         y = log10(EI)
         x_pred = predict_next_x(curve_points, y)
-        chosen = reduce((a, b) ->
-            abs(a.xM_over_L - x_pred) <= abs(b.xM_over_L - x_pred) ? a : b,
-            candidates,
-        )
 
         jump = abs(chosen.xM_over_L - curve_points[end].xM_over_L)
         local_scale = isempty(accepted_steps) ? min_jump_tol : max(min_jump_tol, jump_factor * median(accepted_steps))
 
-        if jump <= local_scale
+        if jump <= local_scale || abs(chosen.xM_over_L - x_pred) <= local_scale
             push!(curve_points, chosen)
             push!(accepted_steps, jump)
         end
@@ -677,40 +664,44 @@ end
     main(data_dir=joinpath(@__DIR__, "..", "output");
          sweep_file="sweep_motorPosition_EI_coupled_from_matlab.jld2",
          edge_source=:domain,
-         sa_filter=:negative,
-         n_sample=12,
+         branch_index=1,
+         n_sample=100,
          n_modes=8,
-         parallel=false,
+         parallel=(nthreads() > 1),
          output_file="single_alpha_zero_curve_details.csv")
 
 Extract one `alpha = 0` curve from a saved sweep artifact and write a detailed
 per-sample CSV after rerunning the Julia solver and modal decomposition. The
 curve is extracted from a 2D GP surrogate in `(x_M/L, log10(EI))`, then
-tracked from high `EI` to low `EI`.
+tracked from high `EI` to low `EI`. By default, the script extracts the first
+positive branch, i.e. the leftmost nontrivial surrogate root in each `EI` slice.
 
 Inputs:
 - `data_dir`: directory containing the input sweep artifact and receiving the CSV.
 - `sweep_file`: native Julia sweep artifact used to extract the curve.
 - `edge_source`: `:domain` or `:beam`, selecting which edge definition defines `alpha`.
-- `sa_filter`: `:negative`, `:positive`, or `:none`, used to keep one family of crossings.
+- `branch_index`: branch selector. `1` is the first positive branch, `2` the second, etc.
 - `n_sample`: number of curve points to rerun in detail.
 - `n_modes`: number of modal coefficients retained in the CSV.
-- `parallel`: whether to parallelize sampled cases across Julia threads.
+- `parallel`: whether to parallelize sampled cases across Julia threads. Defaults to `true` when Julia is started with more than one thread.
 - `cache_file`: optional CSV of previously evaluated curve points used to augment
   the GP training set and to reuse acceptable rows without rerunning the solver.
 - `alpha_accept_tol`: cached rows with `|alpha| <= alpha_accept_tol` may be reused.
 - `output_file`: output CSV filename.
+
+Example with all arguments explicit:
+`main("output"; sweep_file="sweep_motorPosition_EI_uncoupled_from_matlab.jld2", edge_source=:beam, branch_index=2, n_sample=150, n_modes=8, parallel=true, cache_file="single_alpha_zero_curve_details_uncoupled.csv", alpha_accept_tol=0.005, output_file="single_alpha_zero_curve_details_uncoupled_refined.csv")`
 """
 function main(
     data_dir::AbstractString=joinpath(@__DIR__, "..", "output");
     sweep_file::AbstractString="sweep_motorPosition_EI_coupled_from_matlab.jld2",
     edge_source::Symbol=:domain,
-    sa_filter::Symbol=:negative,
-    n_sample::Int=12,
+    branch_index::Int=1,
+    n_sample::Int=100,
     n_modes::Int=8,
-    parallel::Bool=false,
+    parallel::Bool=(nthreads() > 1),
     cache_file=nothing,
-    alpha_accept_tol::Real=5e-2,
+    alpha_accept_tol::Real=5e-3,
     output_file::AbstractString="single_alpha_zero_curve_details.csv",
 )
     data_dir = ensure_dir(normpath(data_dir))
@@ -736,11 +727,11 @@ function main(
 
     extra_points = isempty(cached_rows) ? nothing : cached_training_points(cached_rows, edge_source)
     crossings = collect_zero_crossings_gp(mp_norm_list, EI_list, left_grid, right_grid; extra_points=extra_points)
-    curve_points = track_branch(crossings; sa_filter=sa_filter)
+    curve_points = track_branch(crossings; branch_index=branch_index)
     sampled = sample_curve_points(curve_points; n_sample=n_sample)
 
     println("Selected $(length(curve_points)) points on the extracted curve")
-    println("Sampling $(length(sampled)) points from $(basename(joinpath(data_dir, sweep_file))) using edge_source=$(edge_source), sa_filter=$(sa_filter), backend=gpr2d")
+    println("Sampling $(length(sampled)) points from $(basename(joinpath(data_dir, sweep_file))) using edge_source=$(edge_source), branch_index=$(branch_index), backend=gpr2d")
     !isempty(cached_rows) && println("Using $(length(cached_rows)) cached evaluated points from $(basename(cache_path))")
 
     BLAS.set_num_threads(1)
@@ -803,11 +794,11 @@ if abspath(PROGRAM_FILE) == @__FILE__
     data_dir = length(ARGS) >= 1 ? ARGS[1] : joinpath(@__DIR__, "..", "output")
     sweep_file = length(ARGS) >= 2 ? ARGS[2] : "sweep_motorPosition_EI_coupled_from_matlab.jld2"
     edge_source = length(ARGS) >= 3 ? Symbol(ARGS[3]) : :domain
-    sa_filter = length(ARGS) >= 4 ? Symbol(ARGS[4]) : :negative
-    n_sample = length(ARGS) >= 5 ? parse(Int, ARGS[5]) : 12
+    branch_index = length(ARGS) >= 4 ? parse(Int, ARGS[4]) : 1
+    n_sample = length(ARGS) >= 5 ? parse(Int, ARGS[5]) : 100
     output_file = length(ARGS) >= 6 ? ARGS[6] : "single_alpha_zero_curve_details.csv"
-    parallel = length(ARGS) >= 7 ? lowercase(ARGS[7]) in ("1", "true", "yes", "y", "parallel") : false
+    parallel = length(ARGS) >= 7 ? lowercase(ARGS[7]) in ("1", "true", "yes", "y", "parallel") : (nthreads() > 1)
     cache_file = length(ARGS) >= 8 ? ARGS[8] : nothing
-    alpha_accept_tol = length(ARGS) >= 9 ? parse(Float64, ARGS[9]) : 5e-2
-    main(data_dir; sweep_file=sweep_file, edge_source=edge_source, sa_filter=sa_filter, n_sample=n_sample, output_file=output_file, parallel=parallel, cache_file=cache_file, alpha_accept_tol=alpha_accept_tol)
+    alpha_accept_tol = length(ARGS) >= 9 ? parse(Float64, ARGS[9]) : 5e-3
+    main(data_dir; sweep_file=sweep_file, edge_source=edge_source, branch_index=branch_index, n_sample=n_sample, output_file=output_file, parallel=parallel, cache_file=cache_file, alpha_accept_tol=alpha_accept_tol)
 end

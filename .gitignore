@@ -18,3 +18,5 @@ files_content.md
 Julia/.julia*/
 sweep1.mat
 tmp/
+docs/
+Julia/output/*_smoke.*
