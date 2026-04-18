@@ -524,6 +524,40 @@ function write_curve_csv(path::AbstractString, rows, n_modes::Int)
     end
 end
 
+function beam_csv_path(path::AbstractString)
+    stem, ext = splitext(path)
+    return stem * "_beam" * ext
+end
+
+function write_beam_curve_csv(path::AbstractString, rows)
+    open(path, "w") do io
+        println(io, "sample_index,curve_point_index,EI,log10_EI,xM_over_L,motor_position,omega,U,power,power_input,thrust,tail_flat_ratio,eta_left_beam_re,eta_left_beam_im,eta_left_beam_abs,eta_left_beam_phase_deg,eta_right_beam_re,eta_right_beam_im,eta_right_beam_abs,eta_right_beam_phase_deg,alpha_beam,sa_ratio_beam")
+        for row in rows
+            fields = String[
+                string(row.sample_index),
+                string(row.curve_point_index),
+                string(row.EI),
+                string(log10(row.EI)),
+                string(row.xM_over_L),
+                string(row.motor_position),
+                string(row.omega),
+                string(row.U),
+                string(row.power),
+                string(row.power_input),
+                string(row.thrust),
+                string(row.tail_flat_ratio),
+            ]
+            append!(fields, split(format_complex(row.eta_left_beam), ","))
+            append!(fields, split(format_complex(row.eta_right_beam), ","))
+            append!(fields, [
+                string(row.alpha_beam),
+                string(row.sa_ratio_beam),
+            ])
+            println(io, join(fields, ","))
+        end
+    end
+end
+
 function build_row(sample_index, curve_points, point, artifact, edge_source::Symbol, n_modes::Int)
     params = apply_parameter_overrides(
         artifact.base_params,
@@ -671,8 +705,11 @@ function main(
 
     output_path = joinpath(data_dir, output_file)
     write_curve_csv(output_path, rows, n_modes)
+    beam_output_path = beam_csv_path(output_path)
+    write_beam_curve_csv(beam_output_path, rows)
     println("Saved $(output_path)")
-    return output_path
+    println("Saved $(beam_output_path)")
+    return (curve_csv = output_path, beam_csv = beam_output_path)
 end
 
 if abspath(PROGRAM_FILE) == @__FILE__
