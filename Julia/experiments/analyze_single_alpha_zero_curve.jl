@@ -237,6 +237,111 @@ function nontrivial_candidates(candidates; boundary_band::Real)
     return filter(c -> c.xM_over_L > boundary_band, sorted)
 end
 
+function target_logEI_values(EI_list; n_sample::Int)
+    logEI_list = sort(log10.(Float64.(EI_list)))
+    return collect(range(first(logEI_list), last(logEI_list); length=n_sample))
+end
+
+function branch_candidates_at_logEI(mp_norm_list, logEI::Real, alpha_gp, sa_gp; mp_count::Int=401, boundary_band::Real=0.0)
+    mp_dense = collect(range(minimum(Float64.(mp_norm_list)), maximum(Float64.(mp_norm_list)); length=mp_count))
+    alpha_row = [predict_gp2d(alpha_gp, mp, logEI) for mp in mp_dense]
+    sa_row = [predict_gp2d(sa_gp, mp, logEI) for mp in mp_dense]
+
+    candidates = NamedTuple[]
+    for im in 1:(length(mp_dense) - 1)
+        if alpha_row[im] == 0
+            push!(candidates, (EI = 10.0^logEI, xM_over_L = mp_dense[im], sa_ratio = sa_row[im], target_log10_EI = logEI))
+        elseif alpha_row[im] * alpha_row[im + 1] < 0
+            t = alpha_row[im] / (alpha_row[im] - alpha_row[im + 1])
+            mp_zero = mp_dense[im] + t * (mp_dense[im + 1] - mp_dense[im])
+            sa_zero = sa_row[im] + t * (sa_row[im + 1] - sa_row[im])
+            push!(candidates, (EI = 10.0^logEI, xM_over_L = mp_zero, sa_ratio = sa_zero, target_log10_EI = logEI))
+        end
+    end
+    return nontrivial_candidates(candidates; boundary_band=boundary_band)
+end
+
+function surrogate_models(mp_norm_list, EI_list, left_grid::AbstractMatrix, right_grid::AbstractMatrix; extra_points=nothing)
+    xtrain, ytrain, alpha_train, sa_train, _ =
+        gp_training_points(mp_norm_list, EI_list, left_grid, right_grid; extra_points=extra_points)
+    return fit_gp2d(xtrain, ytrain, alpha_train), fit_gp2d(xtrain, ytrain, sa_train)
+end
+
+function logEI_bin(logEI::Real; width::Real=0.03)
+    return floor(Int, logEI / width)
+end
+
+function solve_counts_by_bin(rows; width::Real=0.03, branch_index::Int, edge_source::Symbol, sweep_file::AbstractString)
+    counts = Dict{Int, Int}()
+    for row in rows
+        if get(row, :branch_index, branch_index) == branch_index &&
+           get(row, :edge_source, String(edge_source)) == String(edge_source) &&
+           get(row, :sweep_file, sweep_file) == sweep_file
+            bin = logEI_bin(get(row, :target_log10_EI, log10(row.EI)); width=width)
+            counts[bin] = get(counts, bin, 0) + 1
+        end
+    end
+    return counts
+end
+
+function rows_for_sample(rows, sample_index::Int; branch_index::Int, edge_source::Symbol, sweep_file::AbstractString)
+    return filter(rows) do row
+        row.sample_index == sample_index &&
+        get(row, :branch_index, branch_index) == branch_index &&
+        get(row, :edge_source, String(edge_source)) == String(edge_source) &&
+        get(row, :sweep_file, sweep_file) == sweep_file
+    end
+end
+
+function best_row_for_sample(rows, sample_index::Int; branch_index::Int, edge_source::Symbol, sweep_file::AbstractString)
+    candidates = rows_for_sample(rows, sample_index; branch_index=branch_index, edge_source=edge_source, sweep_file=sweep_file)
+    isempty(candidates) && return nothing
+    return argmin(r -> abs(r.alpha), candidates)
+end
+
+function argmin(f, xs)
+    best = first(xs)
+    bestv = f(best)
+    for x in Iterators.drop(xs, 1)
+        v = f(x)
+        if v < bestv
+            best = x
+            bestv = v
+        end
+    end
+    return best
+end
+
+function iterative_sample_candidates(mp_norm_list, EI_list, left_grid::AbstractMatrix, right_grid::AbstractMatrix;
+                                     cached_rows, edge_source::Symbol, branch_index::Int, n_sample::Int,
+                                     max_iterations::Int=5, alpha_accept_tol::Real=5e-3,
+                                     logEI_bin_width::Real=0.03, max_solves_per_bin::Int=5)
+    target_logs = target_logEI_values(EI_list; n_sample=n_sample)
+    boundary_band = length(mp_norm_list) >= 2 ? (maximum(mp_norm_list) - minimum(mp_norm_list)) / (201 - 1) : 0.0
+    proposed = Dict{Int, NamedTuple}()
+    accepted = Dict{Int, NamedTuple}()
+    counts = solve_counts_by_bin(cached_rows; width=logEI_bin_width, branch_index=branch_index, edge_source=edge_source, sweep_file="")
+
+    working_rows = copy(cached_rows)
+    for iteration in 1:max_iterations
+        extra_points = isempty(working_rows) ? nothing : cached_training_points(working_rows, edge_source)
+        alpha_gp, sa_gp = surrogate_models(mp_norm_list, EI_list, left_grid, right_grid; extra_points=extra_points)
+        for (sample_index, logEI) in enumerate(target_logs)
+            candidates = branch_candidates_at_logEI(mp_norm_list, logEI, alpha_gp, sa_gp; boundary_band=boundary_band)
+            if length(candidates) >= branch_index
+                cand = candidates[branch_index]
+                proposed[sample_index] = (; cand..., curve_point_index = sample_index, sample_index = sample_index, iteration = iteration)
+            end
+        end
+    end
+
+    for sample_index in 1:n_sample
+        haskey(proposed, sample_index) || continue
+        accepted[sample_index] = proposed[sample_index]
+    end
+    return [accepted[i] for i in sort(collect(keys(accepted)))]
+end
+
 function write_alpha_overlay_plot(path::AbstractString, mp_norm_list, EI_list, left_grid::AbstractMatrix, right_grid::AbstractMatrix,
                                   sampled, rows; extra_points=nothing, edge_source::Symbol=:domain,
                                   mp_count::Int=241, logEI_count::Int=241, bad_alpha_tol::Real=5e-2)
@@ -447,6 +552,11 @@ function load_cached_curve_rows(path::AbstractString, n_modes::Int)
             mode_type = String[row["mode_type$(j)"] for j in 0:(n_modes - 1)],
         )
         push!(rows, (
+            branch_index = haskey(row, "branch_index") ? parse(Int, row["branch_index"]) : 1,
+            edge_source = get(row, "edge_source", ""),
+            sweep_file = get(row, "sweep_file", ""),
+            iteration = haskey(row, "iteration") ? parse(Int, row["iteration"]) : 1,
+            target_log10_EI = haskey(row, "target_log10_EI") ? parse(Float64, row["target_log10_EI"]) : log10(parse(Float64, row["EI"])),
             sample_index = parse(Int, row["sample_index"]),
             curve_point_index = parse(Int, row["curve_point_index"]),
             EI = parse(Float64, row["EI"]),
@@ -492,6 +602,24 @@ function cached_training_points(rows, edge_source::Symbol)
     return x, y, alpha, sa
 end
 
+function compatible_row(row; edge_source::Symbol, sweep_file::AbstractString)
+    row_edge = get(row, :edge_source, "")
+    row_sweep = get(row, :sweep_file, "")
+    return (isempty(row_edge) || row_edge == String(edge_source)) &&
+           (isempty(row_sweep) || row_sweep == sweep_file)
+end
+
+function training_rows(rows; edge_source::Symbol, sweep_file::AbstractString)
+    return filter(row -> compatible_row(row; edge_source=edge_source, sweep_file=sweep_file), rows)
+end
+
+function reusable_rows(rows; edge_source::Symbol, sweep_file::AbstractString, branch_index::Int)
+    return filter(rows) do row
+        compatible_row(row; edge_source=edge_source, sweep_file=sweep_file) &&
+        get(row, :branch_index, branch_index) == branch_index
+    end
+end
+
 function find_reusable_cached_row(rows, point; x_tol::Real=0.01, logEI_tol::Real=0.03, alpha_accept_tol::Real=5e-2)
     isempty(rows) && return nothing
     target_y = log10(point.EI)
@@ -511,9 +639,40 @@ function find_reusable_cached_row(rows, point; x_tol::Real=0.01, logEI_tol::Real
     return best
 end
 
+function unique_row_key(row)
+    return (
+        get(row, :branch_index, 1),
+        get(row, :edge_source, ""),
+        get(row, :sweep_file, ""),
+        get(row, :iteration, 1),
+        row.sample_index,
+        round(get(row, :target_log10_EI, log10(row.EI)); digits=12),
+        round(row.EI; digits=12),
+        round(row.xM_over_L; digits=12),
+    )
+end
+
+function merge_output_rows(existing_rows, new_rows)
+    merged = copy(existing_rows)
+    seen = Set(unique_row_key(row) for row in existing_rows)
+    for row in new_rows
+        key = unique_row_key(row)
+        if !(key in seen)
+            push!(merged, row)
+            push!(seen, key)
+        end
+    end
+    return merged
+end
+
 function write_curve_csv(path::AbstractString, rows, n_modes::Int)
     open(path, "w") do io
         header = [
+            "branch_index",
+            "edge_source",
+            "sweep_file",
+            "iteration",
+            "target_log10_EI",
             "sample_index",
             "curve_point_index",
             "EI",
@@ -551,6 +710,11 @@ function write_curve_csv(path::AbstractString, rows, n_modes::Int)
 
         for row in rows
             fields = String[
+                string(get(row, :branch_index, 1)),
+                string(get(row, :edge_source, "")),
+                string(get(row, :sweep_file, "")),
+                string(get(row, :iteration, 1)),
+                string(get(row, :target_log10_EI, log10(row.EI))),
                 string(row.sample_index),
                 string(row.curve_point_index),
                 string(row.EI),
@@ -607,9 +771,14 @@ default_cache_file(sweep_file::AbstractString) = default_curve_basename(sweep_fi
 
 function write_beam_curve_csv(path::AbstractString, rows)
     open(path, "w") do io
-        println(io, "sample_index,curve_point_index,EI,log10_EI,xM_over_L,motor_position,omega,U,power,power_input,thrust,tail_flat_ratio,eta_left_beam_re,eta_left_beam_im,eta_left_beam_abs,eta_left_beam_phase_deg,eta_right_beam_re,eta_right_beam_im,eta_right_beam_abs,eta_right_beam_phase_deg,alpha_beam,sa_ratio_beam")
+        println(io, "branch_index,edge_source,sweep_file,iteration,target_log10_EI,sample_index,curve_point_index,EI,log10_EI,xM_over_L,motor_position,omega,U,power,power_input,thrust,tail_flat_ratio,eta_left_beam_re,eta_left_beam_im,eta_left_beam_abs,eta_left_beam_phase_deg,eta_right_beam_re,eta_right_beam_im,eta_right_beam_abs,eta_right_beam_phase_deg,alpha_beam,sa_ratio_beam")
         for row in rows
             fields = String[
+                string(get(row, :branch_index, 1)),
+                string(get(row, :edge_source, "")),
+                string(get(row, :sweep_file, "")),
+                string(get(row, :iteration, 1)),
+                string(get(row, :target_log10_EI, log10(row.EI))),
                 string(row.sample_index),
                 string(row.curve_point_index),
                 string(row.EI),
@@ -634,7 +803,7 @@ function write_beam_curve_csv(path::AbstractString, rows)
     end
 end
 
-function build_row(sample_index, curve_points, point, artifact, edge_source::Symbol, n_modes::Int)
+function build_row(sample_index, point, artifact, edge_source::Symbol, n_modes::Int; branch_index::Int, sweep_file::AbstractString, iteration::Int)
     params = apply_parameter_overrides(
         artifact.base_params,
         (motor_position = point.xM_over_L * artifact.base_params.L_raft, EI = point.EI),
@@ -651,6 +820,11 @@ function build_row(sample_index, curve_points, point, artifact, edge_source::Sym
         beam_asymmetry(metrics.eta_left_beam, metrics.eta_right_beam)
 
     return (
+        branch_index = branch_index,
+        edge_source = String(edge_source),
+        sweep_file = sweep_file,
+        iteration = iteration,
+        target_log10_EI = get(point, :target_log10_EI, log10(point.EI)),
         sample_index = sample_index,
         curve_point_index = get(point, :curve_point_index, 0),
         EI = point.EI,
@@ -677,8 +851,8 @@ end
 
 """
     main(data_dir=joinpath(@__DIR__, "..", "output");
-         sweep_file="sweep_motorPosition_EI_coupled_from_matlab.jld2",
-         edge_source=:domain,
+         sweep_file="sweep_motor_position_EI_coupled_from_matlab.jld2",
+         edge_source=:beam,
          branch_index=1,
          n_sample=100,
          n_modes=8,
@@ -707,12 +881,12 @@ Inputs:
 - `output_file`: output CSV filename. If omitted, the script chooses a dataset-matched refined filename automatically.
 
 Example with all arguments explicit:
-`main("output"; sweep_file="sweep_motorPosition_EI_uncoupled_from_matlab.jld2", edge_source=:beam, branch_index=2, n_sample=150, n_modes=8, parallel=true, cache_file="single_alpha_zero_curve_details_uncoupled.csv", alpha_accept_tol=0.005, output_file="single_alpha_zero_curve_details_uncoupled_refined.csv")`
+`main("output"; sweep_file="sweep_motor_position_EI_uncoupled_from_matlab.jld2", edge_source=:beam, branch_index=2, n_sample=150, n_modes=8, parallel=true, cache_file="single_alpha_zero_curve_details_uncoupled.csv", alpha_accept_tol=0.005, output_file="single_alpha_zero_curve_details_uncoupled_refined.csv")`
 """
 function main(
     data_dir::AbstractString=joinpath(@__DIR__, "..", "output");
-    sweep_file::AbstractString="sweep_motorPosition_EI_coupled_from_matlab.jld2",
-    edge_source::Symbol=:domain,
+    sweep_file::AbstractString="sweep_motor_position_EI_coupled_from_matlab.jld2",
+    edge_source::Symbol=:beam,
     branch_index::Int=1,
     n_sample::Int=100,
     n_modes::Int=8,
@@ -724,6 +898,7 @@ function main(
     data_dir = ensure_dir(normpath(data_dir))
     artifact = load_sweep_artifact(joinpath(data_dir, sweep_file))
     output_name = isempty(output_file) ? default_output_file(sweep_file) : String(output_file)
+    output_path = joinpath(data_dir, output_name)
     cache_path = if isnothing(cache_file)
         candidate = joinpath(data_dir, default_cache_file(sweep_file))
         isfile(candidate) ? candidate : nothing
@@ -731,6 +906,8 @@ function main(
         joinpath(data_dir, String(cache_file))
     end
     cached_rows = isnothing(cache_path) ? NamedTuple[] : load_cached_curve_rows(cache_path, n_modes)
+    existing_output_rows = isfile(output_path) ? load_cached_curve_rows(output_path, n_modes) : NamedTuple[]
+    all_rows = merge_output_rows(cached_rows, existing_output_rows)
 
     summaries = artifact.summaries
     motor_position_list = vec(Float64.(artifact.parameter_axes.motor_position))
@@ -743,55 +920,112 @@ function main(
         left_grid[idx], right_grid[idx] = edge_fields(summaries[idx], edge_source)
     end
 
-    extra_points = isempty(cached_rows) ? nothing : cached_training_points(cached_rows, edge_source)
-    crossings = collect_zero_crossings_gp(mp_norm_list, EI_list, left_grid, right_grid; extra_points=extra_points)
-    boundary_band = length(mp_norm_list) >= 2 ? (maximum(mp_norm_list) - minimum(mp_norm_list)) / (201 - 1) : 0.0
-    curve_points = track_branch(crossings; branch_index=branch_index, boundary_band=boundary_band)
-    sampled = sample_curve_points(curve_points; n_sample=n_sample)
+    relevant_training = training_rows(all_rows; edge_source=edge_source, sweep_file=sweep_file)
+    sampled = iterative_sample_candidates(
+        mp_norm_list, EI_list, left_grid, right_grid;
+        cached_rows=relevant_training,
+        edge_source=edge_source,
+        branch_index=branch_index,
+        n_sample=n_sample,
+        alpha_accept_tol=alpha_accept_tol,
+    )
+    isempty(sampled) && error("No branch-$(branch_index) candidates were found for sampling.")
 
-    println("Selected $(length(curve_points)) points on the extracted curve")
-    println("Sampling $(length(sampled)) points from $(basename(joinpath(data_dir, sweep_file))) using edge_source=$(edge_source), branch_index=$(branch_index), backend=gpr2d")
-    !isempty(cached_rows) && println("Using $(length(cached_rows)) cached evaluated points from $(basename(cache_path))")
+    println("Selected $(length(sampled)) target points from $(basename(joinpath(data_dir, sweep_file))) using edge_source=$(edge_source), branch_index=$(branch_index), backend=gpr2d")
+    !isempty(relevant_training) && println("Using $(length(relevant_training)) cached evaluated points compatible with this dataset")
 
     BLAS.set_num_threads(1)
     rows = Vector{Any}(undef, length(sampled))
     log_lock = ReentrantLock()
+    attempts = zeros(Int, length(sampled))
+    max_iterations = 5
+    max_solves_per_bin = 5
+    logEI_bin_width = 0.03
+    best_rows = Dict{Int, Any}()
+    working_rows = copy(all_rows)
 
-    if parallel && nthreads() > 1
-        println("Running sampled cases in parallel across $(nthreads()) Julia threads")
-        @threads for i in eachindex(sampled)
-            point = sampled[i]
-            cached = find_reusable_cached_row(cached_rows, point; alpha_accept_tol=alpha_accept_tol)
-            row = isnothing(cached) ? build_row(i, curve_points, point, artifact, edge_source, n_modes) : merge(cached, (sample_index=i, curve_point_index=point.curve_point_index))
-            rows[i] = row
-            lock(log_lock) do
-                println(
-                    "  case $(i) / $(length(sampled)): " *
-                    "EI=$(point.EI), x_M/L=$(round(point.xM_over_L; digits=4)), " *
-                    "alpha=$(round(row.alpha; sigdigits=6))" *
-                    (isnothing(cached) ? "" : " [cached]")
-                )
+    for iteration in 1:max_iterations
+        relevant_training = training_rows(working_rows; edge_source=edge_source, sweep_file=sweep_file)
+        sampled_iter = iterative_sample_candidates(
+            mp_norm_list, EI_list, left_grid, right_grid;
+            cached_rows=relevant_training,
+            edge_source=edge_source,
+            branch_index=branch_index,
+            n_sample=n_sample,
+            alpha_accept_tol=alpha_accept_tol,
+        )
+        isempty(sampled_iter) && break
+        sampled_by_index = Dict(p.sample_index => p for p in sampled_iter)
+        bin_counts = solve_counts_by_bin(working_rows; width=logEI_bin_width, branch_index=branch_index, edge_source=edge_source, sweep_file=sweep_file)
+
+        queue = Int[]
+        for i in 1:n_sample
+            point = get(sampled_by_index, i, nothing)
+            isnothing(point) && continue
+            existing_best = best_row_for_sample(working_rows, i; branch_index=branch_index, edge_source=edge_source, sweep_file=sweep_file)
+            if !isnothing(existing_best) && abs(existing_best.alpha) <= alpha_accept_tol
+                best_rows[i] = existing_best
+                rows[i] = existing_best
+                continue
+            end
+            reusable = find_reusable_cached_row(reusable_rows(working_rows; edge_source=edge_source, sweep_file=sweep_file, branch_index=branch_index), point; alpha_accept_tol=alpha_accept_tol)
+            if !isnothing(reusable)
+                row = merge(reusable, (sample_index=i, curve_point_index=point.curve_point_index, branch_index=branch_index, edge_source=String(edge_source), sweep_file=sweep_file, iteration=iteration, target_log10_EI=point.target_log10_EI))
+                rows[i] = row
+                best_rows[i] = row
+                continue
+            end
+            bin = logEI_bin(point.target_log10_EI; width=logEI_bin_width)
+            if attempts[i] < max_iterations && get(bin_counts, bin, 0) < max_solves_per_bin
+                push!(queue, i)
+                attempts[i] += 1
+                bin_counts[bin] = get(bin_counts, bin, 0) + 1
             end
         end
-    else
-        for (sample_index, point) in enumerate(sampled)
-            cached = find_reusable_cached_row(cached_rows, point; alpha_accept_tol=alpha_accept_tol)
-            row = isnothing(cached) ? build_row(sample_index, curve_points, point, artifact, edge_source, n_modes) : merge(cached, (sample_index=sample_index, curve_point_index=point.curve_point_index))
-            rows[sample_index] = row
-            println(
-                "  case $sample_index / $(length(sampled)): " *
-                "EI=$(point.EI), x_M/L=$(round(point.xM_over_L; digits=4)), " *
-                "alpha=$(round(row.alpha; sigdigits=6))" *
-                (isnothing(cached) ? "" : " [cached]")
-            )
+
+        isempty(queue) && break
+        println("Iteration $(iteration): running $(length(queue)) new sampled cases")
+        if parallel && nthreads() > 1
+            println("Running sampled cases in parallel across $(nthreads()) Julia threads")
+            @threads for qidx in eachindex(queue)
+                i = queue[qidx]
+                point = sampled_by_index[i]
+                row = build_row(i, point, artifact, edge_source, n_modes; branch_index=branch_index, sweep_file=sweep_file, iteration=iteration)
+                rows[i] = row
+                lock(log_lock) do
+                    println("  case $(i) / $(length(sampled)): EI=$(point.EI), x_M/L=$(round(point.xM_over_L; digits=4)), alpha=$(round(row.alpha; sigdigits=6))")
+                end
+            end
+        else
+            for i in queue
+                point = sampled_by_index[i]
+                row = build_row(i, point, artifact, edge_source, n_modes; branch_index=branch_index, sweep_file=sweep_file, iteration=iteration)
+                rows[i] = row
+                println("  case $(i) / $(length(sampled)): EI=$(point.EI), x_M/L=$(round(point.xM_over_L; digits=4)), alpha=$(round(row.alpha; sigdigits=6))")
+            end
+        end
+
+        new_rows = [rows[i] for i in queue if !isnothing(rows[i])]
+        working_rows = merge_output_rows(working_rows, new_rows)
+        for row in new_rows
+            existing_best = get(best_rows, row.sample_index, nothing)
+            if isnothing(existing_best) || abs(row.alpha) < abs(existing_best.alpha)
+                best_rows[row.sample_index] = row
+            end
         end
     end
 
-    output_path = joinpath(data_dir, output_name)
-    write_curve_csv(output_path, rows, n_modes)
+    final_rows = Any[]
+    for i in 1:n_sample
+        row = get(best_rows, i, nothing)
+        !isnothing(row) && push!(final_rows, row)
+    end
+
+    combined_rows = merge_output_rows(existing_output_rows, final_rows)
+    write_curve_csv(output_path, combined_rows, n_modes)
     beam_output_path = beam_csv_path(output_path)
-    write_beam_curve_csv(beam_output_path, rows)
-    overlay_path = replace(output_path, r"\.csv$" => "_overlay.pdf")
+    write_beam_curve_csv(beam_output_path, combined_rows)
+    overlay_path = replace(output_path, r"\.csv$" => "_branch$(branch_index)_overlay.pdf")
     write_alpha_overlay_plot(
         overlay_path,
         mp_norm_list,
@@ -799,8 +1033,8 @@ function main(
         left_grid,
         right_grid,
         sampled,
-        rows;
-        extra_points=extra_points,
+        final_rows;
+        extra_points=isempty(training_rows(working_rows; edge_source=edge_source, sweep_file=sweep_file)) ? nothing : cached_training_points(training_rows(working_rows; edge_source=edge_source, sweep_file=sweep_file), edge_source),
         edge_source=edge_source,
     )
     println("Saved $(output_path)")
@@ -811,8 +1045,8 @@ end
 
 if abspath(PROGRAM_FILE) == @__FILE__
     data_dir = length(ARGS) >= 1 ? ARGS[1] : joinpath(@__DIR__, "..", "output")
-    sweep_file = length(ARGS) >= 2 ? ARGS[2] : "sweep_motorPosition_EI_coupled_from_matlab.jld2"
-    edge_source = length(ARGS) >= 3 ? Symbol(ARGS[3]) : :domain
+    sweep_file = length(ARGS) >= 2 ? ARGS[2] : "sweep_motor_position_EI_coupled_from_matlab.jld2"
+    edge_source = length(ARGS) >= 3 ? Symbol(ARGS[3]) : :beam
     branch_index = length(ARGS) >= 4 ? parse(Int, ARGS[4]) : 1
     n_sample = length(ARGS) >= 5 ? parse(Int, ARGS[5]) : 100
     output_file = length(ARGS) >= 6 ? ARGS[6] : ""

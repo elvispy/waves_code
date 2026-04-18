@@ -44,7 +44,7 @@ end
 
 """
     main(data_dir=joinpath(@__DIR__, "..", "output");
-         sweep_file="sweep_motorPosition_EI_uncoupled.jld2",
+         sweep_file="sweep_motor_position_EI_uncoupled.jld2",
          n_sample=12,
          n_modes=8,
          pdf_file="analyze_modal_decomposition_along_beam_curve_uncoupled.pdf",
@@ -62,7 +62,7 @@ Inputs:
 """
 function main(
     data_dir::AbstractString=joinpath(@__DIR__, "..", "output");
-    sweep_file::AbstractString="sweep_motorPosition_EI_uncoupled.jld2",
+    sweep_file::AbstractString="sweep_motor_position_EI_uncoupled.jld2",
     n_sample::Int=12,
     n_modes::Int=8,
     pdf_file::AbstractString="analyze_modal_decomposition_along_beam_curve_uncoupled.pdf",
@@ -146,6 +146,6 @@ end
 
 if abspath(PROGRAM_FILE) == @__FILE__
     data_dir = length(ARGS) >= 1 ? ARGS[1] : joinpath(@__DIR__, "..", "output")
-    sweep_file = length(ARGS) >= 2 ? ARGS[2] : "sweep_motorPosition_EI_uncoupled.jld2"
+    sweep_file = length(ARGS) >= 2 ? ARGS[2] : "sweep_motor_position_EI_uncoupled.jld2"
     main(data_dir; sweep_file=sweep_file)
 end

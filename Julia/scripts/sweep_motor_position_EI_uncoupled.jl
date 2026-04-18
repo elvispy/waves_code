@@ -13,7 +13,7 @@ end
          base_params_override=nothing,
          motor_position_list_override=nothing,
          EI_list_override=nothing,
-         outfile="sweep_motorPosition_EI_uncoupled.jld2")
+         outfile="sweep_motor_position_EI_uncoupled.jld2")
 
 Run the default uncoupled motor-position / stiffness sweep.
 
@@ -29,7 +29,7 @@ function main(
     base_params_override=nothing,
     motor_position_list_override=nothing,
     EI_list_override=nothing,
-    outfile::AbstractString="sweep_motorPosition_EI_uncoupled.jld2",
+    outfile::AbstractString="sweep_motor_position_EI_uncoupled.jld2",
 )
     save_dir = ensure_dir(normpath(save_dir))
     preset = default_uncoupled_motor_position_EI_sweep()

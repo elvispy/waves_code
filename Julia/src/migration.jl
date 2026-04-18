@@ -45,13 +45,13 @@ function matlab_motor_position_ei_sources()
     return (
         coupled = (
             source = "MATLAB/test/data/sweepMotorPositionEI.mat",
-            output = "Julia/output/sweep_motorPosition_EI_coupled_from_matlab.jld2",
+            output = "Julia/output/sweep_motor_position_EI_coupled_from_matlab.jld2",
             label = "coupled_motor_position_EI_from_matlab",
             preset = default_coupled_motor_position_EI_sweep,
         ),
         uncoupled = (
             source = "MATLAB/test/data/sweepMotorPositionEI2.mat",
-            output = "Julia/output/sweep_motorPosition_EI_uncoupled_from_matlab.jld2",
+            output = "Julia/output/sweep_motor_position_EI_uncoupled_from_matlab.jld2",
             label = "uncoupled_motor_position_EI_from_matlab",
             preset = default_uncoupled_motor_position_EI_sweep,
         ),
