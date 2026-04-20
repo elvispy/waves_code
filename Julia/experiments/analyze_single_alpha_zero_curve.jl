@@ -314,44 +314,6 @@ function propose_local_root_point(local_rows, gp_point, mp_norm_list)
     return (; gp_point..., xM_over_L = clamp_to_domain(x_next, mp_norm_list))
 end
 
-function build_local_probe_points(local_rows, gp_point, mp_norm_list, n_probes::Int)
-    n_probes = max(1, n_probes)
-    center_point = propose_local_root_point(local_rows, gp_point, mp_norm_list)
-    center = center_point.xM_over_L
-    xmin = minimum(Float64.(mp_norm_list))
-    xmax = maximum(Float64.(mp_norm_list))
-    span = xmax - xmin
-
-    local_scale = if length(local_rows) >= 2
-        xs = sort(unique(r.xM_over_L for r in local_rows))
-        diffs = diff(xs)
-        positive = diffs[diffs .> 0]
-        isempty(positive) ? 0.01 * span : max(0.25 * minimum(positive), 1e-3)
-    else
-        0.01 * span
-    end
-
-    offsets = Float64[0.0]
-    k = 1
-    while length(offsets) < n_probes
-        push!(offsets, k * local_scale)
-        length(offsets) >= n_probes && break
-        push!(offsets, -k * local_scale)
-        k += 1
-    end
-
-    points = NamedTuple[]
-    seen = Set{Float64}()
-    for off in offsets
-        x = round(clamp_to_domain(center + off, mp_norm_list); digits=8)
-        if !(x in seen)
-            push!(seen, x)
-            push!(points, (; center_point..., xM_over_L = x))
-        end
-    end
-    return points
-end
-
 function cached_training_points(rows, edge_source::Symbol)
     # Filter only non-NaN results
     valid = filter(r -> !isnan(r.alpha), rows)
@@ -636,6 +598,86 @@ function build_row(sample_index, point, artifact, edge_source, n_modes; branch_i
     )
 end
 
+function refine_single_slice!(
+    s_idx::Int,
+    logEI::Real,
+    initial_anchor_xM,
+    working_rows,
+    artifact,
+    edge_source,
+    n_modes::Int,
+    branch_index::Int,
+    sweep_file::AbstractString,
+    mp_norm_list,
+    EI_list,
+    left_grid,
+    right_grid;
+    alpha_accept_tol::Real,
+    local_max_iterations::Int,
+    iteration_offset::Int=0,
+)
+    local_rows_state = copy(working_rows)
+    local_best = best_row_for_sample(local_rows_state, s_idx; branch_index=branch_index, edge_source=edge_source, sweep_file=sweep_file)
+
+    if !isnothing(local_best) && abs(local_best.alpha) <= alpha_accept_tol
+        return (best_row=local_best, new_rows=NamedTuple[], logs=[
+            "Slice $(s_idx): reused cached point at EI=$(local_best.EI), x_M/L=$(local_best.xM_over_L), alpha=$(local_best.alpha)"
+        ])
+    end
+
+    logs = String["Slice $(s_idx): refining target log10(EI)=$(round(logEI; digits=6))"]
+    new_rows = NamedTuple[]
+    local_anchor_xM = !isnothing(local_best) ? local_best.xM_over_L : initial_anchor_xM
+
+    for local_iteration in 1:local_max_iterations
+        relevant_training = training_rows(local_rows_state; edge_source=edge_source, sweep_file=sweep_file)
+        extra_pts = isempty(relevant_training) ? nothing : cached_training_points(relevant_training, edge_source)
+        alpha_gp, sa_gp = surrogate_models(mp_norm_list, EI_list, left_grid, right_grid; extra_points=extra_pts)
+        candidates = branch_candidates_at_logEI(mp_norm_list, logEI, alpha_gp, sa_gp; boundary_band=0.0)
+
+        if isempty(candidates)
+            push!(logs, "  local $(local_iteration) / $(local_max_iterations): no candidates found")
+            break
+        end
+
+        gp_point = choose_branch_candidate(candidates, branch_index; anchor_xM=local_anchor_xM)
+        local_slice_rows = slice_rows(local_rows_state, s_idx; branch_index=branch_index, edge_source=edge_source, sweep_file=sweep_file)
+        point = propose_local_root_point(local_slice_rows, gp_point, mp_norm_list)
+        point = (; point..., sample_index=s_idx, curve_point_index=s_idx)
+
+        if !isnothing(local_best) && same_point(local_best, point)
+            push!(logs, "  local $(local_iteration) / $(local_max_iterations): local root update repeated same point, stopping local refinement")
+            break
+        end
+
+        row = build_row(
+            s_idx,
+            point,
+            artifact,
+            edge_source,
+            n_modes;
+            branch_index=branch_index,
+            sweep_file=sweep_file,
+            iteration=iteration_offset + local_iteration,
+        )
+        push!(new_rows, row)
+        local_rows_state = merge_output_rows(local_rows_state, [row])
+        if isnothing(local_best) || abs(row.alpha) < abs(local_best.alpha)
+            local_best = row
+        end
+        local_anchor_xM = local_best.xM_over_L
+
+        push!(logs, @sprintf("  local %d / %d: EI=%.4e, x_M/L=%.4f, alpha=%.6f",
+                             local_iteration, local_max_iterations, row.EI, row.xM_over_L, row.alpha))
+
+        if abs(local_best.alpha) <= alpha_accept_tol
+            break
+        end
+    end
+
+    return (best_row=local_best, new_rows=new_rows, logs=logs)
+end
+
 function write_alpha_overlay_plot(path::AbstractString, mp_norm_list, EI_list, left_grid::AbstractMatrix, right_grid::AbstractMatrix,
                                   sampled, rows; extra_points=nothing, edge_source::Symbol=:domain,
                                   mp_count::Int=241, logEI_count::Int=241, bad_alpha_tol::Real=5e-2)
@@ -762,80 +804,80 @@ function main(data_dir::AbstractString, sweep_file::AbstractString, edge_source_
     target_indices = sort(collect(1:n_sample), rev=true)
     last_anchor_xM = nothing
     solve_counter = 0
-    probe_batch_size = parallel && nthreads() > 1 ? nthreads() : 1
+    chunk_size = parallel && nthreads() > 1 ? nthreads() : 1
 
-    for s_idx in target_indices
-        logEI = target_logs[s_idx]
-        local_best = best_row_for_sample(working_rows, s_idx; branch_index=branch_index, edge_source=edge_source, sweep_file=sweep_file)
-
-        if !isnothing(local_best) && abs(local_best.alpha) <= alpha_accept_tol
-            println("Slice $(s_idx) / $(n_sample): reused cached point at EI=$(local_best.EI), x_M/L=$(local_best.xM_over_L), alpha=$(local_best.alpha)")
-            last_anchor_xM = local_best.xM_over_L
-            continue
-        end
-
-        println("Slice $(s_idx) / $(n_sample): refining target log10(EI)=$(round(logEI; digits=6))")
-
-        for local_iteration in 1:local_max_iterations
-            relevant_training = training_rows(working_rows; edge_source=edge_source, sweep_file=sweep_file)
-            extra_pts = isempty(relevant_training) ? nothing : cached_training_points(relevant_training, edge_source)
-            alpha_gp, sa_gp = surrogate_models(mp_norm_list, EI_list, left_grid, right_grid; extra_points=extra_pts)
-            candidates = branch_candidates_at_logEI(mp_norm_list, logEI, alpha_gp, sa_gp; boundary_band=0.0)
-
-            if isempty(candidates)
-                println("  local $(local_iteration) / $(local_max_iterations): no candidates found")
-                break
-            end
-
-            local_anchor_xM = !isnothing(local_best) ? local_best.xM_over_L : last_anchor_xM
-            gp_point = choose_branch_candidate(candidates, branch_index; anchor_xM=local_anchor_xM)
-            local_rows = slice_rows(working_rows, s_idx; branch_index=branch_index, edge_source=edge_source, sweep_file=sweep_file)
-            probe_points = build_local_probe_points(local_rows, gp_point, mp_norm_list, probe_batch_size)
-            probe_points = [(; p..., sample_index=s_idx, curve_point_index=s_idx) for p in probe_points]
-
-            if !isempty(local_rows)
-                prior_x = Set(round(r.xM_over_L; digits=8) for r in local_rows)
-                probe_points = [p for p in probe_points if !(round(p.xM_over_L; digits=8) in prior_x)]
-            end
-
-            if isempty(probe_points)
-                println("  local $(local_iteration) / $(local_max_iterations): local root update produced no new probes, stopping local refinement")
-                break
-            end
-
-            batch_results = Vector{Any}(undef, length(probe_points))
-            if parallel && nthreads() > 1 && length(probe_points) > 1
-                @threads for pidx in eachindex(probe_points)
-                    point = probe_points[pidx]
-                    iter_id = solve_counter + pidx
-                    batch_results[pidx] = build_row(s_idx, point, artifact, edge_source, n_modes; branch_index=branch_index, sweep_file=sweep_file, iteration=iter_id)
-                end
-            else
-                for pidx in eachindex(probe_points)
-                    point = probe_points[pidx]
-                    iter_id = solve_counter + pidx
-                    batch_results[pidx] = build_row(s_idx, point, artifact, edge_source, n_modes; branch_index=branch_index, sweep_file=sweep_file, iteration=iter_id)
-                end
-            end
-            solve_counter += length(probe_points)
-
-            working_rows = merge_output_rows(working_rows, batch_results)
-            for row in batch_results
-                if isnothing(local_best) || abs(row.alpha) < abs(local_best.alpha)
-                    local_best = row
-                end
-                @printf("  local %d / %d: EI=%.4e, x_M/L=%.4f, alpha=%.6f\n",
-                        local_iteration, local_max_iterations, row.EI, row.xM_over_L, row.alpha)
-            end
-
-            if abs(local_best.alpha) <= alpha_accept_tol
-                break
+    for chunk_start in 1:chunk_size:length(target_indices)
+        chunk = target_indices[chunk_start:min(chunk_start + chunk_size - 1, length(target_indices))]
+        chunk_anchors = Dict{Int, Union{Nothing, Float64}}()
+        anchor_guess = last_anchor_xM
+        for s_idx in chunk
+            chunk_anchors[s_idx] = anchor_guess
+            existing = best_row_for_sample(working_rows, s_idx; branch_index=branch_index, edge_source=edge_source, sweep_file=sweep_file)
+            if !isnothing(existing)
+                anchor_guess = existing.xM_over_L
             end
         end
 
-        if !isnothing(local_best) && hasproperty(local_best, :modal)
-            best_rows[s_idx] = local_best
-            last_anchor_xM = local_best.xM_over_L
+        chunk_results = Vector{Any}(undef, length(chunk))
+        if parallel && nthreads() > 1 && length(chunk) > 1
+            @threads for cidx in eachindex(chunk)
+                s_idx = chunk[cidx]
+                chunk_results[cidx] = refine_single_slice!(
+                    s_idx,
+                    target_logs[s_idx],
+                    chunk_anchors[s_idx],
+                    working_rows,
+                    artifact,
+                    edge_source,
+                    n_modes,
+                    branch_index,
+                    sweep_file,
+                    mp_norm_list,
+                    EI_list,
+                    left_grid,
+                    right_grid;
+                    alpha_accept_tol=alpha_accept_tol,
+                    local_max_iterations=local_max_iterations,
+                    iteration_offset=solve_counter + (cidx - 1) * local_max_iterations,
+                )
+            end
+        else
+            for cidx in eachindex(chunk)
+                s_idx = chunk[cidx]
+                chunk_results[cidx] = refine_single_slice!(
+                    s_idx,
+                    target_logs[s_idx],
+                    chunk_anchors[s_idx],
+                    working_rows,
+                    artifact,
+                    edge_source,
+                    n_modes,
+                    branch_index,
+                    sweep_file,
+                    mp_norm_list,
+                    EI_list,
+                    left_grid,
+                    right_grid;
+                    alpha_accept_tol=alpha_accept_tol,
+                    local_max_iterations=local_max_iterations,
+                    iteration_offset=solve_counter + (cidx - 1) * local_max_iterations,
+                )
+            end
+        end
+        solve_counter += length(chunk) * local_max_iterations
+
+        for (cidx, s_idx) in enumerate(chunk)
+            result = chunk_results[cidx]
+            for line in result.logs
+                println(line)
+            end
+            if !isempty(result.new_rows)
+                working_rows = merge_output_rows(working_rows, result.new_rows)
+            end
+            if !isnothing(result.best_row) && hasproperty(result.best_row, :modal)
+                best_rows[s_idx] = result.best_row
+                last_anchor_xM = result.best_row.xM_over_L
+            end
         end
 
         if !isempty(best_rows)
