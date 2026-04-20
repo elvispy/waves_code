@@ -679,10 +679,11 @@ function refine_single_slice!(
 end
 
 function write_alpha_overlay_plot(path::AbstractString, mp_norm_list, EI_list, left_grid::AbstractMatrix, right_grid::AbstractMatrix,
-                                  sampled, rows; extra_points=nothing, edge_source::Symbol=:domain,
-                                  mp_count::Int=241, logEI_count::Int=241, bad_alpha_tol::Real=5e-2)
+                                  sampled, rows; edge_source::Symbol=:domain,
+                                  mp_count::Int=241, logEI_count::Int=241)
+    # Background GPR: only train on the initial coarse grid to preserve global field shape
     xtrain, ytrain, alpha_train, _, logEI_list =
-        gp_training_points(mp_norm_list, EI_list, left_grid, right_grid; extra_points=extra_points)
+        gp_training_points(mp_norm_list, EI_list, left_grid, right_grid; extra_points=nothing)
     alpha_gp = fit_gp2d(xtrain, ytrain, alpha_train)
 
     mp_dense = collect(range(minimum(Float64.(mp_norm_list)), maximum(Float64.(mp_norm_list)); length=mp_count))
@@ -944,7 +945,6 @@ function main(data_dir::AbstractString, sweep_file::AbstractString, edge_source_
         right_grid,
         final_sampled,
         final_rows;
-        extra_points=extra_pts,
         edge_source=edge_source,
     )
 
