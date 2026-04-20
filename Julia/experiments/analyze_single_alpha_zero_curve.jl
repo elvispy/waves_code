@@ -208,6 +208,9 @@ end
 
 function target_logEI_values(EI_list; n_sample::Int)
     logEI_list = sort(log10.(Float64.(EI_list)))
+    if n_sample <= 1
+        return [logEI_list[1]]
+    end
     return collect(range(first(logEI_list), last(logEI_list); length=n_sample))
 end
 
@@ -447,7 +450,7 @@ function build_row(sample_index, point, artifact, edge_source, n_modes; branch_i
         power = result.power,
         power_input = result.metadata.args.power,
         thrust = result.thrust,
-        tail_flat_ratio = result.tail_flat_ratio,
+        tail_flat_ratio = NaN, # Not in current result struct
         eta_left_domain = metrics.eta_left_domain,
         eta_right_domain = metrics.eta_right_domain,
         eta_left_beam = metrics.eta_left_beam,
