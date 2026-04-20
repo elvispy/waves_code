@@ -597,6 +597,7 @@ function main(data_dir::AbstractString, sweep_file::AbstractString, edge_source_
         alpha_gp, sa_gp = nothing, nothing
         
         # Local "paper" refinement (hallucination prevention)
+        # and Sequential Anchor Tracking
         for local_iter in 1:5
             relevant_training = training_rows(local_working_rows; edge_source=edge_source, sweep_file=sweep_file)
             extra_pts = isempty(relevant_training) ? nothing : cached_training_points(relevant_training, edge_source)
@@ -604,12 +605,32 @@ function main(data_dir::AbstractString, sweep_file::AbstractString, edge_source_
             
             # Update local rows with the NEW GP guesses (fake solves with alpha=0)
             proposed_batch = NamedTuple[]
-            for (s_idx, logEI) in enumerate(target_logs)
+            
+            # We track sequentially from HIGH EI to LOW EI for stability
+            target_indices = sort(collect(1:n_sample), rev=true)
+            last_best_xM = nothing
+            
+            for s_idx in target_indices
+                logEI = target_logs[s_idx]
                 candidates = branch_candidates_at_logEI(mp_norm_list, logEI, alpha_gp, sa_gp; boundary_band=0.0)
-                if length(candidates) >= branch_index
-                    push!(proposed_batch, (; candidates[branch_index]..., sample_index=s_idx, curve_point_index=s_idx))
+                
+                if isempty(candidates)
+                    continue
                 end
+                
+                # Selection logic:
+                cand = if isnothing(last_best_xM)
+                    # For the first slice (Highest EI), use branch_index
+                    length(candidates) >= branch_index ? candidates[branch_index] : candidates[end]
+                else
+                    # For subsequent slices, pick the one closest to our anchor
+                    argmin(c -> abs(c.xM_over_L - last_best_xM), candidates)
+                end
+                
+                last_best_xM = cand.xM_over_L
+                push!(proposed_batch, (; cand..., sample_index=s_idx, curve_point_index=s_idx))
             end
+            
             fake_solves = [(; p..., alpha=0.0, sa_ratio_beam=p.sa_ratio, sweep_file=sweep_file, edge_source=String(edge_source)) for p in proposed_batch]
             local_working_rows = merge_output_rows(working_rows, fake_solves)
         end
@@ -619,16 +640,25 @@ function main(data_dir::AbstractString, sweep_file::AbstractString, edge_source_
         points_to_solve = Dict{Int, NamedTuple}()
         bin_counts = solve_counts_by_bin(working_rows; width=logEI_bin_width, branch_index=branch_index, edge_source=edge_source, sweep_file=sweep_file)
 
-        for (sample_index, logEI) in enumerate(target_logs)
+        # One final sequential pass to get the REAL proposal points for this iteration
+        # using the refined GP from the paper-refinement steps.
+        last_anchor_xM = nothing
+        for s_idx in sort(collect(1:n_sample), rev=true)
+            logEI = target_logs[s_idx]
             candidates = branch_candidates_at_logEI(mp_norm_list, logEI, alpha_gp, sa_gp; boundary_band=0.0)
-            if length(candidates) < branch_index
-                continue
+            
+            if isempty(candidates) continue end
+            
+            point = if isnothing(last_anchor_xM)
+                length(candidates) >= branch_index ? candidates[branch_index] : candidates[end]
+            else
+                argmin(c -> abs(c.xM_over_L - last_anchor_xM), candidates)
             end
-            point = candidates[branch_index]
-            point = (; point..., sample_index=sample_index, curve_point_index=sample_index)
+            last_anchor_xM = point.xM_over_L
+            point = (; point..., sample_index=s_idx, curve_point_index=s_idx)
             
             # Check if we already have an acceptable result for this sample
-            existing = get(best_rows, sample_index, nothing)
+            existing = get(best_rows, s_idx, nothing)
             if !isnothing(existing) && abs(existing.alpha) <= alpha_accept_tol
                 continue
             end
@@ -636,14 +666,15 @@ function main(data_dir::AbstractString, sweep_file::AbstractString, edge_source_
             # Budget check
             bin = logEI_bin(logEI; width=logEI_bin_width)
             if get(bin_counts, bin, 0) < max_solves_per_bin
-                push!(queue_indices, sample_index)
-                points_to_solve[sample_index] = point
+                push!(queue_indices, s_idx)
+                points_to_solve[s_idx] = point
                 bin_counts[bin] = get(bin_counts, bin, 0) + 1
             end
         end
 
-        n_converged = n_sample - length(queue_indices)
+        n_converged = n_sample - length(queue_indices) - count(i -> !haskey(best_rows, i) && !haskey(points_to_solve, i), 1:n_sample)
         println("Iteration $(iteration): $(n_converged) / $(n_sample) points already converged.")
+
 
         if isempty(queue_indices)
             println("All points converged or budgets reached.")
