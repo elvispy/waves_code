@@ -4,6 +4,7 @@ using LinearAlgebra
 using Base.Threads
 using DelimitedFiles
 using Plots
+using Printf
 
 # Purpose: extract one `alpha = 0` curve from a saved Julia sweep artifact,
 # resimulate sampled points on that curve, and dump a detailed CSV for
