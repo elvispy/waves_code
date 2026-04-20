@@ -260,6 +260,98 @@ function same_point(a, b; x_tol::Real=1e-4, rel_EI_tol::Real=1e-8)
            abs(a.EI - b.EI) <= rel_EI_tol * max(abs(a.EI), abs(b.EI), 1.0)
 end
 
+function clamp_to_domain(x::Real, mp_norm_list)
+    return clamp(Float64(x), minimum(Float64.(mp_norm_list)), maximum(Float64.(mp_norm_list)))
+end
+
+function slice_rows(rows, sample_index::Int; branch_index::Int, edge_source::Symbol, sweep_file::AbstractString)
+    return filter(rows) do r
+        get(r, :sample_index, -1) == sample_index &&
+        get(r, :branch_index, branch_index) == branch_index &&
+        get(r, :edge_source, String(edge_source)) == String(edge_source) &&
+        get(r, :sweep_file, sweep_file) == sweep_file
+    end
+end
+
+function propose_local_root_point(local_rows, gp_point, mp_norm_list)
+    isempty(local_rows) && return gp_point
+
+    rows_sorted = sort(local_rows; by = r -> r.xM_over_L)
+
+    # Best case: use a real sign bracket and a secant/regula-falsi style estimate.
+    for i in 1:(length(rows_sorted) - 1)
+        r1 = rows_sorted[i]
+        r2 = rows_sorted[i + 1]
+        if r1.alpha == 0
+            return (; gp_point..., xM_over_L = r1.xM_over_L)
+        elseif r2.alpha == 0
+            return (; gp_point..., xM_over_L = r2.xM_over_L)
+        elseif signbit(r1.alpha) != signbit(r2.alpha)
+            x = r1.xM_over_L - r1.alpha * (r2.xM_over_L - r1.xM_over_L) / (r2.alpha - r1.alpha)
+            return (; gp_point..., xM_over_L = clamp_to_domain(x, mp_norm_list))
+        end
+    end
+
+    # Otherwise, take the two best real points and do a damped secant-style step.
+    best_two = sort(rows_sorted; by = r -> abs(r.alpha))[1:min(2, length(rows_sorted))]
+    if length(best_two) == 1
+        best = best_two[1]
+        step = 0.02 * sign(best.alpha)
+        return (; gp_point..., xM_over_L = clamp_to_domain(best.xM_over_L - step, mp_norm_list))
+    end
+
+    r1, r2 = best_two[1], best_two[2]
+    denom = (r2.alpha - r1.alpha)
+    if abs(denom) < 1e-10
+        best = abs(r1.alpha) <= abs(r2.alpha) ? r1 : r2
+        step = 0.01 * sign(best.alpha)
+        return (; gp_point..., xM_over_L = clamp_to_domain(best.xM_over_L - step, mp_norm_list))
+    end
+
+    x_secant = r1.xM_over_L - r1.alpha * (r2.xM_over_L - r1.xM_over_L) / denom
+    best = abs(r1.alpha) <= abs(r2.alpha) ? r1 : r2
+    x_next = 0.5 * x_secant + 0.5 * best.xM_over_L
+    return (; gp_point..., xM_over_L = clamp_to_domain(x_next, mp_norm_list))
+end
+
+function build_local_probe_points(local_rows, gp_point, mp_norm_list, n_probes::Int)
+    n_probes = max(1, n_probes)
+    center_point = propose_local_root_point(local_rows, gp_point, mp_norm_list)
+    center = center_point.xM_over_L
+    xmin = minimum(Float64.(mp_norm_list))
+    xmax = maximum(Float64.(mp_norm_list))
+    span = xmax - xmin
+
+    local_scale = if length(local_rows) >= 2
+        xs = sort(unique(r.xM_over_L for r in local_rows))
+        diffs = diff(xs)
+        positive = diffs[diffs .> 0]
+        isempty(positive) ? 0.01 * span : max(0.25 * minimum(positive), 1e-3)
+    else
+        0.01 * span
+    end
+
+    offsets = Float64[0.0]
+    k = 1
+    while length(offsets) < n_probes
+        push!(offsets, k * local_scale)
+        length(offsets) >= n_probes && break
+        push!(offsets, -k * local_scale)
+        k += 1
+    end
+
+    points = NamedTuple[]
+    seen = Set{Float64}()
+    for off in offsets
+        x = round(clamp_to_domain(center + off, mp_norm_list); digits=8)
+        if !(x in seen)
+            push!(seen, x)
+            push!(points, (; center_point..., xM_over_L = x))
+        end
+    end
+    return points
+end
+
 function cached_training_points(rows, edge_source::Symbol)
     # Filter only non-NaN results
     valid = filter(r -> !isnan(r.alpha), rows)
@@ -670,6 +762,7 @@ function main(data_dir::AbstractString, sweep_file::AbstractString, edge_source_
     target_indices = sort(collect(1:n_sample), rev=true)
     last_anchor_xM = nothing
     solve_counter = 0
+    probe_batch_size = parallel && nthreads() > 1 ? nthreads() : 1
 
     for s_idx in target_indices
         logEI = target_logs[s_idx]
@@ -695,23 +788,45 @@ function main(data_dir::AbstractString, sweep_file::AbstractString, edge_source_
             end
 
             local_anchor_xM = !isnothing(local_best) ? local_best.xM_over_L : last_anchor_xM
-            point = choose_branch_candidate(candidates, branch_index; anchor_xM=local_anchor_xM)
-            point = (; point..., sample_index=s_idx, curve_point_index=s_idx)
+            gp_point = choose_branch_candidate(candidates, branch_index; anchor_xM=local_anchor_xM)
+            local_rows = slice_rows(working_rows, s_idx; branch_index=branch_index, edge_source=edge_source, sweep_file=sweep_file)
+            probe_points = build_local_probe_points(local_rows, gp_point, mp_norm_list, probe_batch_size)
+            probe_points = [(; p..., sample_index=s_idx, curve_point_index=s_idx) for p in probe_points]
 
-            if !isnothing(local_best) && same_point(local_best, point)
-                println("  local $(local_iteration) / $(local_max_iterations): surrogate repeated same point, stopping local refinement")
+            if !isempty(local_rows)
+                prior_x = Set(round(r.xM_over_L; digits=8) for r in local_rows)
+                probe_points = [p for p in probe_points if !(round(p.xM_over_L; digits=8) in prior_x)]
+            end
+
+            if isempty(probe_points)
+                println("  local $(local_iteration) / $(local_max_iterations): local root update produced no new probes, stopping local refinement")
                 break
             end
 
-            solve_counter += 1
-            row = build_row(s_idx, point, artifact, edge_source, n_modes; branch_index=branch_index, sweep_file=sweep_file, iteration=solve_counter)
-            working_rows = merge_output_rows(working_rows, [row])
-            if isnothing(local_best) || abs(row.alpha) < abs(local_best.alpha)
-                local_best = row
+            batch_results = Vector{Any}(undef, length(probe_points))
+            if parallel && nthreads() > 1 && length(probe_points) > 1
+                @threads for pidx in eachindex(probe_points)
+                    point = probe_points[pidx]
+                    iter_id = solve_counter + pidx
+                    batch_results[pidx] = build_row(s_idx, point, artifact, edge_source, n_modes; branch_index=branch_index, sweep_file=sweep_file, iteration=iter_id)
+                end
+            else
+                for pidx in eachindex(probe_points)
+                    point = probe_points[pidx]
+                    iter_id = solve_counter + pidx
+                    batch_results[pidx] = build_row(s_idx, point, artifact, edge_source, n_modes; branch_index=branch_index, sweep_file=sweep_file, iteration=iter_id)
+                end
             end
+            solve_counter += length(probe_points)
 
-            @printf("  local %d / %d: EI=%.4e, x_M/L=%.4f, alpha=%.6f\n",
-                    local_iteration, local_max_iterations, row.EI, row.xM_over_L, row.alpha)
+            working_rows = merge_output_rows(working_rows, batch_results)
+            for row in batch_results
+                if isnothing(local_best) || abs(row.alpha) < abs(local_best.alpha)
+                    local_best = row
+                end
+                @printf("  local %d / %d: EI=%.4e, x_M/L=%.4f, alpha=%.6f\n",
+                        local_iteration, local_max_iterations, row.EI, row.xM_over_L, row.alpha)
+            end
 
             if abs(local_best.alpha) <= alpha_accept_tol
                 break
