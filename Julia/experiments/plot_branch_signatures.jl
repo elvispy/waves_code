@@ -45,18 +45,24 @@ function main()
         end
     end
 
-    # Plotting
-    p1 = heatmap(logEI_list, mp_norm_list, log10.(S_grid .+ 1e-10);
-                title="|S| (log10)", xlabel="log10(EI)", ylabel="xM / L", c=:viridis)
+    # Use a fixed wide range to see deep structural valleys
+    v_min = -10.0
+    v_max = -1.0
+
+    # Plotting: Vertical arrangement for better detail
+    p1 = heatmap(logEI_list, mp_norm_list, log10.(S_grid .+ 1e-12);
+                title="|S| (log10)", xlabel="log10(EI)", ylabel="xM / L", 
+                c=:viridis, clims=(v_min, v_max), interpolate=true)
     
-    p2 = heatmap(logEI_list, mp_norm_list, log10.(A_grid .+ 1e-10);
-                title="|A| (log10)", xlabel="log10(EI)", ylabel="xM / L", c=:viridis)
+    p2 = heatmap(logEI_list, mp_norm_list, log10.(A_grid .+ 1e-12);
+                title="|A| (log10)", xlabel="log10(EI)", ylabel="xM / L", 
+                c=:viridis, clims=(v_min, v_max), interpolate=true)
                 
     p3 = heatmap(logEI_list, mp_norm_list, cos_grid;
                 title="cos(arg(A) - arg(S))", xlabel="log10(EI)", ylabel="xM / L", 
-                c=:balance, clims=(-1, 1))
+                c=:balance, clims=(-1, 1), interpolate=true)
                 
-    combined = plot(p1, p2, p3, layout=(1,3), size=(1500, 500))
+    combined = plot(p1, p2, p3, layout=(3,1), size=(1000, 2400), margin=10Plots.mm)
     
     output_path = "Julia/output/branch_physical_signatures.pdf"
     savefig(combined, output_path)

@@ -6,7 +6,7 @@ using DelimitedFiles
 using Plots
 using Printf
 
-# Purpose: extract one `alpha = 0` curve from a saved Julia sweep artifact,
+# Purpose: extract one `sa_ratio = 0` curve from a saved Julia sweep artifact,
 # resimulate sampled points on that curve, and dump a detailed CSV for
 # mechanism-level analysis.
 
@@ -32,11 +32,10 @@ function edge_fields(summary, edge_source::Symbol)
 end
 
 function build_scalar_fields(left_grid::AbstractMatrix, right_grid::AbstractMatrix)
-    alpha_grid = beam_asymmetry.(left_grid, right_grid)
     S_grid = (right_grid .+ left_grid) ./ 2
     A_grid = (right_grid .- left_grid) ./ 2
-    sa_ratio_grid = log10.(abs.(S_grid) ./ (abs.(A_grid) .+ eps()))
-    return alpha_grid, sa_ratio_grid
+    sa_ratio_grid = log10.(abs.(S_grid) ./ (abs.(A_grid) .+ 1e-12))
+    return sa_ratio_grid
 end
 
 function gaussian_rbf_weights(x::AbstractVector{<:Real}, y::AbstractVector{<:Real}; epsilon::Real)
@@ -138,51 +137,48 @@ function predict_gp2d(model, xq::Real, yq::Real)
     end
     return model.mean + acc
 end
+
 function gp_training_points(mp_norm_list, EI_list, left_grid::AbstractMatrix, right_grid::AbstractMatrix; extra_points=nothing)
-    alpha_grid, sa_ratio_grid = build_scalar_fields(left_grid, right_grid)
+    sa_ratio_grid = build_scalar_fields(left_grid, right_grid)
     logEI_list = log10.(Float64.(EI_list))
 
     xtrain = Float64[]
     ytrain = Float64[]
-    alpha_train = Float64[]
     sa_train = Float64[]
 
     # 1. Add base grid points
     for ie in eachindex(logEI_list), im in eachindex(mp_norm_list)
         push!(xtrain, Float64(mp_norm_list[im]))
         push!(ytrain, Float64(logEI_list[ie]))
-        push!(alpha_train, Float64(alpha_grid[im, ie]))
         push!(sa_train, Float64(sa_ratio_grid[im, ie]))
     end
 
     if !isnothing(extra_points)
         append!(xtrain, extra_points.x)
         append!(ytrain, extra_points.y)
-        append!(alpha_train, extra_points.alpha)
         append!(sa_train, extra_points.sa)
     end
-    return xtrain, ytrain, alpha_train, sa_train, logEI_list
+    return xtrain, ytrain, sa_train, logEI_list
 end
 
 function surrogate_models(mp_norm_list, EI_list, left_grid::AbstractMatrix, right_grid::AbstractMatrix; extra_points=nothing)
-    xtrain, ytrain, alpha_train, sa_train, _ =
+    xtrain, ytrain, sa_train, _ =
         gp_training_points(mp_norm_list, EI_list, left_grid, right_grid; extra_points=extra_points)
-    return fit_gp2d(xtrain, ytrain, alpha_train), fit_gp2d(xtrain, ytrain, sa_train)
+    return fit_gp2d(xtrain, ytrain, sa_train)
 end
 
-function nontrivial_candidates(candidates; boundary_band::Real=0.0)
+function nontrivial_candidates(candidates, branch_index::Int; boundary_band::Real=0.0)
     isempty(candidates) && return candidates
-    # 1. Sort found roots by position
+    # 1. Sort found candidates by position
     sorted = sort(candidates; by = c -> c.xM_over_L)
-    # 2. Smart Skip: skip center symmetry root (Branch 0)
-    # We use 3% as a safe margin for the symmetry root.
-    if !isempty(sorted) && sorted[1].xM_over_L < 0.03
+    # 2. Smart Skip: skip center symmetry root (Branch 0) if not explicitly tracking it.
+    if branch_index != 0 && !isempty(sorted) && sorted[1].xM_over_L < 0.03
         return sorted[2:end]
     end
     return sorted
 end
 
-function branch_candidates_at_logEI(mp_norm_list, logEI::Real, alpha_gp, sa_gp; mp_count::Int=401, boundary_band::Real=0.0, window=nothing)
+function branch_candidates_at_logEI(mp_norm_list, logEI::Real, sa_gp; mp_count::Int=401, boundary_band::Real=0.0, window=nothing, branch_index::Int=1)
     # Search Domain: Hard lock to [0.01, 0.49] to avoid symmetry/edge effects
     mp_min = 0.01
     mp_max = 0.49
@@ -193,21 +189,32 @@ function branch_candidates_at_logEI(mp_norm_list, logEI::Real, alpha_gp, sa_gp; 
     end
 
     mp_dense = collect(range(mp_min, mp_max; length=mp_count))
-    alpha_row = [predict_gp2d(alpha_gp, mp, logEI) for mp in mp_dense]
     sa_row = [predict_gp2d(sa_gp, mp, logEI) for mp in mp_dense]
 
     candidates = NamedTuple[]
-    for im in 1:(length(mp_dense) - 1)
-        if alpha_row[im] == 0
-            push!(candidates, (EI = 10.0^logEI, xM_over_L = mp_dense[im], sa_ratio = sa_row[im], target_log10_EI = logEI))
-        elseif alpha_row[im] * alpha_row[im + 1] < 0
-            t = alpha_row[im] / (alpha_row[im] - alpha_row[im + 1])
-            mp_zero = mp_dense[im] + t * (mp_dense[im + 1] - mp_dense[im])
-            sa_zero = sa_row[im] + t * (sa_row[im + 1] - sa_row[im])
-            push!(candidates, (EI = 10.0^logEI, xM_over_L = mp_zero, sa_ratio = sa_zero, target_log10_EI = logEI))
+    for im in 2:(length(mp_dense) - 1)
+        # Check for local extrema
+        is_min = sa_row[im] < sa_row[im-1] && sa_row[im] < sa_row[im+1]
+        is_max = sa_row[im] > sa_row[im-1] && sa_row[im] > sa_row[im+1]
+
+        if (branch_index == 1 && is_min) || ((branch_index == 2 || branch_index == 0) && is_max)
+            # 3-point parabolic refinement for the GP extremum to get sub-grid precision
+            x1, x2, x3 = mp_dense[im-1], mp_dense[im], mp_dense[im+1]
+            y1, y2, y3 = sa_row[im-1], sa_row[im], sa_row[im+1]
+
+            denom = (x2 - x1) * (y2 - y3) - (x2 - x3) * (y2 - y1)
+            if abs(denom) > 1e-12
+                x_opt = x2 - 0.5 * ((x2 - x1)^2 * (y2 - y3) - (x2 - x3)^2 * (y2 - y1)) / denom
+                x_opt = clamp(x_opt, x1, x3)
+                sa_opt = predict_gp2d(sa_gp, x_opt, logEI)
+            else
+                x_opt = x2
+                sa_opt = y2
+            end
+            push!(candidates, (EI = 10.0^logEI, xM_over_L = x_opt, sa_ratio = sa_opt, target_log10_EI = logEI))
         end
     end
-    return nontrivial_candidates(candidates; boundary_band=boundary_band)
+    return nontrivial_candidates(candidates, branch_index; boundary_band=boundary_band)
 end
 
 function target_logEI_values(EI_list; n_sample::Int)
@@ -243,7 +250,9 @@ function best_row_for_sample(rows, sample_index::Int; branch_index::Int, edge_so
         get(r, :sweep_file, sweep_file) == sweep_file
     end
     isempty(candidates) && return nothing
-    return argmin(r -> abs(r.alpha), candidates)
+    # For Branch 1, we want the point with the most negative sa_ratio (deepest valley)
+    # For others, we want the most positive sa_ratio (highest peak)
+    return branch_index == 1 ? argmin(r -> r.sa_ratio, candidates) : argmax(r -> r.sa_ratio, candidates)
 end
 
 function argmin(f, xs)
@@ -259,27 +268,28 @@ function argmin(f, xs)
     return best
 end
 
+function argmax(f, xs)
+    best = first(xs)
+    bestv = f(best)
+    for x in Iterators.drop(xs, 1)
+        v = f(x)
+        if v > bestv
+            best = x
+            bestv = v
+        end
+    end
+    return best
+end
+
 function choose_branch_candidate(candidates, branch_index::Int; anchor_xM=nothing)
     isempty(candidates) && return nothing
     
-    # 1. Hard Physical Filter: Branch 1 is antisymmetric (SA_ratio < 0).
-    # Branch 0 is symmetric (SA_ratio > 0).
-    filtered = if branch_index == 1
-        filter(c -> c.sa_ratio < 0, candidates)
-    elseif branch_index == 0
-        filter(c -> c.sa_ratio > 0, candidates)
-    else
-        candidates
-    end
-    
-    if isempty(filtered)
-        return nothing
-    end
-
+    # We no longer hard-filter by side/slope to avoid being "locked" incorrectly.
+    # Instead, we rely on the anchor and proximity to select the manifold.
     if isnothing(anchor_xM)
-        return length(filtered) >= branch_index ? filtered[branch_index] : filtered[end]
+        return length(candidates) >= branch_index ? candidates[branch_index] : candidates[end]
     end
-    return argmin(c -> abs(c.xM_over_L - anchor_xM), filtered)
+    return argmin(c -> abs(c.xM_over_L - anchor_xM), candidates)
 end
 
 function same_point(a, b; x_tol::Real=1e-4, rel_EI_tol::Real=1e-8)
@@ -300,7 +310,7 @@ function slice_rows(rows, sample_index::Int; branch_index::Int, edge_source::Sym
     end
 end
 
-function propose_local_root_point(local_slice_rows, gp_point, mp_norm_list; window=nothing)
+function propose_local_extremum_point(local_slice_rows, gp_point, mp_norm_list; window=nothing, branch_index::Int=1)
     # Target point from GP
     x_target = gp_point.xM_over_L
 
@@ -318,51 +328,38 @@ function propose_local_root_point(local_slice_rows, gp_point, mp_norm_list; wind
 
     rows_sorted = sort(local_slice_rows; by = r -> r.xM_over_L)
 
-
-    # Best case: use a real sign bracket and a secant/regula-falsi style estimate.
-    for i in 1:(length(rows_sorted) - 1)
-        r1 = rows_sorted[i]
-        r2 = rows_sorted[i + 1]
-        if r1.alpha == 0
-            return (; gp_point..., xM_over_L = r1.xM_over_L)
-        elseif r2.alpha == 0
-            return (; gp_point..., xM_over_L = r2.xM_over_L)
-        elseif signbit(r1.alpha) != signbit(r2.alpha)
-            x = r1.xM_over_L - r1.alpha * (r2.xM_over_L - r1.xM_over_L) / (r2.alpha - r1.alpha)
-            return (; gp_point..., xM_over_L = clamp(x, xmin, xmax))
+    # If we have at least 3 points, try parabolic fit around the best point
+    if length(rows_sorted) >= 3
+        best_row = branch_index == 1 ? argmin(r -> r.sa_ratio, rows_sorted) : argmax(r -> r.sa_ratio, rows_sorted)
+        idx_best = findfirst(r -> r.xM_over_L == best_row.xM_over_L, rows_sorted)
+        
+        if !isnothing(idx_best) && idx_best > 1 && idx_best < length(rows_sorted)
+            # We have a bracket! Use 3-point parabolic fit.
+            r1, r2, r3 = rows_sorted[idx_best-1], rows_sorted[idx_best], rows_sorted[idx_best+1]
+            x1, x2, x3 = r1.xM_over_L, r2.xM_over_L, r3.xM_over_L
+            y1, y2, y3 = r1.sa_ratio, r2.sa_ratio, r3.sa_ratio
+            
+            denom = (x2 - x1) * (y2 - y3) - (x2 - x3) * (y2 - y1)
+            if abs(denom) > 1e-12
+                x_opt = x2 - 0.5 * ((x2 - x1)^2 * (y2 - y3) - (x2 - x3)^2 * (y2 - y1)) / denom
+                return (; gp_point..., xM_over_L = clamp(x_opt, xmin, xmax))
+            end
         end
     end
 
-    # Otherwise, take the two best real points and do a damped secant-style step.
-    best_two = sort(rows_sorted; by = r -> abs(r.alpha))[1:min(2, length(rows_sorted))]
-    if length(best_two) == 1
-        best = best_two[1]
-        step = 0.02 * sign(best.alpha)
-        return (; gp_point..., xM_over_L = clamp(best.xM_over_L - step, xmin, xmax))
-    end
-
-    r1, r2 = best_two[1], best_two[2]
-    denom = (r2.alpha - r1.alpha)
-    if abs(denom) < 1e-10
-        best = abs(r1.alpha) <= abs(r2.alpha) ? r1 : r2
-        step = 0.01 * sign(best.alpha)
-        return (; gp_point..., xM_over_L = clamp(best.xM_over_L - step, xmin, xmax))
-    end
-
-    x_secant = r1.xM_over_L - r1.alpha * (r2.xM_over_L - r1.xM_over_L) / denom
-    best = abs(r1.alpha) <= abs(r2.alpha) ? r1 : r2
-    x_next = 0.5 * x_secant + 0.5 * best.xM_over_L
+    # Fallback/Exploration: take a damped step from the current best towards the GP target
+    best_row = branch_index == 1 ? argmin(r -> r.sa_ratio, local_slice_rows) : argmax(r -> r.sa_ratio, local_slice_rows)
+    x_next = 0.7 * x_target + 0.3 * best_row.xM_over_L
     return (; gp_point..., xM_over_L = clamp(x_next, xmin, xmax))
 end
 
 function cached_training_points(rows, edge_source::Symbol)
     # Filter only non-NaN results
-    valid = filter(r -> !isnan(r.alpha), rows)
+    valid = filter(r -> !isnan(r.sa_ratio), rows)
     return (
         x = [r.xM_over_L for r in valid],
         y = [log10(r.EI) for r in valid],
-        alpha = [r.alpha for r in valid],
-        sa = [get(r, :sa_ratio_beam, 0.0) for r in valid]
+        sa = [r.sa_ratio for r in valid]
     )
 end
 
@@ -439,7 +436,7 @@ function curve_csv_header(n_modes::Int)
         "eta_right_domain_re", "eta_right_domain_im", "eta_right_domain_abs", "eta_right_domain_phase_deg",
         "eta_left_beam_re", "eta_left_beam_im", "eta_left_beam_abs", "eta_left_beam_phase_deg",
         "eta_right_beam_re", "eta_right_beam_im", "eta_right_beam_abs", "eta_right_beam_phase_deg",
-        "alpha", "alpha_domain", "alpha_beam", "sa_ratio_domain", "sa_ratio_beam",
+        "sa_ratio", "sa_ratio_domain", "sa_ratio_beam",
     ]
     for j in 0:(n_modes - 1)
         append!(header, [
@@ -498,9 +495,7 @@ function curve_csv_fields(row, n_modes::Int)
     append!(fields, split(format_complex(row.eta_left_beam), ","))
     append!(fields, split(format_complex(row.eta_right_beam), ","))
     append!(fields, [
-        string(row.alpha),
-        string(row.alpha_domain),
-        string(row.alpha_beam),
+        string(row.sa_ratio),
         string(row.sa_ratio_domain),
         string(row.sa_ratio_beam),
     ])
@@ -548,15 +543,14 @@ function append_beam_curve_csv(path::AbstractString, rows, written_keys::Set)
     file_exists = isfile(path)
     open(path, file_exists ? "a" : "w") do io
         if !file_exists
-            println(io, "branch_index,target_log10_EI,log10_EI,xM_over_L,alpha_beam,sa_ratio_beam")
+            println(io, "branch_index,target_log10_EI,log10_EI,xM_over_L,sa_ratio_beam")
         end
         for row in rows_to_write
-            @printf(io, "%d,%.10f,%.6f,%.6f,%.6e,%.6f\n",
+            @printf(io, "%d,%.10f,%.6f,%.6f,%.6f\n",
                     get(row, :branch_index, 1),
                     get(row, :target_log10_EI, log10(row.EI)),
                     log10(row.EI),
                     row.xM_over_L,
-                    row.alpha_beam,
                     row.sa_ratio_beam)
             push!(written_keys, row_key(row))
         end
@@ -590,9 +584,8 @@ function load_cached_curve_rows(path::AbstractString, n_modes::Int)
                 target_log10_EI = isnothing(col("target_log10_EI")) ? Float64(log10(Float64(data[i, col("EI")]))) : Float64(data[i, col("target_log10_EI")]),
                 EI = Float64(data[i, col("EI")]),
                 xM_over_L = Float64(data[i, col("xM_over_L")]),
-                alpha = Float64(data[i, col("alpha")]),
-                alpha_beam = Float64(data[i, col("alpha_beam")]),
-                sa_ratio_beam = Float64(data[i, col("sa_ratio_beam")]),
+                sa_ratio = isnothing(col("sa_ratio")) ? 0.0 : Float64(data[i, col("sa_ratio")]),
+                sa_ratio_beam = isnothing(col("sa_ratio_beam")) ? 0.0 : Float64(data[i, col("sa_ratio_beam")]),
                 sample_index = Int(data[i, col("sample_index")]),
                 sweep_file = String(data[i, col("sweep_file")]),
                 edge_source = String(data[i, col("edge_source")]),
@@ -611,16 +604,14 @@ function build_row(sample_index, point, artifact, edge_source, n_modes; branch_i
     modal = decompose_raft_freefree_modes(result; num_modes=n_modes, verbose=false)
     metrics = beam_edge_metrics(result)
 
-    alpha_domain = result.thrust # Standard solver thrust
-    alpha_beam = beam_asymmetry(metrics.eta_left_beam, metrics.eta_right_beam)
     S_domain = (metrics.eta_right_domain + metrics.eta_left_domain) / 2
     A_domain = (metrics.eta_right_domain - metrics.eta_left_domain) / 2
-    sa_ratio_domain = log10(abs(S_domain) / (abs(A_domain) + eps()))
+    sa_ratio_domain = log10(abs(S_domain) / (abs(A_domain) + 1e-12))
     S_beam = (metrics.eta_right_beam + metrics.eta_left_beam) / 2
     A_beam = (metrics.eta_right_beam - metrics.eta_left_beam) / 2
-    sa_ratio_beam = log10(abs(S_beam) / (abs(A_beam) + eps()))
+    sa_ratio_beam = log10(abs(S_beam) / (abs(A_beam) + 1e-12))
 
-    alpha_selected = edge_source == :domain ? alpha_domain : alpha_beam
+    sa_ratio_selected = edge_source == :domain ? sa_ratio_domain : sa_ratio_beam
 
     return (
         branch_index = branch_index,
@@ -645,9 +636,7 @@ function build_row(sample_index, point, artifact, edge_source, n_modes; branch_i
         eta_right_domain = metrics.eta_right_domain,
         eta_left_beam = metrics.eta_left_beam,
         eta_right_beam = metrics.eta_right_beam,
-        alpha = alpha_selected,
-        alpha_domain = alpha_domain,
-        alpha_beam = alpha_beam,
+        sa_ratio = sa_ratio_selected,
         sa_ratio_domain = sa_ratio_domain,
         sa_ratio_beam = sa_ratio_beam,
         modal = modal
@@ -668,7 +657,7 @@ function refine_single_slice!(
     EI_list,
     left_grid,
     right_grid;
-    alpha_accept_tol::Real,
+    sa_accept_tol::Real,
     local_max_iterations::Int,
     iteration_offset::Int=0,
     tunnel_width::Real=0.10,
@@ -676,9 +665,9 @@ function refine_single_slice!(
     local_rows_state = copy(working_rows)
     local_best = best_row_for_sample(local_rows_state, s_idx; branch_index=branch_index, edge_source=edge_source, sweep_file=sweep_file)
 
-    if !isnothing(local_best) && abs(local_best.alpha) <= alpha_accept_tol
+    if !isnothing(local_best) && abs(local_best.sa_ratio) <= sa_accept_tol
         return (best_row=local_best, new_rows=NamedTuple[], logs=[
-            "Slice $(s_idx): reused cached point at EI=$(local_best.EI), x_M/L=$(local_best.xM_over_L), alpha=$(local_best.alpha)"
+            "Slice $(s_idx): reused cached point at EI=$(local_best.EI), x_M/L=$(local_best.xM_over_L), sa_ratio=$(local_best.sa_ratio)"
         ])
     end
 
@@ -689,11 +678,11 @@ function refine_single_slice!(
     for local_iteration in 1:local_max_iterations
         relevant_training = training_rows(local_rows_state; edge_source=edge_source, sweep_file=sweep_file)
         extra_pts = isempty(relevant_training) ? nothing : cached_training_points(relevant_training, edge_source)
-        alpha_gp, sa_gp = surrogate_models(mp_norm_list, EI_list, left_grid, right_grid; extra_points=extra_pts)
+        sa_gp = surrogate_models(mp_norm_list, EI_list, left_grid, right_grid; extra_points=extra_pts)
         
         # Identity Tunneling: only look for roots near the anchor
         window = isnothing(local_anchor_xM) ? nothing : (local_anchor_xM - tunnel_width, local_anchor_xM + tunnel_width)
-        candidates = branch_candidates_at_logEI(mp_norm_list, logEI, alpha_gp, sa_gp; boundary_band=0.0, window=window)
+        candidates = branch_candidates_at_logEI(mp_norm_list, logEI, sa_gp; boundary_band=0.0, window=window)
 
         if isempty(candidates)
             push!(logs, "  local $(local_iteration) / $(local_max_iterations): no candidates found in window $(window)")
@@ -722,19 +711,11 @@ function refine_single_slice!(
         )
 
         # Physical Identity Guard: Self-Healing Anchor
-        # Reject jump > 0.15 or physical sign violation.
+        # Reject jump > 0.15.
         jump = isnothing(local_anchor_xM) ? 0.0 : abs(row.xM_over_L - local_anchor_xM)
-        is_physically_valid = if branch_index == 1
-            row.sa_ratio_beam < 0
-        elseif branch_index == 0
-            row.sa_ratio_beam > 0
-        else
-            true
-        end
 
-        if jump > 0.15 || !is_physically_valid
-            push!(logs, @sprintf("  REJECTED local %d: jump=%.3f (>0.15) or invalid SA=%.3f (wanted %s)",
-                                 local_iteration, jump, row.sa_ratio_beam, branch_index == 1 ? "<0" : ">0"))
+        if jump > 0.15
+            push!(logs, @sprintf("  REJECTED local %d: jump=%.3f (>0.15)", local_iteration, jump))
             # We still add to working state for GP training but NOT to the accepted result set
             local_rows_state = merge_output_rows(local_rows_state, [row])
             continue
@@ -742,15 +723,15 @@ function refine_single_slice!(
 
         push!(new_rows, row)
         local_rows_state = merge_output_rows(local_rows_state, [row])
-        if isnothing(local_best) || abs(row.alpha) < abs(local_best.alpha)
+        if isnothing(local_best) || abs(row.sa_ratio) < abs(local_best.sa_ratio)
             local_best = row
         end
         local_anchor_xM = local_best.xM_over_L
 
-        push!(logs, @sprintf("  local %d / %d: EI=%.4e, x_M/L=%.4f, alpha=%.6f",
-                             local_iteration, local_max_iterations, row.EI, row.xM_over_L, row.alpha))
+        push!(logs, @sprintf("  local %d / %d: EI=%.4e, x_M/L=%.4f, sa_ratio=%.6f",
+                             local_iteration, local_max_iterations, row.EI, row.xM_over_L, row.sa_ratio))
 
-        if abs(local_best.alpha) <= alpha_accept_tol
+        if abs(local_best.sa_ratio) <= sa_accept_tol
             break
         end
     end
@@ -758,42 +739,43 @@ function refine_single_slice!(
     return (best_row=local_best, new_rows=new_rows, logs=logs)
 end
 
-function write_alpha_overlay_plot(path::AbstractString, mp_norm_list, EI_list, left_grid::AbstractMatrix, right_grid::AbstractMatrix,
+function write_sa_overlay_plot(path::AbstractString, mp_norm_list, EI_list, left_grid::AbstractMatrix, right_grid::AbstractMatrix,
                                   rows; edge_source::Symbol=:domain,
                                   mp_count::Int=241, logEI_count::Int=241)
     # Background GPR: only train on the initial coarse grid to preserve global field shape
-    xtrain, ytrain, alpha_train, _, logEI_list =
+    xtrain, ytrain, sa_train, logEI_list =
         gp_training_points(mp_norm_list, EI_list, left_grid, right_grid; extra_points=nothing)
-    alpha_gp = fit_gp2d(xtrain, ytrain, alpha_train)
+    sa_gp = fit_gp2d(xtrain, ytrain, sa_train)
 
     mp_dense = collect(range(minimum(Float64.(mp_norm_list)), maximum(Float64.(mp_norm_list)); length=mp_count))
     logEI_dense = collect(range(minimum(logEI_list), maximum(logEI_list); length=logEI_count))
-    alpha_pred = Matrix{Float64}(undef, length(mp_dense), length(logEI_dense))
+    sa_pred = Matrix{Float64}(undef, length(mp_dense), length(logEI_dense))
     @inbounds for j in eachindex(logEI_dense), i in eachindex(mp_dense)
-        alpha_pred[i, j] = predict_gp2d(alpha_gp, mp_dense[i], logEI_dense[j])
+        sa_pred[i, j] = predict_gp2d(sa_gp, mp_dense[i], logEI_dense[j])
     end
 
     plt = contourf(
         logEI_dense,
         mp_dense,
-        alpha_pred;
+        sa_pred;
         levels=31,
         c=:balance,
         xlabel="log10(EI)",
         ylabel="x_M / L",
-        colorbar_title="alpha ($(edge_source))",
-        title="Predicted alpha field with traced branch",
-        size=(1000, 700),
+        colorbar_title="sa_ratio ($(edge_source))",
+        title="Predicted SA-ratio field with traced branch",
+        size=(1000, 1200),
+        interpolate=true,
     )
     contour!(
         plt,
         logEI_dense,
         mp_dense,
-        alpha_pred;
+        sa_pred;
         levels=[0.0],
         color=:white,
         linewidth=2,
-        label="GP alpha=0",
+        label="GP sa_ratio=0",
     )
 
     solved_rows = sort(rows; by = r -> get(r, :target_log10_EI, log10(r.EI)))
@@ -841,7 +823,7 @@ end
 
 function main(data_dir::AbstractString, sweep_file::AbstractString, edge_source_in::AbstractString,
               branch_index::Int, n_sample::Int, output_file::AbstractString, parallel::Bool;
-              cache_file=nothing, alpha_accept_tol::Float64=5e-3, n_modes::Int=8,
+              cache_file=nothing, sa_accept_tol::Float64=1e-3, n_modes::Int=8,
               local_max_iterations::Int=5, tunnel_width::Real=0.10)
     
     data_dir = ensure_dir(normpath(data_dir))
@@ -949,13 +931,16 @@ function main(data_dir::AbstractString, sweep_file::AbstractString, edge_source_
 
         chunk_results = Vector{Any}(undef, length(chunk))
         if parallel && nthreads() > 1 && length(chunk) > 1
+            # Pass a local snapshot of working_rows to the threaded loop to avoid MethodError issues
+            # and ensure threads operate on a consistent state for this chunk.
+            rows_snapshot = copy(working_rows)
             @threads for cidx in eachindex(chunk)
                 s_idx = chunk[cidx]
                 chunk_results[cidx] = refine_single_slice!(
                     s_idx,
                     target_logs[s_idx],
                     chunk_anchors[s_idx],
-                    working_rows,
+                    rows_snapshot,
                     artifact,
                     edge_source,
                     n_modes,
@@ -965,7 +950,7 @@ function main(data_dir::AbstractString, sweep_file::AbstractString, edge_source_
                     EI_list,
                     left_grid,
                     right_grid;
-                    alpha_accept_tol=alpha_accept_tol,
+                    sa_accept_tol=sa_accept_tol,
                     local_max_iterations=local_max_iterations,
                     iteration_offset=solve_counter + (cidx - 1) * local_max_iterations,
                     tunnel_width=tunnel_width,
@@ -988,7 +973,7 @@ function main(data_dir::AbstractString, sweep_file::AbstractString, edge_source_
                     EI_list,
                     left_grid,
                     right_grid;
-                    alpha_accept_tol=alpha_accept_tol,
+                    sa_accept_tol=sa_accept_tol,
                     local_max_iterations=local_max_iterations,
                     iteration_offset=solve_counter + (cidx - 1) * local_max_iterations,
                     tunnel_width=tunnel_width,
@@ -1024,7 +1009,7 @@ function main(data_dir::AbstractString, sweep_file::AbstractString, edge_source_
     written_beam_keys = append_beam_curve_csv(beam_output_path, final_rows, written_beam_keys)
     overlay_path = replace(output_path, r"\.csv$" => "_branch$(branch_index)_overlay.pdf")
     
-    write_alpha_overlay_plot(
+    write_sa_overlay_plot(
         overlay_path,
         mp_norm_list,
         EI_list,
@@ -1050,6 +1035,7 @@ if abspath(PROGRAM_FILE) == @__FILE__
     parallel = length(ARGS) >= 7 ? parse(Bool, ARGS[7]) : (nthreads() > 1)
     local_max_iterations = length(ARGS) >= 8 ? parse(Int, ARGS[8]) : 5
     tunnel_width = length(ARGS) >= 9 ? parse(Float64, ARGS[9]) : 0.10
+    sa_accept_tol = length(ARGS) >= 10 ? parse(Float64, ARGS[10]) : 1e-3
 
     main(
         data_dir,
@@ -1061,5 +1047,6 @@ if abspath(PROGRAM_FILE) == @__FILE__
         parallel;
         local_max_iterations=local_max_iterations,
         tunnel_width=tunnel_width,
+        sa_accept_tol=sa_accept_tol,
     )
 end
