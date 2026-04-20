@@ -683,8 +683,14 @@ function main(data_dir::AbstractString, sweep_file::AbstractString, edge_source_
             end
         end
         
+        # INCREMENTAL SAVE: Write current results to CSV after each iteration
+        # This prevents data loss if the session is killed.
+        println("Saving progress to $output_path...")
+        current_final_rows = [best_rows[i] for i in sort(collect(keys(best_rows)))]
+        combined_save_rows = merge_output_rows(existing_output_rows, current_final_rows)
+        write_curve_csv(output_path, combined_save_rows, n_modes)
+        
         # Intermediate retraining of GP for the next GLOBAL iteration
-        # relevant_training updated for next pass
     end
 
     # Final trace of the branch using refined surrogate
