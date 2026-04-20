@@ -947,87 +947,96 @@ function main(
     !isempty(relevant_training) && println("Using $(length(relevant_training)) cached evaluated points compatible with this dataset")
 
     BLAS.set_num_threads(1)
-    rows = Vector{Any}(undef, length(sampled))
     log_lock = ReentrantLock()
-    attempts = zeros(Int, length(sampled))
     max_iterations = 5
     max_solves_per_bin = 5
     logEI_bin_width = 0.03
     best_rows = Dict{Int, Any}()
     working_rows = copy(all_rows)
 
+    # Main active learning loop
     for iteration in 1:max_iterations
+        # 1. Propose candidates using CURRENT surrogate (refined by any working_rows)
         relevant_training = training_rows(working_rows; edge_source=edge_source, sweep_file=sweep_file)
-        sampled_iter = iterative_sample_candidates(
-            mp_norm_list, EI_list, left_grid, right_grid;
-            cached_rows=relevant_training,
-            edge_source=edge_source,
-            branch_index=branch_index,
-            n_sample=n_sample,
-            alpha_accept_tol=alpha_accept_tol,
-        )
-        isempty(sampled_iter) && break
-        sampled_by_index = Dict(p.sample_index => p for p in sampled_iter)
+        extra_pts = isempty(relevant_training) ? nothing : cached_training_points(relevant_training, edge_source)
+        
+        # We perform one "GP proposal" step per iteration
+        target_logs = target_logEI_values(EI_list; n_sample=n_sample)
+        boundary_band = length(mp_norm_list) >= 2 ? (maximum(mp_norm_list) - minimum(mp_norm_list)) / (201 - 1) : 0.0
+        
+        alpha_gp, sa_gp = surrogate_models(mp_norm_list, EI_list, left_grid, right_grid; extra_points=extra_pts)
+        
+        # 2. Identify which samples need solving
+        queue = Int[]
+        points_to_solve = Dict{Int, NamedTuple}()
+        
         bin_counts = solve_counts_by_bin(working_rows; width=logEI_bin_width, branch_index=branch_index, edge_source=edge_source, sweep_file=sweep_file)
 
-        queue = Int[]
-        for i in 1:n_sample
-            point = get(sampled_by_index, i, nothing)
-            isnothing(point) && continue
-            existing_best = best_row_for_sample(working_rows, i; branch_index=branch_index, edge_source=edge_source, sweep_file=sweep_file)
+        for (sample_index, logEI) in enumerate(target_logs)
+            # Find root of current GP surrogate at this logEI
+            candidates = branch_candidates_at_logEI(mp_norm_list, logEI, alpha_gp, sa_gp; boundary_band=boundary_band)
+            if length(candidates) < branch_index
+                continue
+            end
+            point = candidates[branch_index]
+            point = (; point..., sample_index=sample_index, curve_point_index=sample_index)
+            
+            # Check if we already have a "good enough" solve for this sample
+            existing_best = best_row_for_sample(working_rows, sample_index; branch_index=branch_index, edge_source=edge_source, sweep_file=sweep_file)
             if !isnothing(existing_best) && abs(existing_best.alpha) <= alpha_accept_tol
-                best_rows[i] = existing_best
-                rows[i] = existing_best
+                best_rows[sample_index] = existing_best
                 continue
             end
-            reusable = find_reusable_cached_row(reusable_rows(working_rows; edge_source=edge_source, sweep_file=sweep_file, branch_index=branch_index), point; alpha_accept_tol=alpha_accept_tol)
-            if !isnothing(reusable)
-                row = merge(reusable, (sample_index=i, curve_point_index=point.curve_point_index, branch_index=branch_index, edge_source=String(edge_source), sweep_file=sweep_file, iteration=iteration, target_log10_EI=point.target_log10_EI))
-                rows[i] = row
-                best_rows[i] = row
-                continue
-            end
-            bin = logEI_bin(point.target_log10_EI; width=logEI_bin_width)
-            if attempts[i] < max_iterations && get(bin_counts, bin, 0) < max_solves_per_bin
-                push!(queue, i)
-                attempts[i] += 1
+            
+            # If not, and we haven't exceeded bin budget, add to queue
+            bin = logEI_bin(logEI; width=logEI_bin_width)
+            if get(bin_counts, bin, 0) < max_solves_per_bin
+                push!(queue, sample_index)
+                points_to_solve[sample_index] = point
                 bin_counts[bin] = get(bin_counts, bin, 0) + 1
             end
         end
 
-        isempty(queue) && break
+        if isempty(queue)
+            println("No more points to solve (all accepted or budgets reached).")
+            break
+        end
+
         println("Iteration $(iteration): running $(length(queue)) new sampled cases")
+        current_batch_rows = Vector{Any}(undef, length(queue))
+        
         if parallel && nthreads() > 1
-            println("Running sampled cases in parallel across $(nthreads()) Julia threads")
             @threads for qidx in eachindex(queue)
-                i = queue[qidx]
-                point = sampled_by_index[i]
-                row = build_row(i, point, artifact, edge_source, n_modes; branch_index=branch_index, sweep_file=sweep_file, iteration=iteration)
-                rows[i] = row
+                s_idx = queue[qidx]
+                point = points_to_solve[s_idx]
+                row = build_row(s_idx, point, artifact, edge_source, n_modes; branch_index=branch_index, sweep_file=sweep_file, iteration=iteration)
+                current_batch_rows[qidx] = row
                 lock(log_lock) do
-                    println("  case $(i) / $(length(sampled)): EI=$(point.EI), x_M/L=$(round(point.xM_over_L; digits=4)), alpha=$(round(row.alpha; sigdigits=6))")
+                    @printf("  case %d / %d: EI=%.4e, x_M/L=%.4f, alpha=%.6f\n", s_idx, n_sample, point.EI, point.xM_over_L, row.alpha)
                 end
             end
         else
-            for i in queue
-                point = sampled_by_index[i]
-                row = build_row(i, point, artifact, edge_source, n_modes; branch_index=branch_index, sweep_file=sweep_file, iteration=iteration)
-                rows[i] = row
-                println("  case $(i) / $(length(sampled)): EI=$(point.EI), x_M/L=$(round(point.xM_over_L; digits=4)), alpha=$(round(row.alpha; sigdigits=6))")
+            for (qidx, s_idx) in enumerate(queue)
+                point = points_to_solve[s_idx]
+                row = build_row(s_idx, point, artifact, edge_source, n_modes; branch_index=branch_index, sweep_file=sweep_file, iteration=iteration)
+                current_batch_rows[qidx] = row
+                @printf("  case %d / %d: EI=%.4e, x_M/L=%.4f, alpha=%.6f\n", s_idx, n_sample, point.EI, point.xM_over_L, row.alpha)
             end
         end
 
-        new_rows = [rows[i] for i in queue if !isnothing(rows[i])]
-        working_rows = merge_output_rows(working_rows, new_rows)
-        for row in new_rows
-            existing_best = get(best_rows, row.sample_index, nothing)
-            if isnothing(existing_best) || abs(row.alpha) < abs(existing_best.alpha)
+        # Update knowledge base with new results
+        working_rows = merge_output_rows(working_rows, current_batch_rows)
+        for row in current_batch_rows
+            existing = get(best_rows, row.sample_index, nothing)
+            if isnothing(existing) || abs(row.alpha) < abs(existing.alpha)
                 best_rows[row.sample_index] = row
             end
         end
     end
 
+    # Collect final results for sampled points
     final_rows = Any[]
+    target_logs = target_logEI_values(EI_list; n_sample=n_sample)
     for i in 1:n_sample
         row = get(best_rows, i, nothing)
         !isnothing(row) && push!(final_rows, row)
