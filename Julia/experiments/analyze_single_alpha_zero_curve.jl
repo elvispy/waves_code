@@ -283,8 +283,21 @@ function slice_rows(rows, sample_index::Int; branch_index::Int, edge_source::Sym
     end
 end
 
-function propose_local_root_point(local_rows, gp_point, mp_norm_list)
-    isempty(local_rows) && return gp_point
+function propose_local_root_point(local_rows, gp_point, mp_norm_list; window=nothing)
+    # Target point from GP
+    x_target = gp_point.xM_over_L
+    
+    # Define search bounds
+    xmin = minimum(Float64.(mp_norm_list))
+    xmax = maximum(Float64.(mp_norm_list))
+    if !isnothing(window)
+        xmin = max(xmin, window[1])
+        xmax = min(xmax, window[2])
+    end
+
+    if isempty(local_rows)
+        return (; gp_point..., xM_over_L = clamp(x_target, xmin, xmax))
+    end
 
     rows_sorted = sort(local_rows; by = r -> r.xM_over_L)
 
@@ -298,7 +311,7 @@ function propose_local_root_point(local_rows, gp_point, mp_norm_list)
             return (; gp_point..., xM_over_L = r2.xM_over_L)
         elseif signbit(r1.alpha) != signbit(r2.alpha)
             x = r1.xM_over_L - r1.alpha * (r2.xM_over_L - r1.xM_over_L) / (r2.alpha - r1.alpha)
-            return (; gp_point..., xM_over_L = clamp_to_domain(x, mp_norm_list))
+            return (; gp_point..., xM_over_L = clamp(x, xmin, xmax))
         end
     end
 
@@ -307,7 +320,7 @@ function propose_local_root_point(local_rows, gp_point, mp_norm_list)
     if length(best_two) == 1
         best = best_two[1]
         step = 0.02 * sign(best.alpha)
-        return (; gp_point..., xM_over_L = clamp_to_domain(best.xM_over_L - step, mp_norm_list))
+        return (; gp_point..., xM_over_L = clamp(best.xM_over_L - step, xmin, xmax))
     end
 
     r1, r2 = best_two[1], best_two[2]
@@ -315,13 +328,13 @@ function propose_local_root_point(local_rows, gp_point, mp_norm_list)
     if abs(denom) < 1e-10
         best = abs(r1.alpha) <= abs(r2.alpha) ? r1 : r2
         step = 0.01 * sign(best.alpha)
-        return (; gp_point..., xM_over_L = clamp_to_domain(best.xM_over_L - step, mp_norm_list))
+        return (; gp_point..., xM_over_L = clamp(best.xM_over_L - step, xmin, xmax))
     end
 
     x_secant = r1.xM_over_L - r1.alpha * (r2.xM_over_L - r1.xM_over_L) / denom
     best = abs(r1.alpha) <= abs(r2.alpha) ? r1 : r2
     x_next = 0.5 * x_secant + 0.5 * best.xM_over_L
-    return (; gp_point..., xM_over_L = clamp_to_domain(x_next, mp_norm_list))
+    return (; gp_point..., xM_over_L = clamp(x_next, xmin, xmax))
 end
 
 function cached_training_points(rows, edge_source::Symbol)
@@ -671,7 +684,7 @@ function refine_single_slice!(
 
         gp_point = choose_branch_candidate(candidates, branch_index; anchor_xM=local_anchor_xM)
         local_slice_rows = slice_rows(local_rows_state, s_idx; branch_index=branch_index, edge_source=edge_source, sweep_file=sweep_file)
-        point = propose_local_root_point(local_slice_rows, gp_point, mp_norm_list)
+        point = propose_local_root_point(local_slice_rows, gp_point, mp_norm_list; window=window)
         point = (; point..., sample_index=s_idx, curve_point_index=s_idx)
 
         if !isnothing(local_best) && same_point(local_best, point)
