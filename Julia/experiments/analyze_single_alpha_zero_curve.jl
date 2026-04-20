@@ -106,7 +106,8 @@ function fit_gp2d(x::AbstractVector, y::AbstractVector, values::AbstractVector)
     dy = diff(sort(unique(Float64.(y))))
     dx = dx[dx .> 0]
     dy = dy[dy .> 0]
-    lx = isempty(dx) ? 0.05 : max(0.02, 4 * median(dx))
+    # Sharper GP: use 1.5x median spacing instead of 4x to capture sharp branch physics
+    lx = isempty(dx) ? 0.05 : max(0.015, 1.5 * median(dx))
     ly = isempty(dy) ? 0.15 : max(0.05, 4 * median(dy))
     sigma_f = max(std(values), 1e-3)
     # Use higher regularization to avoid high-frequency ripples (garbage properties)
@@ -870,23 +871,42 @@ function main(data_dir::AbstractString, sweep_file::AbstractString, edge_source_
         chunk = target_indices[chunk_start:min(chunk_start + chunk_size - 1, length(target_indices))]
         chunk_anchors = Dict{Int, Union{Nothing, Float64}}()
         
-        # Robust Anchor: Use the median of the last 3 solved points to avoid being derailed by outliers.
-        function get_robust_anchor(history_rows, current_last)
-            isempty(history_rows) && return current_last
-            # Collect and extract all solved xM values sorted by EI (high to low)
-            rows_vec = collect(history_rows)
-            sort!(rows_vec; by=r->r.EI, rev=true)
-            solved_xMs = [r.xM_over_L for r in rows_vec]
-            n_hist = min(3, length(solved_xMs))
-            return median(solved_xMs[1:n_hist])
+        # Robust Anchor: Use a Median Slope-Corrected projection.
+        # This accounts for the branch trend while being immune to single-point outliers.
+        function get_robust_slope(history_rows)
+            isempty(history_rows) && return 0.0
+            rows_vec = sort(collect(history_rows); by=r->r.EI, rev=true)
+            n_hist = length(rows_vec)
+            if n_hist < 3 return 0.0 end
+
+            slopes = Float64[]
+            for i in 1:min(5, n_hist - 1)
+                dx = rows_vec[i].xM_over_L - rows_vec[i+1].xM_over_L
+                dy = log10(rows_vec[i].EI) - log10(rows_vec[i+1].EI)
+                if abs(dy) > 1e-8 push!(slopes, dx / dy) end
+            end
+            return isempty(slopes) ? 0.0 : clamp(median(slopes), -0.25, 0.25)
         end
 
-        anchor_guess = get_robust_anchor(values(best_rows), last_anchor_xM)
+        m_slope = get_robust_slope(values(best_rows))
+        
+        # Determine the most recent solved point to use as a base for projection
+        history_vec = sort(collect(values(best_rows)); by=r->r.EI, rev=true)
+        base_xM = isempty(history_vec) ? last_anchor_xM : history_vec[1].xM_over_L
+        base_logEI = isempty(history_vec) ? target_logs[chunk[1]] : log10(history_vec[1].EI)
+
         for s_idx in chunk
-            chunk_anchors[s_idx] = anchor_guess
+            # Project anchor using the robust slope to avoid "8-point lag"
+            target_logEI = target_logs[s_idx]
+            proj_anchor = isnothing(base_xM) ? nothing : base_xM + m_slope * (target_logEI - base_logEI)
+            chunk_anchors[s_idx] = proj_anchor
+            
             existing = best_row_for_sample(working_rows, s_idx; branch_index=branch_index, edge_source=edge_source, sweep_file=sweep_file)
             if !isnothing(existing)
-                anchor_guess = existing.xM_over_L
+                # If we have a cached point, it is always the best anchor
+                chunk_anchors[s_idx] = existing.xM_over_L
+                base_xM = existing.xM_over_L
+                base_logEI = target_logEI
             end
         end
 
