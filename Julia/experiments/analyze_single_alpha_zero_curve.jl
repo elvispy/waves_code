@@ -535,8 +535,14 @@ function main(data_dir::AbstractString, sweep_file::AbstractString, edge_source_
     edge_source = Symbol(edge_source_in)
 
     cache_path = if isnothing(cache_file)
-        candidate = joinpath(data_dir, default_cache_file(sweep_file))
-        isfile(candidate) ? candidate : nothing
+        # Check if default_cache_file is defined and not nothing
+        default_name = default_cache_file(sweep_file)
+        if isnothing(default_name)
+            nothing
+        else
+            candidate = joinpath(data_dir, String(default_name))
+            isfile(candidate) ? candidate : nothing
+        end
     else
         joinpath(data_dir, String(cache_file))
     end
@@ -554,6 +560,18 @@ function main(data_dir::AbstractString, sweep_file::AbstractString, edge_source_
     right_grid = similar(summaries, ComplexF64)
     for idx in eachindex(summaries)
         left_grid[idx], right_grid[idx] = edge_fields(summaries[idx], edge_source)
+    end
+
+    # LOCAL VALIDATION: Ensure build_row actually works before starting the loop.
+    # This catches FieldErrors and MethodErrors early.
+    println("Validating solver infrastructure...")
+    test_point = (EI = EI_list[1], xM_over_L = mp_norm_list[1], target_log10_EI = log10(EI_list[1]))
+    try
+        build_row(0, test_point, artifact, edge_source, n_modes; branch_index=branch_index, sweep_file=sweep_file, iteration=0)
+        println("Infrastructure validated.")
+    catch e
+        @error "Solver infrastructure validation failed: $e"
+        rethrow(e)
     end
 
     println("Selected $n_sample target points using edge_source=$(edge_source), branch_index=$(branch_index), backend=gpr2d")
