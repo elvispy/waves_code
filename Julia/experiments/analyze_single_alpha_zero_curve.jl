@@ -605,12 +605,15 @@ function main(data_dir::AbstractString, sweep_file::AbstractString, edge_source_
             end
         end
 
+        n_converged = n_sample - length(queue_indices)
+        println("Iteration $(iteration): $(n_converged) / $(n_sample) points already converged.")
+
         if isempty(queue_indices)
             println("All points converged or budgets reached.")
             break
         end
 
-        println("Iteration $(iteration): running $(length(queue_indices)) cases")
+        println("Running $(length(queue_indices)) cases...")
         batch_results = Vector{Any}(undef, length(queue_indices))
         
         if parallel && nthreads() > 1
