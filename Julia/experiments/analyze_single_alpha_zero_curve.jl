@@ -109,7 +109,9 @@ function fit_gp2d(x::AbstractVector, y::AbstractVector, values::AbstractVector)
     lx = isempty(dx) ? 0.05 : max(0.02, 4 * median(dx))
     ly = isempty(dy) ? 0.15 : max(0.05, 4 * median(dy))
     sigma_f = max(std(values), 1e-3)
-    noise = max(1e-6, 1e-3 * sigma_f)
+    # Use higher regularization to avoid high-frequency ripples (garbage properties)
+    # when many exact zeros are added to the training set.
+    noise = max(1e-4, 2e-2 * sigma_f)
 
     K = Matrix{Float64}(undef, n, n)
     @inbounds for i in 1:n, j in i:n
@@ -179,8 +181,16 @@ function nontrivial_candidates(candidates; boundary_band::Real=0.0)
     return sorted
 end
 
-function branch_candidates_at_logEI(mp_norm_list, logEI::Real, alpha_gp, sa_gp; mp_count::Int=401, boundary_band::Real=0.0)
-    mp_dense = collect(range(minimum(Float64.(mp_norm_list)), maximum(Float64.(mp_norm_list)); length=mp_count))
+function branch_candidates_at_logEI(mp_norm_list, logEI::Real, alpha_gp, sa_gp; mp_count::Int=401, boundary_band::Real=0.0, window=nothing)
+    mp_min = minimum(Float64.(mp_norm_list))
+    mp_max = maximum(Float64.(mp_norm_list))
+    
+    if !isnothing(window)
+        mp_min = max(mp_min, window[1])
+        mp_max = min(mp_max, window[2])
+    end
+
+    mp_dense = collect(range(mp_min, mp_max; length=mp_count))
     alpha_row = [predict_gp2d(alpha_gp, mp, logEI) for mp in mp_dense]
     sa_row = [predict_gp2d(sa_gp, mp, logEI) for mp in mp_dense]
 
@@ -630,6 +640,7 @@ function refine_single_slice!(
     alpha_accept_tol::Real,
     local_max_iterations::Int,
     iteration_offset::Int=0,
+    tunnel_width::Real=0.08,
 )
     local_rows_state = copy(working_rows)
     local_best = best_row_for_sample(local_rows_state, s_idx; branch_index=branch_index, edge_source=edge_source, sweep_file=sweep_file)
@@ -648,10 +659,13 @@ function refine_single_slice!(
         relevant_training = training_rows(local_rows_state; edge_source=edge_source, sweep_file=sweep_file)
         extra_pts = isempty(relevant_training) ? nothing : cached_training_points(relevant_training, edge_source)
         alpha_gp, sa_gp = surrogate_models(mp_norm_list, EI_list, left_grid, right_grid; extra_points=extra_pts)
-        candidates = branch_candidates_at_logEI(mp_norm_list, logEI, alpha_gp, sa_gp; boundary_band=0.0)
+        
+        # Identity Tunneling: only look for roots near the anchor
+        window = isnothing(local_anchor_xM) ? nothing : (local_anchor_xM - tunnel_width, local_anchor_xM + tunnel_width)
+        candidates = branch_candidates_at_logEI(mp_norm_list, logEI, alpha_gp, sa_gp; boundary_band=0.0, window=window)
 
         if isempty(candidates)
-            push!(logs, "  local $(local_iteration) / $(local_max_iterations): no candidates found")
+            push!(logs, "  local $(local_iteration) / $(local_max_iterations): no candidates found in window $(window)")
             break
         end
 
@@ -777,7 +791,7 @@ end
 function main(data_dir::AbstractString, sweep_file::AbstractString, edge_source_in::AbstractString,
               branch_index::Int, n_sample::Int, output_file::AbstractString, parallel::Bool;
               cache_file=nothing, alpha_accept_tol::Float64=5e-3, n_modes::Int=8,
-              local_max_iterations::Int=5)
+              local_max_iterations::Int=5, tunnel_width::Real=0.08)
     
     data_dir = ensure_dir(normpath(data_dir))
     artifact = load_sweep_artifact(joinpath(data_dir, sweep_file))
@@ -872,6 +886,7 @@ function main(data_dir::AbstractString, sweep_file::AbstractString, edge_source_
                     alpha_accept_tol=alpha_accept_tol,
                     local_max_iterations=local_max_iterations,
                     iteration_offset=solve_counter + (cidx - 1) * local_max_iterations,
+                    tunnel_width=tunnel_width,
                 )
             end
         else
@@ -894,6 +909,7 @@ function main(data_dir::AbstractString, sweep_file::AbstractString, edge_source_
                     alpha_accept_tol=alpha_accept_tol,
                     local_max_iterations=local_max_iterations,
                     iteration_offset=solve_counter + (cidx - 1) * local_max_iterations,
+                    tunnel_width=tunnel_width,
                 )
             end
         end
@@ -951,6 +967,7 @@ if abspath(PROGRAM_FILE) == @__FILE__
     output_file = length(ARGS) >= 6 ? ARGS[6] : ""
     parallel = length(ARGS) >= 7 ? parse(Bool, ARGS[7]) : (nthreads() > 1)
     local_max_iterations = length(ARGS) >= 8 ? parse(Int, ARGS[8]) : 5
+    tunnel_width = length(ARGS) >= 9 ? parse(Float64, ARGS[9]) : 0.08
 
     main(
         data_dir,
@@ -961,5 +978,6 @@ if abspath(PROGRAM_FILE) == @__FILE__
         output_file,
         parallel;
         local_max_iterations=local_max_iterations,
+        tunnel_width=tunnel_width,
     )
 end
