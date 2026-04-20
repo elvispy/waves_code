@@ -4,6 +4,10 @@ using LinearAlgebra
 using Printf
 
 export ModalDecomposition,
+       RawFreefreeBasis,
+       build_raw_freefree_basis,
+       psi_to_w_transform,
+       coefficients_in_w_basis,
        decompose_raft_freefree_modes,
        trapz_weights,
        freefree_betaL_roots,
@@ -36,6 +40,7 @@ struct ModalDecomposition
     betaL::Vector{Float64}
     beta::Vector{Float64}
     q::Vector{ComplexF64}
+    q_w::Vector{ComplexF64}
     Q::Vector{ComplexF64}
     F::Vector{ComplexF64}
     balance_residual::Vector{ComplexF64}
@@ -44,6 +49,24 @@ struct ModalDecomposition
     recon_rel_err::Float64
     x_raft::Vector{Float64}
     Psi::Matrix{Float64}
+    Phi::Matrix{Float64}
+    gram_cond::Float64
+end
+
+"""
+    RawFreefreeBasis
+
+Discrete raft-grid basis built directly from the rigid modes and sampled
+free-free shapes `W_n`, before weighted orthonormalization.
+"""
+struct RawFreefreeBasis
+    n::Vector{Int}
+    mode_type::Vector{String}
+    betaL::Vector{Float64}
+    beta::Vector{Float64}
+    x_raft::Vector{Float64}
+    w::Vector{Float64}
+    Phi::Matrix{Float64}
     gram_cond::Float64
 end
 
@@ -139,6 +162,111 @@ function weighted_mgs(Phi::AbstractMatrix{<:Real}, w::AbstractVector{<:Real})
 end
 
 """
+    build_raw_freefree_basis(x_raft, L_raft; num_modes=8, include_rigid=true)
+
+Build the discrete rigid-plus-elastic basis from sampled free-free modes `W_n`
+on the raft grid, before weighted orthonormalization. The retained columns are
+filtered with the same `keep` mask that `weighted_mgs` would use, so the raw
+and orthonormalized bases span the same discrete subspace.
+"""
+function build_raw_freefree_basis(
+    x_raft::AbstractVector{<:Real},
+    L_raft::Real;
+    num_modes::Int=8,
+    include_rigid::Bool=true,
+)
+    x = collect(float.(x_raft))
+    Nr = length(x)
+    Nr >= 3 || error("Need at least 3 raft points for modal decomposition.")
+    w = trapz_weights(x)
+
+    n_requested = min(num_modes, Nr)
+    n_rigid = include_rigid ? min(2, n_requested) : 0
+    n_elastic = n_requested - n_rigid
+
+    xi = x .+ L_raft / 2
+    phi_raw = zeros(Float64, Nr, n_requested)
+    n_list = collect(0:(n_requested - 1))
+    mode_type = fill("", n_requested)
+    betaL = zeros(Float64, n_requested)
+    beta = zeros(Float64, n_requested)
+
+    col = 0
+    if n_rigid >= 1
+        col += 1
+        phi_raw[:, col] .= 1.0
+        mode_type[col] = "rigid"
+    end
+    if n_rigid >= 2
+        col += 1
+        phi_raw[:, col] .= xi .- L_raft / 2
+        mode_type[col] = "rigid"
+    end
+    if n_elastic > 0
+        betaL_el = freefree_betaL_roots(n_elastic)
+        for j in 1:n_elastic
+            col += 1
+            betaL[col] = betaL_el[j]
+            beta[col] = betaL[col] / L_raft
+            phi_raw[:, col] .= freefree_mode_shape(xi, L_raft, betaL[col])
+            mode_type[col] = "elastic"
+        end
+    end
+
+    _, keep = weighted_mgs(phi_raw, w)
+    Phi = phi_raw[:, keep]
+    n_list = n_list[keep]
+    mode_type = mode_type[keep]
+    betaL = betaL[keep]
+    beta = beta[keep]
+    G = Phi' * (Phi .* w)
+    return RawFreefreeBasis(
+        collect(Int.(n_list)),
+        collect(mode_type),
+        collect(betaL),
+        collect(beta),
+        x,
+        w,
+        Matrix{Float64}(Phi),
+        cond(G),
+    )
+end
+
+"""
+    psi_to_w_transform(Phi, Psi, w)
+
+Return the linear map `T` such that, on the same raft grid,
+`Phi * c_w ≈ Psi * c_psi` with `c_w = T * c_psi`.
+"""
+function psi_to_w_transform(
+    Phi::AbstractMatrix{<:Real},
+    Psi::AbstractMatrix{<:Real},
+    w::AbstractVector{<:Real},
+)
+    size(Phi, 1) == size(Psi, 1) || throw(DimensionMismatch("Phi and Psi must have the same row count"))
+    length(w) == size(Phi, 1) || throw(DimensionMismatch("weight vector length must match basis rows"))
+    G = Matrix{Float64}(Phi' * (Phi .* w))
+    B = Matrix{Float64}(Phi' * (Psi .* w))
+    return G \ B
+end
+
+"""
+    coefficients_in_w_basis(coeff_psi, Phi, Psi, w)
+
+Map coefficients from the orthonormalized `Psi` basis into the raw sampled
+`W` basis on the same raft grid.
+"""
+function coefficients_in_w_basis(
+    coeff_psi::AbstractVector,
+    Phi::AbstractMatrix{<:Real},
+    Psi::AbstractMatrix{<:Real},
+    w::AbstractVector{<:Real},
+)
+    T = psi_to_w_transform(Phi, Psi, w)
+    return ComplexF64.(T * ComplexF64.(coeff_psi))
+end
+
+"""
     decompose_raft_freefree_modes(x, eta, pressure, loads, args; num_modes=8, include_rigid=true, verbose=true)
 
 Project the raft displacement onto a free-free beam basis.
@@ -218,6 +346,7 @@ function decompose_raft_freefree_modes(
     mode_type = mode_type[keep]
     betaL = betaL[keep]
     beta = beta[keep]
+    Phi = phi_raw[:, keep]
 
     M = Psi' * (Psi .* w)
     rhs_q = Psi' * Weta
@@ -230,6 +359,11 @@ function decompose_raft_freefree_modes(
     q = use_pinv ? solver * rhs_q : solver \ rhs_q
     Q = use_pinv ? solver * rhs_Q : solver \ rhs_Q
     F = use_pinv ? solver * rhs_F : solver \ rhs_F
+
+    # Calculate coefficients in raw analytical basis W_n (Phi)
+    # (Phi' W Phi) q_w = (Phi' W eta)
+    G = Phi' * (Phi .* w)
+    q_w = G \ (Phi' * Weta)
 
     beta4 = beta .^ 4
     balance_residual = (args.EI .* beta4 .- args.rho_raft .* args.omega^2) .* q .- (Q .- F)
@@ -249,6 +383,7 @@ function decompose_raft_freefree_modes(
         collect(betaL),
         collect(beta),
         collect(ComplexF64.(q)),
+        collect(ComplexF64.(q_w)),
         collect(ComplexF64.(Q)),
         collect(ComplexF64.(F)),
         collect(ComplexF64.(balance_residual)),
@@ -257,6 +392,7 @@ function decompose_raft_freefree_modes(
         recon_rel_err,
         collect(Float64.(x_raft)),
         Matrix{Float64}(Psi),
+        Matrix{Float64}(Phi),
         gram_cond,
     )
 

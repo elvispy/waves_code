@@ -71,7 +71,20 @@ function calculate_surferbot_outputs(args, phi, phi_z, getNonCompactFDmatrix, ge
     power = real(-(0.5 * args.omega * args.L_c * F_c) * trapz(x_contact, imag.(eta_raft) .* args.loads))
     eta = eta_adim .* args.L_c
     p = p_adim .* F_c / args.L_c^2
-    return U, power, thrust, eta, p
+    
+    # Calculate curvature for penalty (dimensionless)
+    eta_xx_raft = D2r * eta_raft
+    max_curvature = maximum(abs.(eta_xx_raft))
+    
+    # Calculate wave steepness (ak)
+    # We use the far-field wavenumber k and the maximum elevation amplitude
+    k_real = real(args.k)
+    # Maximum amplitude of the free surface (excluding potential singularities at edges)
+    # Actually, the entire eta is harmonically decomposed, so its absolute value is the amplitude.
+    max_a = maximum(abs.(eta))
+    wave_steepness = max_a * k_real
+    
+    return U, power, thrust, eta, p, max_curvature, wave_steepness
 end
 
 """

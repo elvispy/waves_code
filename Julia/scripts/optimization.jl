@@ -6,7 +6,7 @@ using .SurferbotOptimization
 # Surferbot parameterization `(x_A, log(EI))`.
 
 base_params = FlexibleParams(
-    sigma = 0.0,
+    sigma = 1e-6,
     rho = 1000.0,
     nu = 1e-6,
     g = 10 * 9.81,

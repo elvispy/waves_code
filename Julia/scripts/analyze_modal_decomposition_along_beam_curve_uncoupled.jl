@@ -43,12 +43,12 @@ function write_modal_summary_csv(path::AbstractString, sample_EI, sample_mp, mod
 end
 
 """
-    main(data_dir=joinpath(@__DIR__, "..", "output");
-         sweep_file="sweep_motor_position_EI_uncoupled.jld2",
-         n_sample=12,
-         n_modes=8,
-         pdf_file="analyze_modal_decomposition_along_beam_curve_uncoupled.pdf",
-         csv_file="analyze_modal_decomposition_along_beam_curve_uncoupled.csv")
+    function main(data_dir=joinpath(@__DIR__, "..", "output");
+             sweep_file="sweep_motor_position_EI_uncoupled_from_matlab.jld2",
+             n_sample=200,
+             n_modes=8,
+             pdf_file="analyze_modal_decomposition_along_beam_curve_uncoupled.pdf",
+             csv_file="analyze_modal_decomposition_along_beam_curve_uncoupled.csv")
 
 Analyze one uncoupled beam-end `alpha = 0` curve from a saved sweep artifact.
 
@@ -146,6 +146,6 @@ end
 
 if abspath(PROGRAM_FILE) == @__FILE__
     data_dir = length(ARGS) >= 1 ? ARGS[1] : joinpath(@__DIR__, "..", "output")
-    sweep_file = length(ARGS) >= 2 ? ARGS[2] : "sweep_motor_position_EI_uncoupled.jld2"
+    sweep_file = length(ARGS) >= 2 ? ARGS[2] : "sweep_motor_position_EI_uncoupled_from_matlab.jld2"
     main(data_dir; sweep_file=sweep_file)
 end

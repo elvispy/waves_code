@@ -698,7 +698,7 @@ function write_curve_csv(path::AbstractString, rows, n_modes::Int)
         for j in 0:(n_modes - 1)
             append!(header, [
                 "q$(j)_re", "q$(j)_im", "q$(j)_abs", "q$(j)_phase_deg",
-                "Q$(j)_re", "Q$(j)_im", "Q$(j)_abs", "Q$(j)_phase_deg",
+                "Q$(j)_re", "Q$(j)_im", "Q$(j)_abs", "q$(j)_phase_deg",
                 "F$(j)_re", "F$(j)_im", "F$(j)_abs", "F$(j)_phase_deg",
                 "residual$(j)_re", "residual$(j)_im", "residual$(j)_abs", "residual$(j)_phase_deg",
                 "energy_frac$(j)",
@@ -709,6 +709,18 @@ function write_curve_csv(path::AbstractString, rows, n_modes::Int)
         println(io, join(header, ","))
 
         for row in rows
+            # Compute T transformation from Psi -> W for all terms to be consistent
+            w_weights = Surferbot.trapz_weights(row.modal.x_raft)
+            G_mat = row.modal.Phi' * (row.modal.Phi .* w_weights)
+            B_mat = row.modal.Phi' * (row.modal.Psi .* w_weights)
+            T_psi_to_w = G_mat \ B_mat
+            
+            # Map coefficients to W basis
+            q_w = row.modal.q_w
+            Q_w = T_psi_to_w * row.modal.Q
+            F_w = T_psi_to_w * row.modal.F
+            R_w = T_psi_to_w * row.modal.balance_residual
+
             fields = String[
                 string(get(row, :branch_index, 1)),
                 string(get(row, :edge_source, "")),
@@ -740,10 +752,10 @@ function write_curve_csv(path::AbstractString, rows, n_modes::Int)
                 string(row.sa_ratio_beam),
             ])
             for j in 1:n_modes
-                append!(fields, split(format_complex(row.modal.q[j]), ","))
-                append!(fields, split(format_complex(row.modal.Q[j]), ","))
-                append!(fields, split(format_complex(row.modal.F[j]), ","))
-                append!(fields, split(format_complex(row.modal.balance_residual[j]), ","))
+                append!(fields, split(format_complex(q_w[j]), ","))
+                append!(fields, split(format_complex(Q_w[j]), ","))
+                append!(fields, split(format_complex(F_w[j]), ","))
+                append!(fields, split(format_complex(R_w[j]), ","))
                 append!(fields, [
                     string(row.modal.energy_frac[j]),
                     string(row.modal.n[j]),

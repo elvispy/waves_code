@@ -1,7 +1,10 @@
 module SurferbotOptimization
 
 using LinearAlgebra
+using SparseArrays
 using Surferbot
+using ForwardDiff
+using LinearSolve
 
 export OptimizationParams,
        OptimizationConfig,
@@ -37,15 +40,19 @@ Configuration for the penalized thrust optimization problem.
 
 The objective minimized by this module is
 
-`J(theta) = -T(theta) + mu * softplus(P_in(theta) - Pmax)^2`
+`J(theta) = -T(theta) + mu * softplus(P_in(theta) - Pmax)^2 + gamma * softplus(kappa_max - kappa_limit)^2 + delta * softplus(ak - ak_limit)^2`
 
 where:
 
 - `T(theta)` is the mean thrust
 - `P_in(theta)` is the mean actuator power input
 - `Pmax` is the allowed power budget
-- `mu` is the penalty weight
+- `mu` is the power penalty weight
 - `beta` controls the sharpness of the softplus transition
+- `gamma` is the weight for the curvature penalty
+- `kappa_max_limit` is the threshold for the dimensionless curvature penalty
+- `delta` is the weight for the wave steepness penalty
+- `ak_limit` is the threshold for the wave steepness penalty (ak)
 
 `fd_step` is used for directional differentiation of the scalar postprocessed
 objective, and `sens_step` is used for finite-difference approximation of the
@@ -55,6 +62,10 @@ Base.@kwdef struct OptimizationConfig
     Pmax::Float64
     mu::Float64 = 1.0
     beta::Float64 = 50.0
+    gamma::Float64 = 0.0
+    kappa_max_limit::Float64 = 1.0
+    delta::Float64 = 0.0
+    ak_limit::Float64 = 0.1
     fd_step::Float64 = 1e-6
     sens_step::Float64 = 1e-6
 end
@@ -128,27 +139,28 @@ Map the optimization variables `theta = [xA, logEI]` into a concrete
 This is the bridge between the low-dimensional optimization problem and the
 full Surferbot simulation.
 """
-function theta_to_params(theta::AbstractVector{<:Real}, base_params)
+function theta_to_params(theta::AbstractVector{<:Real}, base_params::FlexibleParams)
     @assert length(theta) == 2
-    return typeof(base_params)(;
-        sigma = base_params.sigma,
-        rho = base_params.rho,
-        omega = base_params.omega,
-        nu = base_params.nu,
-        g = base_params.g,
-        L_raft = base_params.L_raft,
-        motor_position = float(theta[1]),
-        d = base_params.d,
-        EI = exp(float(theta[2])),
-        rho_raft = base_params.rho_raft,
-        L_domain = base_params.L_domain,
-        domain_depth = base_params.domain_depth,
+    T = eltype(theta)
+    return FlexibleParams{T}(;
+        sigma = T(base_params.sigma),
+        rho = T(base_params.rho),
+        omega = T(base_params.omega),
+        nu = T(base_params.nu),
+        g = T(base_params.g),
+        L_raft = T(base_params.L_raft),
+        motor_position = theta[1],
+        d = isnothing(base_params.d) ? nothing : T(base_params.d),
+        EI = exp(theta[2]),
+        rho_raft = T(base_params.rho_raft),
+        L_domain = isnothing(base_params.L_domain) ? nothing : T(base_params.L_domain),
+        domain_depth = isnothing(base_params.domain_depth) ? nothing : T(base_params.domain_depth),
         n = base_params.n,
         M = base_params.M,
         ooa = base_params.ooa,
-        motor_inertia = base_params.motor_inertia,
-        motor_force = base_params.motor_force,
-        forcing_width = base_params.forcing_width,
+        motor_inertia = T(base_params.motor_inertia),
+        motor_force = isnothing(base_params.motor_force) ? nothing : T(base_params.motor_force),
+        forcing_width = T(base_params.forcing_width),
         bc = base_params.bc,
     )
 end
@@ -224,16 +236,30 @@ thrust, drift speed, and mean input power, then forms the penalized objective
 function evaluate_from_state(solution::AbstractVector, derived, params, config::OptimizationConfig)
     phi, phi_z = split_state(solution, derived)
     args = build_output_args(derived, params)
-    U, power, thrust, eta, p = Surferbot.calculate_surferbot_outputs(args, phi, phi_z, Surferbot.getNonCompactFDmatrix, Surferbot.getNonCompactFDmatrix2D)
+    U, power, thrust, eta, p, max_curvature, wave_steepness = Surferbot.calculate_surferbot_outputs(args, phi, phi_z, Surferbot.getNonCompactFDmatrix, Surferbot.getNonCompactFDmatrix2D)
     Pin = input_power(power)
-    penalty = softplus_penalty(Pin, config.Pmax, config.mu; beta=config.beta)
-    objective = -thrust + penalty
+    
+    # Power penalty
+    p_penalty = softplus_penalty(Pin, config.Pmax, config.mu; beta=config.beta)
+    
+    # Curvature penalty
+    c_penalty = config.gamma * softplus(max_curvature - config.kappa_max_limit, config.beta)^2
+    
+    # Wave steepness penalty
+    s_penalty = config.delta * softplus(wave_steepness - config.ak_limit, config.beta)^2
+    
+    objective = -thrust + p_penalty + c_penalty + s_penalty
+    
     return (
         objective = objective,
         thrust = thrust,
         power = power,
         power_input = Pin,
-        penalty = penalty,
+        penalty = p_penalty,
+        curvature_penalty = c_penalty,
+        steepness_penalty = s_penalty,
+        max_curvature = max_curvature,
+        wave_steepness = wave_steepness,
         U = U,
         eta = eta,
         pressure = p,
@@ -253,7 +279,7 @@ Mathematically, this computes the state `x(theta)` from
 
 `A(theta) * x(theta) = b(theta)`.
 """
-function evaluate_primal(theta::AbstractVector{<:Real}, base_params, config::OptimizationConfig)
+function evaluate_primal(theta::AbstractVector{<:Real}, base_params::FlexibleParams, config::OptimizationConfig)
     params = theta_to_params(theta, base_params)
     system = Surferbot.assemble_flexible_system(params)
     full_solution = Surferbot.solve_tensor_system(system.A, system.b)
@@ -292,54 +318,6 @@ function central_step(value::Real, base_step::Real)
     return base_step * max(1.0, abs(float(value)))
 end
 
-"""
-    differentiate_assembly(theta, idx, base_params, config)
-
-Approximate the derivatives of the assembled linear system with respect to one
-optimization variable using centered finite differences.
-
-For the selected parameter `theta[idx]`, this returns approximations to
-
-- `dA/dtheta_idx`
-- `db/dtheta_idx`
-
-These are used in the forward implicit sensitivity equation
-
-`A * s_i = db/dtheta_i - (dA/dtheta_i) * x`
-
-where `s_i = dx/dtheta_i`.
-"""
-function differentiate_assembly(theta, idx::Int, base_params, config::OptimizationConfig)
-    h = central_step(theta[idx], config.sens_step)
-    theta_plus = collect(theta)
-    theta_minus = collect(theta)
-    theta_plus[idx] += h
-    theta_minus[idx] -= h
-
-    params_plus = theta_to_params(theta_plus, base_params)
-    params_minus = theta_to_params(theta_minus, base_params)
-    system_plus = Main.Surferbot.assemble_flexible_system(params_plus)
-    system_minus = Main.Surferbot.assemble_flexible_system(params_minus)
-    dA = (system_plus.A - system_minus.A) / (2h)
-    db = (system_plus.b - system_minus.b) / (2h)
-    return dA, db
-end
-
-"""
-    directional_objective_derivative(state, state_direction, theta, theta_direction, derived, base_params, config)
-
-Differentiate the scalar postprocessed objective along a coupled
-state-parameter direction.
-
-This computes the directional derivative of `J(x(theta), theta)` using a
-centered difference in the combined direction
-
-- `x -> x ± h * state_direction`
-- `theta -> theta ± h * theta_direction`
-
-so it captures both explicit parameter dependence in the postprocessing and the
-implicit dependence through the state.
-"""
 function directional_objective_derivative(state, state_direction, theta, theta_direction, derived, base_params, config::OptimizationConfig)
     h = config.fd_step
     theta_plus = theta .+ h .* theta_direction
@@ -359,16 +337,8 @@ end
 Return the scalar objective, its gradient, and the primal evaluation at
 `theta`.
 
-The gradient is computed by forward implicit differentiation. For each
-parameter `theta_i`, the state sensitivity `s_i = dx/dtheta_i` is obtained from
-
-`A * s_i = db/dtheta_i - (dA/dtheta_i) * x`
-
-and the scalar objective derivative is then evaluated along that state
-direction.
-
-This implementation uses forward sensitivities rather than an adjoint because
-the current optimization problem has only two design variables.
+The gradient is computed by forward implicit differentiation using ForwardDiff
+for the assembly derivatives.
 """
 function objective_and_gradient(theta::AbstractVector{<:Real}, base_params, config::OptimizationConfig)
     primal = evaluate_primal(theta, base_params, config)
@@ -376,13 +346,29 @@ function objective_and_gradient(theta::AbstractVector{<:Real}, base_params, conf
     z = primal.full_solution
     grad = zeros(Float64, length(theta))
 
+    # Compute all assembly derivatives at once using AD
+    f_total = (th) -> begin
+        params = theta_to_params(th, base_params)
+        system = Surferbot.assemble_flexible_system(params)
+        return vcat(vec(system.A), system.b)
+    end
+    J = ForwardDiff.jacobian(f_total, theta)
+    
+    # Solve for sensitivities using our Dual-safe helper
+    m, n_sys = size(A)
     for idx in eachindex(theta)
-        dA, db = differentiate_assembly(theta, idx, base_params, config)
-        sensitivity_full = Surferbot.solve_tensor_system(A, db - dA * z)
+        dA_vec = @view J[1:(m*n_sys), idx]
+        db = @view J[(m*n_sys + 1):end, idx]
+        dA = reshape(dA_vec, m, n_sys)
+        
+        rhs = db - dA * z
+        sensitivity_full = Surferbot.solve_tensor_system(A, rhs)
+        
         sensitivity_state = sensitivity_full[1:length(primal.state)]
         theta_dir = zeros(Float64, length(theta))
         theta_dir[idx] = 1.0
-        grad[idx] = directional_objective_derivative(primal.state, sensitivity_state, theta, theta_dir, primal.system.derived, base_params, config)
+        val = directional_objective_derivative(primal.state, sensitivity_state, theta, theta_dir, primal.system.derived, base_params, config)
+        grad[idx] = ForwardDiff.value(val)
     end
 
     return primal.outputs.objective, grad, primal
@@ -453,7 +439,7 @@ variables `[xA, logEI]`.
 
 The routine minimizes the penalized objective
 
-`J(theta) = -T(theta) + mu * softplus(P_in(theta) - Pmax)^2`
+`J(theta) = -T(theta) + mu * softplus(P_in(theta) - Pmax)^2 + gamma * softplus(max_curvature - kappa_max_limit)^2 + delta * softplus(ak - ak_limit)^2`
 
 subject to simple box constraints enforced by clamping after each step.
 

@@ -2,6 +2,7 @@ module FD
 
 using SparseArrays
 using LinearAlgebra
+using ForwardDiff
 
 export getNonCompactFDMWeights, getNonCompactFDmatrix, getNonCompactFDmatrix2D
 
@@ -22,27 +23,47 @@ end
 function getNonCompactFDMWeights(dx::Real, n::Int, stencil::AbstractVector{<:Real})
     stencil_vec = checkInput(n, stencil)
     s = length(stencil_vec)
-    sig = zeros(Float64, s, s)
+    T = typeof(dx)
+    sig = zeros(T, s, s)
     for i in 0:(s - 1)
         for j in 1:s
-            sig[i + 1, j] = stencil_vec[j]^i / factorial(i)
+            sig[i + 1, j] = T(stencil_vec[j]^i / factorial(i))
         end
     end
-    rhs = zeros(Float64, s)
-    rhs[n + 1] = 1.0
-    a = sig \ rhs
-    w = a' ./ (float(dx)^n)
+    rhs = zeros(T, s)
+    rhs[n + 1] = one(T)
+    
+    # Solver that is safe for Duals in the matrix
+    a = if T <: ForwardDiff.Dual
+        # Separating value and partials for the small sig \ rhs solve
+        sig0 = ForwardDiff.value.(sig)
+        rhs0 = ForwardDiff.value.(rhs)
+        a0 = sig0 \ rhs0
+        
+        p = ForwardDiff.npartials(sig[1,1])
+        a_part = zeros(eltype(a0), s, p)
+        for p_idx in 1:p
+            sig_p = ForwardDiff.partials.(sig, p_idx)
+            rhs_p = ForwardDiff.partials.(rhs, p_idx)
+            a_part[:, p_idx] = sig0 \ (rhs_p - sig_p * a0)
+        end
+        [T(a0[i], ForwardDiff.Partials(Tuple(a_part[i, :]))) for i in 1:s]
+    else
+        sig \ rhs
+    end
+    
+    w = a' ./ (dx^n)
 
     ooa = s - n
-    extraEq = [stencil_vec[j]^s / factorial(s) for j in 1:s]
-    tol = eps() * 1e4
+    extraEq = [T(stencil_vec[j]^s / factorial(s)) for j in 1:s]
+    tol = eps(ForwardDiff.value(T(1.0))) * 1e4
     if abs(sum(extraEq .* a)) < tol
         ooa += 1
     end
     return collect(w), ooa
 end
 
-function getNonCompactFDmatrix(npx::Int, dx::Real, n::Int, ooa::Int)
+function getNonCompactFDmatrix(npx::Int, dx::T, n::Int, ooa::Int) where {T<:Real}
     ooa_eff = isodd(ooa) ? ooa + 1 : ooa
     s = ooa_eff + n
     sC = iseven(n) ? s - 1 : s
@@ -57,7 +78,7 @@ function getNonCompactFDmatrix(npx::Int, dx::Real, n::Int, ooa::Int)
         throw(ArgumentError("Order of accuracy mismatch."))
     end
 
-    D = spzeros(Float64, npx, npx)
+    D = spzeros(T, npx, npx)
     for (i, offset) in enumerate(stencilC)
         coeff = wC[i]
         if offset >= 0
@@ -92,15 +113,17 @@ function getNonCompactFDmatrix(npx::Int, dx::Real, n::Int, ooa::Int)
         end
     end
 
-    return sparse(D)
+    return D
 end
 
-function getNonCompactFDmatrix2D(npx::Int, npy::Int, dx::Real, dy::Real, n::Int, ooa::Int)
+function getNonCompactFDmatrix2D(npx::Int, npy::Int, dx::T, dy::T, n::Int, ooa::Int) where {T<:Real}
     Dx1D = getNonCompactFDmatrix(npx, dx, n, ooa)
     Dy1D = getNonCompactFDmatrix(npy, dy, n, ooa)
-    Dx2D = kron(Dx1D, sparse(I, npy, npy))
-    Dy2D = kron(sparse(I, npx, npx), Dy1D)
-    return sparse(Dx2D), sparse(Dy2D)
+    Inpy = sparse(one(T) * I, npy, npy)
+    Inpx = sparse(one(T) * I, npx, npx)
+    Dx2D = kron(Dx1D, Inpy)
+    Dy2D = kron(Inpx, Dy1D)
+    return Dx2D, Dy2D
 end
 
 end

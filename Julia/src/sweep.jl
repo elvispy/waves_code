@@ -51,10 +51,43 @@ Create a new `FlexibleParams` instance by overriding selected fields from a
 base parameter set.
 """
 function apply_parameter_overrides(base_params, overrides::NamedTuple)
-    names = fieldnames(typeof(base_params))
-    kwargs = NamedTuple{names}(Tuple(getfield(base_params, name) for name in names))
-    merged = merge(kwargs, overrides)
-    return typeof(base_params)(; merged...)
+    # Reconstructed types from JLD2 don't have the same constructor, 
+    # and store values in a .fields vector if they were reconstructed.
+    target_type = Main.Surferbot.FlexibleParams
+    valid_names = fieldnames(target_type)
+    
+    kwargs = Dict{Symbol, Any}()
+    
+    # Handle JLD2 Reconstructed types
+    T_base = typeof(base_params)
+    if hasfield(T_base, :fields) && length(T_base.parameters) >= 2
+        # Reconstructed types store field names in the type parameters
+        # and values in the .fields field.
+        # FN: field names is usually the 2nd parameter
+        fnames = T_base.parameters[2] # FN
+        fvals = getfield(base_params, :fields)
+        for (name, val) in zip(fnames, fvals)
+            if name in valid_names
+                kwargs[name] = val
+            end
+        end
+    else
+        # Normal type
+        for name in fieldnames(T_base)
+            if name in valid_names
+                kwargs[name] = getfield(base_params, name)
+            end
+        end
+    end
+    
+    # Apply overrides
+    for (k, v) in pairs(overrides)
+        if k in valid_names
+            kwargs[k] = v
+        end
+    end
+    
+    return target_type(; kwargs...)
 end
 
 """
