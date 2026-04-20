@@ -377,22 +377,39 @@ end
 
 function load_cached_curve_rows(path::AbstractString, n_modes::Int)
     !isfile(path) && return NamedTuple[]
-    data, header = readdlm(path, ',', header=true)
+    # readdlm can be sensitive to quotes in filenames; 
+    # we specify quotes and ensure we use the comma delimiter.
+    data_all = try
+        readdlm(path, ',', header=true, quotes=true)
+    catch e
+        @warn "Failed to parse CSV $path: $e. Returning empty cache."
+        return NamedTuple[]
+    end
+    
+    data, header = data_all
     names = string.(vec(header))
     rows = NamedTuple[]
+    
+    # Helper to find column indices
+    col(n) = findfirst(==(n), names)
+    
     for i in axes(data, 1)
         # Minimal fields needed for training/re-eval
-        r = (
-            EI = Float64(data[i, findfirst(==("EI"), names)]),
-            xM_over_L = Float64(data[i, findfirst(==("xM_over_L"), names)]),
-            alpha = Float64(data[i, findfirst(==("alpha"), names)]),
-            alpha_beam = Float64(data[i, findfirst(==("alpha_beam"), names)]),
-            sa_ratio_beam = Float64(data[i, findfirst(==("sa_ratio_beam"), names)]),
-            sample_index = Int(data[i, findfirst(==("sample_index"), names)]),
-            sweep_file = String(data[i, findfirst(==("sweep_file"), names)]),
-            edge_source = String(data[i, findfirst(==("edge_source"), names)]),
-        )
-        push!(rows, r)
+        try
+            r = (
+                EI = Float64(data[i, col("EI")]),
+                xM_over_L = Float64(data[i, col("xM_over_L")]),
+                alpha = Float64(data[i, col("alpha")]),
+                alpha_beam = Float64(data[i, col("alpha_beam")]),
+                sa_ratio_beam = Float64(data[i, col("sa_ratio_beam")]),
+                sample_index = Int(data[i, col("sample_index")]),
+                sweep_file = String(data[i, col("sweep_file")]),
+                edge_source = String(data[i, col("edge_source")]),
+            )
+            push!(rows, r)
+        catch e
+            @warn "Skipping corrupted row $i in $path: $e"
+        end
     end
     return rows
 end
