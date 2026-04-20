@@ -422,8 +422,8 @@ function build_row(sample_index, point, artifact, edge_source, n_modes; branch_i
 
     alpha_domain = result.thrust # Standard solver thrust
     alpha_beam = beam_asymmetry(metrics.eta_left_beam, metrics.eta_right_beam)
-    S_domain = (result.metadata.args.eta_right_domain + result.metadata.args.eta_left_domain) / 2
-    A_domain = (result.metadata.args.eta_right_domain - result.metadata.args.eta_left_domain) / 2
+    S_domain = (metrics.eta_right_domain + metrics.eta_left_domain) / 2
+    A_domain = (metrics.eta_right_domain - metrics.eta_left_domain) / 2
     sa_ratio_domain = log10(abs(S_domain) / (abs(A_domain) + eps()))
     S_beam = (metrics.eta_right_beam + metrics.eta_left_beam) / 2
     A_beam = (metrics.eta_right_beam - metrics.eta_left_beam) / 2
@@ -448,8 +448,8 @@ function build_row(sample_index, point, artifact, edge_source, n_modes; branch_i
         power_input = result.metadata.args.power_input,
         thrust = result.thrust,
         tail_flat_ratio = result.tail_flat_ratio,
-        eta_left_domain = result.metadata.args.eta_left_domain,
-        eta_right_domain = result.metadata.args.eta_right_domain,
+        eta_left_domain = metrics.eta_left_domain,
+        eta_right_domain = metrics.eta_right_domain,
         eta_left_beam = metrics.eta_left_beam,
         eta_right_beam = metrics.eta_right_beam,
         alpha = alpha_selected,
