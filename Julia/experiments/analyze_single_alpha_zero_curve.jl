@@ -135,7 +135,6 @@ function predict_gp2d(model, xq::Real, yq::Real)
     end
     return model.mean + acc
 end
-
 function gp_training_points(mp_norm_list, EI_list, left_grid::AbstractMatrix, right_grid::AbstractMatrix; extra_points=nothing)
     alpha_grid, sa_ratio_grid = build_scalar_fields(left_grid, right_grid)
     logEI_list = log10.(Float64.(EI_list))
@@ -144,6 +143,8 @@ function gp_training_points(mp_norm_list, EI_list, left_grid::AbstractMatrix, ri
     ytrain = Float64[]
     alpha_train = Float64[]
     sa_train = Float64[]
+
+    # 1. Add base grid points
     for ie in eachindex(logEI_list), im in eachindex(mp_norm_list)
         push!(xtrain, Float64(mp_norm_list[im]))
         push!(ytrain, Float64(logEI_list[ie]))
@@ -151,7 +152,16 @@ function gp_training_points(mp_norm_list, EI_list, left_grid::AbstractMatrix, ri
         push!(sa_train, Float64(sa_ratio_grid[im, ie]))
     end
 
+    # 2. Symmetry Pinning: add xM=0 points as hard zeros
+    for ie in eachindex(logEI_list)
+        push!(xtrain, 0.0)
+        push!(ytrain, logEI_list[ie])
+        push!(alpha_train, 0.0)
+        push!(sa_train, -5.0)
+    end
+
     if !isnothing(extra_points)
+...
         append!(xtrain, extra_points.x)
         append!(ytrain, extra_points.y)
         append!(alpha_train, extra_points.alpha)
@@ -171,7 +181,8 @@ function nontrivial_candidates(candidates; boundary_band::Real=0.0)
     # 1. Sort found roots by position
     sorted = sort(candidates; by = c -> c.xM_over_L)
     # 2. Smart Skip: skip center symmetry root (Branch 0)
-    if !isempty(sorted) && sorted[1].xM_over_L < 0.01
+    # We use 2% as a safer margin for the symmetry root.
+    if !isempty(sorted) && sorted[1].xM_over_L < 0.02
         return sorted[2:end]
     end
     return sorted
