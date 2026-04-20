@@ -517,7 +517,7 @@ function default_output_file(sweep_file)
 end
 
 function default_cache_file(sweep_file)
-    return "second_family_point_cache.jld2"
+    return nothing
 end
 
 function beam_csv_path(csv_path)
