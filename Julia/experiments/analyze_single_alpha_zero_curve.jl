@@ -957,19 +957,21 @@ function main(
     # Main active learning loop
     for iteration in 1:max_iterations
         # 1. Propose candidates using CURRENT surrogate (refined by any working_rows)
+        # We filter working_rows to only include ones that actually ran a solve (alpha not NaN)
+        # and match our current sweep/branch context.
         relevant_training = training_rows(working_rows; edge_source=edge_source, sweep_file=sweep_file)
         extra_pts = isempty(relevant_training) ? nothing : cached_training_points(relevant_training, edge_source)
         
-        # We perform one "GP proposal" step per iteration
         target_logs = target_logEI_values(EI_list; n_sample=n_sample)
         boundary_band = length(mp_norm_list) >= 2 ? (maximum(mp_norm_list) - minimum(mp_norm_list)) / (201 - 1) : 0.0
         
         alpha_gp, sa_gp = surrogate_models(mp_norm_list, EI_list, left_grid, right_grid; extra_points=extra_pts)
         
         # 2. Identify which samples need solving
-        queue = Int[]
+        queue_indices = Int[]
         points_to_solve = Dict{Int, NamedTuple}()
         
+        # Bin counts based on ALL solves done so far
         bin_counts = solve_counts_by_bin(working_rows; width=logEI_bin_width, branch_index=branch_index, edge_source=edge_source, sweep_file=sweep_file)
 
         for (sample_index, logEI) in enumerate(target_logs)
@@ -991,42 +993,45 @@ function main(
             # If not, and we haven't exceeded bin budget, add to queue
             bin = logEI_bin(logEI; width=logEI_bin_width)
             if get(bin_counts, bin, 0) < max_solves_per_bin
-                push!(queue, sample_index)
+                push!(queue_indices, sample_index)
                 points_to_solve[sample_index] = point
                 bin_counts[bin] = get(bin_counts, bin, 0) + 1
             end
         end
 
-        if isempty(queue)
+        if isempty(queue_indices)
             println("No more points to solve (all accepted or budgets reached).")
             break
         end
 
-        println("Iteration $(iteration): running $(length(queue)) new sampled cases")
-        current_batch_rows = Vector{Any}(undef, length(queue))
+        println("Iteration $(iteration): running $(length(queue_indices)) new sampled cases")
+        # Use a thread-safe storage for batch results
+        current_batch_results = Vector{Any}(undef, length(queue_indices))
         
         if parallel && nthreads() > 1
-            @threads for qidx in eachindex(queue)
-                s_idx = queue[qidx]
+            println("Running in parallel across $(nthreads()) threads")
+            @threads for qidx in eachindex(queue_indices)
+                s_idx = queue_indices[qidx]
                 point = points_to_solve[s_idx]
                 row = build_row(s_idx, point, artifact, edge_source, n_modes; branch_index=branch_index, sweep_file=sweep_file, iteration=iteration)
-                current_batch_rows[qidx] = row
+                current_batch_results[qidx] = row
                 lock(log_lock) do
                     @printf("  case %d / %d: EI=%.4e, x_M/L=%.4f, alpha=%.6f\n", s_idx, n_sample, point.EI, point.xM_over_L, row.alpha)
                 end
             end
         else
-            for (qidx, s_idx) in enumerate(queue)
+            for (qidx, s_idx) in enumerate(queue_indices)
                 point = points_to_solve[s_idx]
                 row = build_row(s_idx, point, artifact, edge_source, n_modes; branch_index=branch_index, sweep_file=sweep_file, iteration=iteration)
-                current_batch_rows[qidx] = row
+                current_batch_results[qidx] = row
                 @printf("  case %d / %d: EI=%.4e, x_M/L=%.4f, alpha=%.6f\n", s_idx, n_sample, point.EI, point.xM_over_L, row.alpha)
             end
         end
 
         # Update knowledge base with new results
-        working_rows = merge_output_rows(working_rows, current_batch_rows)
-        for row in current_batch_rows
+        new_batch_rows = filter(!isnothing, current_batch_results)
+        working_rows = merge_output_rows(working_rows, new_batch_rows)
+        for row in new_batch_rows
             existing = get(best_rows, row.sample_index, nothing)
             if isnothing(existing) || abs(row.alpha) < abs(existing.alpha)
                 best_rows[row.sample_index] = row
@@ -1034,13 +1039,43 @@ function main(
         end
     end
 
-    # Collect final results for sampled points
-    final_rows = Any[]
+    # Final trace of the branch
+    relevant_training = training_rows(working_rows; edge_source=edge_source, sweep_file=sweep_file)
+    extra_pts = isempty(relevant_training) ? nothing : cached_training_points(relevant_training, edge_source)
+    alpha_gp, sa_gp = surrogate_models(mp_norm_list, EI_list, left_grid, right_grid; extra_points=extra_pts)
+    
+    final_sampled = NamedTuple[]
     target_logs = target_logEI_values(EI_list; n_sample=n_sample)
+    boundary_band = length(mp_norm_list) >= 2 ? (maximum(mp_norm_list) - minimum(mp_norm_list)) / (201 - 1) : 0.0
+    for (sample_index, logEI) in enumerate(target_logs)
+        candidates = branch_candidates_at_logEI(mp_norm_list, logEI, alpha_gp, sa_gp; boundary_band=boundary_band)
+        if length(candidates) >= branch_index
+            push!(final_sampled, (; candidates[branch_index]..., sample_index=sample_index, curve_point_index=sample_index))
+        end
+    end
+
+    final_rows = Any[]
     for i in 1:n_sample
         row = get(best_rows, i, nothing)
         !isnothing(row) && push!(final_rows, row)
     end
+
+    combined_rows = merge_output_rows(existing_output_rows, final_rows)
+    write_curve_csv(output_path, combined_rows, n_modes)
+    beam_output_path = beam_csv_path(output_path)
+    write_beam_curve_csv(beam_output_path, combined_rows)
+    overlay_path = replace(output_path, r"\.csv$" => "_branch$(branch_index)_overlay.pdf")
+    write_alpha_overlay_plot(
+        overlay_path,
+        mp_norm_list,
+        EI_list,
+        left_grid,
+        right_grid,
+        final_sampled,
+        final_rows;
+        extra_points=extra_pts,
+        edge_source=edge_source,
+    )
 
     combined_rows = merge_output_rows(existing_output_rows, final_rows)
     write_curve_csv(output_path, combined_rows, n_modes)
