@@ -161,7 +161,6 @@ function gp_training_points(mp_norm_list, EI_list, left_grid::AbstractMatrix, ri
     end
 
     if !isnothing(extra_points)
-...
         append!(xtrain, extra_points.x)
         append!(ytrain, extra_points.y)
         append!(alpha_train, extra_points.alpha)
@@ -181,8 +180,8 @@ function nontrivial_candidates(candidates; boundary_band::Real=0.0)
     # 1. Sort found roots by position
     sorted = sort(candidates; by = c -> c.xM_over_L)
     # 2. Smart Skip: skip center symmetry root (Branch 0)
-    # We use 2% as a safer margin for the symmetry root.
-    if !isempty(sorted) && sorted[1].xM_over_L < 0.02
+    # We use 1.5% as a tight margin for the symmetry root.
+    if !isempty(sorted) && sorted[1].xM_over_L < 0.015
         return sorted[2:end]
     end
     return sorted
