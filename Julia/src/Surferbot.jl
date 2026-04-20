@@ -209,23 +209,19 @@ function derive_params(params::FlexibleParams{T}) where {T<:Real}
 
     res = 80
     k_real = real(k)
-    println("DEBUG: k_real = $(k_real)")
     n = if isnothing(params.n)
         n_guess = max(res, ceil(Int, res / (2 * pi / k_real) * params.L_raft))
-        println("DEBUG: n_guess = $(n_guess)")
         n_guess + mod(n_guess, 2) + 1
     else
         params.n
     end
 
     M = isnothing(params.M) ? ceil(Int, res * k_real * domain_depth) : params.M
-    println("DEBUG: M_float = $(res * k_real * domain_depth)")
     L_domain = if isnothing(params.L_domain)
         min(3 * params.L_raft, round(20 * 2 * pi / k_real + params.L_raft; sigdigits=2))
     else
         params.L_domain
     end
-    println("DEBUG: n=$(n), M=$(M), L_domain=$(L_domain)")
 
     N = round(Int, (n - 1) * L_domain / params.L_raft) + 1
     L_domain_adim = T(N / n)

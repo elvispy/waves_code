@@ -49,11 +49,9 @@ function main(;
         artifact.base_params,
         (EI=EI, motor_position=xM_over_L * artifact.base_params.L_raft),
     )
-    println("DEBUG: params.d = $(params.d)")
     result = flexible_solver(params)
     modal = decompose_raft_freefree_modes(result; num_modes=num_modes, verbose=false)
     args = result.metadata.args
-    println("DEBUG: args.d   = $(args.d)")
 
     println("Case: EI=$(EI), log10(EI)=$(log10(EI)), x_M/L=$(xM_over_L), alpha_beam=$(alpha)")
 
