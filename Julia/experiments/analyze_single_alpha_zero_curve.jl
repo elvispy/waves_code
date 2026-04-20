@@ -715,17 +715,43 @@ function write_alpha_overlay_plot(path::AbstractString, mp_norm_list, EI_list, l
         label="GP alpha=0",
     )
 
-    sampled_x = [p.xM_over_L for p in sampled]
-    sampled_y = log10.([p.EI for p in sampled])
-    scatter!(
-        plt,
-        sampled_y,
-        sampled_x;
-        color=:black,
-        markersize=3,
-        markerstrokewidth=0,
-        label="predicted samples",
-    )
+    solved_rows = sort(rows; by = r -> get(r, :target_log10_EI, log10(r.EI)))
+    if !isempty(solved_rows)
+        solved_x = [r.xM_over_L for r in solved_rows]
+        solved_y = [get(r, :target_log10_EI, log10(r.EI)) for r in solved_rows]
+        plot!(
+            plt,
+            solved_y,
+            solved_x;
+            color=:black,
+            linewidth=1.5,
+            label="solved branch",
+        )
+        scatter!(
+            plt,
+            solved_y,
+            solved_x;
+            color=:black,
+            markersize=3,
+            markerstrokewidth=0,
+            label="",
+        )
+    end
+
+    # Optional light overlay of the final surrogate trace for debugging only.
+    if !isempty(sampled)
+        sampled_x = [p.xM_over_L for p in sampled]
+        sampled_y = log10.([p.EI for p in sampled])
+        plot!(
+            plt,
+            sampled_y,
+            sampled_x;
+            color=:gray50,
+            linewidth=1,
+            linestyle=:dash,
+            label="surrogate trace",
+        )
+    end
     savefig(plt, path)
 end
 
