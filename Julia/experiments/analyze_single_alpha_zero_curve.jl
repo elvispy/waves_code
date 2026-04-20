@@ -152,14 +152,6 @@ function gp_training_points(mp_norm_list, EI_list, left_grid::AbstractMatrix, ri
         push!(sa_train, Float64(sa_ratio_grid[im, ie]))
     end
 
-    # 2. Symmetry Pinning: add xM=0 points as hard zeros
-    for ie in eachindex(logEI_list)
-        push!(xtrain, 0.0)
-        push!(ytrain, logEI_list[ie])
-        push!(alpha_train, 0.0)
-        push!(sa_train, -5.0)
-    end
-
     if !isnothing(extra_points)
         append!(xtrain, extra_points.x)
         append!(ytrain, extra_points.y)
@@ -255,6 +247,19 @@ function argmin(f, xs)
     return best
 end
 
+function choose_branch_candidate(candidates, branch_index::Int; anchor_xM=nothing)
+    isempty(candidates) && return nothing
+    if isnothing(anchor_xM)
+        return length(candidates) >= branch_index ? candidates[branch_index] : candidates[end]
+    end
+    return argmin(c -> abs(c.xM_over_L - anchor_xM), candidates)
+end
+
+function same_point(a, b; x_tol::Real=1e-4, rel_EI_tol::Real=1e-8)
+    return abs(a.xM_over_L - b.xM_over_L) <= x_tol &&
+           abs(a.EI - b.EI) <= rel_EI_tol * max(abs(a.EI), abs(b.EI), 1.0)
+end
+
 function cached_training_points(rows, edge_source::Symbol)
     # Filter only non-NaN results
     valid = filter(r -> !isnan(r.alpha), rows)
@@ -281,101 +286,174 @@ function merge_output_rows(existing_rows, new_rows)
     return merged
 end
 
+function row_key(row)
+    return (
+        Int(get(row, :branch_index, 1)),
+        round(Float64(get(row, :target_log10_EI, log10(row.EI))); digits=10),
+        round(Float64(row.xM_over_L); digits=10),
+    )
+end
+
+function existing_row_keys(rows)
+    return Set(row_key(row) for row in rows)
+end
+
+function load_existing_beam_keys(path::AbstractString)
+    !isfile(path) && return Set{Tuple{Int, Float64, Float64}}()
+    data_all = try
+        readdlm(path, ',', header=true, quotes=true)
+    catch e
+        @warn "Failed to parse beam CSV $path: $e. Returning empty key set."
+        return Set{Tuple{Int, Float64, Float64}}()
+    end
+    data, header = data_all
+    names = string.(vec(header))
+    col(n) = findfirst(==(n), names)
+    branch_col = col("branch_index")
+    target_col = col("target_log10_EI")
+    xm_col = col("xM_over_L")
+    if isnothing(branch_col) || isnothing(target_col) || isnothing(xm_col)
+        return Set{Tuple{Int, Float64, Float64}}()
+    end
+
+    keys = Set{Tuple{Int, Float64, Float64}}()
+    for i in axes(data, 1)
+        try
+            push!(keys, (
+                Int(data[i, branch_col]),
+                round(Float64(data[i, target_col]); digits=10),
+                round(Float64(data[i, xm_col]); digits=10),
+            ))
+        catch
+        end
+    end
+    return keys
+end
+
 function format_complex(z)
     return "$(real(z)),$(imag(z)),$(abs(z)),$(rad2deg(angle(z)))"
 end
 
-function write_curve_csv(path::AbstractString, rows, n_modes::Int)
-    open(path, "w") do io
-        header = [
-            "branch_index", "edge_source", "sweep_file", "iteration", "target_log10_EI",
-            "sample_index", "curve_point_index", "EI", "log10_EI", "xM_over_L",
-            "motor_position", "omega", "U", "power", "power_input", "thrust", "tail_flat_ratio",
-            "eta_left_domain_re", "eta_left_domain_im", "eta_left_domain_abs", "eta_left_domain_phase_deg",
-            "eta_right_domain_re", "eta_right_domain_im", "eta_right_domain_abs", "eta_right_domain_phase_deg",
-            "eta_left_beam_re", "eta_left_beam_im", "eta_left_beam_abs", "eta_left_beam_phase_deg",
-            "eta_right_beam_re", "eta_right_beam_im", "eta_right_beam_abs", "eta_right_beam_phase_deg",
-            "alpha", "alpha_domain", "alpha_beam", "sa_ratio_domain", "sa_ratio_beam",
-        ]
-        for j in 0:(n_modes - 1)
-            append!(header, [
-                "q$(j)_re", "q$(j)_im", "q$(j)_abs", "q$(j)_phase_deg",
-                "Q$(j)_re", "Q$(j)_im", "Q$(j)_abs", "q$(j)_phase_deg",
-                "F$(j)_re", "F$(j)_im", "F$(j)_abs", "F$(j)_phase_deg",
-                "residual$(j)_re", "residual$(j)_im", "residual$(j)_abs", "residual$(j)_phase_deg",
-                "energy_frac$(j)",
-                "mode_index$(j)",
-                "mode_type$(j)",
-            ])
-        end
-        println(io, join(header, ","))
-
-        for row in rows
-            # Compute T transformation from Psi -> W for all terms to be consistent
-            w_weights = Surferbot.trapz_weights(row.modal.x_raft)
-            G_mat = row.modal.Phi' * (row.modal.Phi .* w_weights)
-            B_mat = row.modal.Phi' * (row.modal.Psi .* w_weights)
-            T_psi_to_w = G_mat \ B_mat
-            
-            # Map coefficients to W basis
-            q_w = row.modal.q_w
-            Q_w = T_psi_to_w * row.modal.Q
-            F_w = T_psi_to_w * row.modal.F
-            R_w = T_psi_to_w * row.modal.balance_residual
-
-            fields = String[
-                string(get(row, :branch_index, 1)),
-                string(get(row, :edge_source, "")),
-                string(get(row, :sweep_file, "")),
-                string(get(row, :iteration, 1)),
-                string(get(row, :target_log10_EI, log10(row.EI))),
-                string(row.sample_index),
-                string(row.curve_point_index),
-                string(row.EI),
-                string(log10(row.EI)),
-                string(row.xM_over_L),
-                string(row.motor_position),
-                string(row.omega),
-                string(row.U),
-                string(row.power),
-                string(row.power_input),
-                string(row.thrust),
-                string(row.tail_flat_ratio),
-            ]
-            append!(fields, split(format_complex(row.eta_left_domain), ","))
-            append!(fields, split(format_complex(row.eta_right_domain), ","))
-            append!(fields, split(format_complex(row.eta_left_beam), ","))
-            append!(fields, split(format_complex(row.eta_right_beam), ","))
-            append!(fields, [
-                string(row.alpha),
-                string(row.alpha_domain),
-                string(row.alpha_beam),
-                string(row.sa_ratio_domain),
-                string(row.sa_ratio_beam),
-            ])
-            for j in 1:n_modes
-                append!(fields, split(format_complex(q_w[j]), ","))
-                append!(fields, split(format_complex(Q_w[j]), ","))
-                append!(fields, split(format_complex(F_w[j]), ","))
-                append!(fields, split(format_complex(R_w[j]), ","))
-                append!(fields, [
-                    string(row.modal.energy_frac[j]),
-                    string(row.modal.n[j]),
-                    row.modal.mode_type[j],
-                ])
-            end
-            println(io, join(fields, ","))
-        end
+function curve_csv_header(n_modes::Int)
+    header = [
+        "branch_index", "edge_source", "sweep_file", "iteration", "target_log10_EI",
+        "sample_index", "curve_point_index", "EI", "log10_EI", "xM_over_L",
+        "motor_position", "omega", "U", "power", "power_input", "thrust", "tail_flat_ratio",
+        "eta_left_domain_re", "eta_left_domain_im", "eta_left_domain_abs", "eta_left_domain_phase_deg",
+        "eta_right_domain_re", "eta_right_domain_im", "eta_right_domain_abs", "eta_right_domain_phase_deg",
+        "eta_left_beam_re", "eta_left_beam_im", "eta_left_beam_abs", "eta_left_beam_phase_deg",
+        "eta_right_beam_re", "eta_right_beam_im", "eta_right_beam_abs", "eta_right_beam_phase_deg",
+        "alpha", "alpha_domain", "alpha_beam", "sa_ratio_domain", "sa_ratio_beam",
+    ]
+    for j in 0:(n_modes - 1)
+        append!(header, [
+            "q$(j)_re", "q$(j)_im", "q$(j)_abs", "q$(j)_phase_deg",
+            "Q$(j)_re", "Q$(j)_im", "Q$(j)_abs", "q$(j)_phase_deg",
+            "F$(j)_re", "F$(j)_im", "F$(j)_abs", "F$(j)_phase_deg",
+            "residual$(j)_re", "residual$(j)_im", "residual$(j)_abs", "residual$(j)_phase_deg",
+            "energy_frac$(j)",
+            "mode_index$(j)",
+            "mode_type$(j)",
+        ])
     end
+    return header
 end
 
-function write_beam_curve_csv(path::AbstractString, rows)
-    open(path, "w") do io
-        println(io, "log10_EI,xM_over_L,alpha_beam,sa_ratio_beam")
-        for row in rows
-            @printf(io, "%.6f,%.6f,%.6e,%.6f\n", log10(row.EI), row.xM_over_L, row.alpha_beam, row.sa_ratio_beam)
+function curve_csv_fields(row, n_modes::Int)
+    # Compute T transformation from Psi -> W for all terms to be consistent
+    w_weights = Surferbot.trapz_weights(row.modal.x_raft)
+    G_mat = row.modal.Phi' * (row.modal.Phi .* w_weights)
+    B_mat = row.modal.Phi' * (row.modal.Psi .* w_weights)
+    T_psi_to_w = G_mat \ B_mat
+
+    # Map coefficients to W basis
+    q_w = row.modal.q_w
+    Q_w = T_psi_to_w * row.modal.Q
+    F_w = T_psi_to_w * row.modal.F
+    R_w = T_psi_to_w * row.modal.balance_residual
+
+    fields = String[
+        string(get(row, :branch_index, 1)),
+        string(get(row, :edge_source, "")),
+        string(get(row, :sweep_file, "")),
+        string(get(row, :iteration, 1)),
+        string(get(row, :target_log10_EI, log10(row.EI))),
+        string(row.sample_index),
+        string(row.curve_point_index),
+        string(row.EI),
+        string(log10(row.EI)),
+        string(row.xM_over_L),
+        string(row.motor_position),
+        string(row.omega),
+        string(row.U),
+        string(row.power),
+        string(row.power_input),
+        string(row.thrust),
+        string(row.tail_flat_ratio),
+    ]
+    append!(fields, split(format_complex(row.eta_left_domain), ","))
+    append!(fields, split(format_complex(row.eta_right_domain), ","))
+    append!(fields, split(format_complex(row.eta_left_beam), ","))
+    append!(fields, split(format_complex(row.eta_right_beam), ","))
+    append!(fields, [
+        string(row.alpha),
+        string(row.alpha_domain),
+        string(row.alpha_beam),
+        string(row.sa_ratio_domain),
+        string(row.sa_ratio_beam),
+    ])
+    for j in 1:n_modes
+        append!(fields, split(format_complex(q_w[j]), ","))
+        append!(fields, split(format_complex(Q_w[j]), ","))
+        append!(fields, split(format_complex(F_w[j]), ","))
+        append!(fields, split(format_complex(R_w[j]), ","))
+        append!(fields, [
+            string(row.modal.energy_frac[j]),
+            string(row.modal.n[j]),
+            row.modal.mode_type[j],
+        ])
+    end
+    return fields
+end
+
+function append_curve_csv(path::AbstractString, rows, n_modes::Int, written_keys::Set)
+    rows_to_write = [row for row in rows if !(row_key(row) in written_keys)]
+    isempty(rows_to_write) && return written_keys
+
+    file_exists = isfile(path)
+    open(path, file_exists ? "a" : "w") do io
+        if !file_exists
+            println(io, join(curve_csv_header(n_modes), ","))
+        end
+        for row in rows_to_write
+            println(io, join(curve_csv_fields(row, n_modes), ","))
+            push!(written_keys, row_key(row))
         end
     end
+    return written_keys
+end
+
+function append_beam_curve_csv(path::AbstractString, rows, written_keys::Set)
+    rows_to_write = [row for row in rows if !(row_key(row) in written_keys)]
+    isempty(rows_to_write) && return written_keys
+
+    file_exists = isfile(path)
+    open(path, file_exists ? "a" : "w") do io
+        if !file_exists
+            println(io, "branch_index,target_log10_EI,log10_EI,xM_over_L,alpha_beam,sa_ratio_beam")
+        end
+        for row in rows_to_write
+            @printf(io, "%d,%.10f,%.6f,%.6f,%.6e,%.6f\n",
+                    get(row, :branch_index, 1),
+                    get(row, :target_log10_EI, log10(row.EI)),
+                    log10(row.EI),
+                    row.xM_over_L,
+                    row.alpha_beam,
+                    row.sa_ratio_beam)
+            push!(written_keys, row_key(row))
+        end
+    end
+    return written_keys
 end
 
 function load_cached_curve_rows(path::AbstractString, n_modes::Int)
@@ -400,6 +478,8 @@ function load_cached_curve_rows(path::AbstractString, n_modes::Int)
         # Minimal fields needed for training/re-eval
         try
             r = (
+                branch_index = isnothing(col("branch_index")) ? 1 : Int(data[i, col("branch_index")]),
+                target_log10_EI = isnothing(col("target_log10_EI")) ? Float64(log10(Float64(data[i, col("EI")]))) : Float64(data[i, col("target_log10_EI")]),
                 EI = Float64(data[i, col("EI")]),
                 xM_over_L = Float64(data[i, col("xM_over_L")]),
                 alpha = Float64(data[i, col("alpha")]),
@@ -529,7 +609,8 @@ end
 
 function main(data_dir::AbstractString, sweep_file::AbstractString, edge_source_in::AbstractString,
               branch_index::Int, n_sample::Int, output_file::AbstractString, parallel::Bool;
-              cache_file=nothing, alpha_accept_tol::Float64=5e-3, n_modes::Int=8)
+              cache_file=nothing, alpha_accept_tol::Float64=5e-3, n_modes::Int=8,
+              local_max_iterations::Int=5)
     
     data_dir = ensure_dir(normpath(data_dir))
     artifact = load_sweep_artifact(joinpath(data_dir, sweep_file))
@@ -553,6 +634,9 @@ function main(data_dir::AbstractString, sweep_file::AbstractString, edge_source_
     cached_rows = isnothing(cache_path) ? NamedTuple[] : load_cached_curve_rows(cache_path, n_modes)
     existing_output_rows = isfile(output_path) ? load_cached_curve_rows(output_path, n_modes) : NamedTuple[]
     all_rows = merge_output_rows(cached_rows, existing_output_rows)
+    written_curve_keys = existing_row_keys(existing_output_rows)
+    beam_output_path = beam_csv_path(output_path)
+    written_beam_keys = load_existing_beam_keys(beam_output_path)
 
     summaries = artifact.summaries
     motor_position_list = vec(Float64.(artifact.parameter_axes.motor_position))
@@ -580,112 +664,71 @@ function main(data_dir::AbstractString, sweep_file::AbstractString, edge_source_
     println("Selected $n_sample target points using edge_source=$(edge_source), branch_index=$(branch_index), backend=gpr2d")
 
     BLAS.set_num_threads(1)
-    log_lock = ReentrantLock()
-    max_iterations = 5
-    max_solves_per_bin = 5
-    logEI_bin_width = 0.03
     best_rows = Dict{Int, Any}()
     working_rows = copy(all_rows)
     target_logs = target_logEI_values(EI_list; n_sample=n_sample)
+    target_indices = sort(collect(1:n_sample), rev=true)
+    last_anchor_xM = nothing
+    solve_counter = 0
 
-    # Main active learning loop
-    for iteration in 1:max_iterations
-        # 1. Propose candidates using refined surrogate
-        # We track sequentially from HIGH EI to LOW EI to maintain branch identity.
-        relevant_training = training_rows(working_rows; edge_source=edge_source, sweep_file=sweep_file)
-        extra_pts = isempty(relevant_training) ? nothing : cached_training_points(relevant_training, edge_source)
-        alpha_gp, sa_gp = surrogate_models(mp_norm_list, EI_list, left_grid, right_grid; extra_points=extra_pts)
-        
-        queue_indices = Int[]
-        points_to_solve = Dict{Int, NamedTuple}()
-        bin_counts = solve_counts_by_bin(working_rows; width=logEI_bin_width, branch_index=branch_index, edge_source=edge_source, sweep_file=sweep_file)
+    for s_idx in target_indices
+        logEI = target_logs[s_idx]
+        local_best = best_row_for_sample(working_rows, s_idx; branch_index=branch_index, edge_source=edge_source, sweep_file=sweep_file)
 
-        # Track sequentially from HIGH EI to LOW EI
-        target_indices = sort(collect(1:n_sample), rev=true)
-        last_anchor_xM = nothing
-        
-        for s_idx in target_indices
-            logEI = target_logs[s_idx]
+        if !isnothing(local_best) && abs(local_best.alpha) <= alpha_accept_tol
+            println("Slice $(s_idx) / $(n_sample): reused cached point at EI=$(local_best.EI), x_M/L=$(local_best.xM_over_L), alpha=$(local_best.alpha)")
+            last_anchor_xM = local_best.xM_over_L
+            continue
+        end
+
+        println("Slice $(s_idx) / $(n_sample): refining target log10(EI)=$(round(logEI; digits=6))")
+
+        for local_iteration in 1:local_max_iterations
+            relevant_training = training_rows(working_rows; edge_source=edge_source, sweep_file=sweep_file)
+            extra_pts = isempty(relevant_training) ? nothing : cached_training_points(relevant_training, edge_source)
+            alpha_gp, sa_gp = surrogate_models(mp_norm_list, EI_list, left_grid, right_grid; extra_points=extra_pts)
             candidates = branch_candidates_at_logEI(mp_norm_list, logEI, alpha_gp, sa_gp; boundary_band=0.0)
-            
+
             if isempty(candidates)
-                continue
+                println("  local $(local_iteration) / $(local_max_iterations): no candidates found")
+                break
             end
-            
-            # Anchor Logic: pick the root closest to our previous slice's root
-            point = if isnothing(last_anchor_xM)
-                # First slice: use the requested branch index
-                length(candidates) >= branch_index ? candidates[branch_index] : candidates[end]
-            else
-                # Subsequent slices: follow the branch spatially
-                argmin(c -> abs(c.xM_over_L - last_anchor_xM), candidates)
-            end
-            
-            last_anchor_xM = point.xM_over_L
+
+            local_anchor_xM = !isnothing(local_best) ? local_best.xM_over_L : last_anchor_xM
+            point = choose_branch_candidate(candidates, branch_index; anchor_xM=local_anchor_xM)
             point = (; point..., sample_index=s_idx, curve_point_index=s_idx)
-            
-            # Check if we already have an acceptable result
-            existing = get(best_rows, s_idx, nothing)
-            if !isnothing(existing) && abs(existing.alpha) <= alpha_accept_tol
-                continue
+
+            if !isnothing(local_best) && same_point(local_best, point)
+                println("  local $(local_iteration) / $(local_max_iterations): surrogate repeated same point, stopping local refinement")
+                break
             end
-            
-            # Budget check
-            bin = logEI_bin(logEI; width=logEI_bin_width)
-            if get(bin_counts, bin, 0) < max_solves_per_bin
-                push!(queue_indices, s_idx)
-                points_to_solve[s_idx] = point
-                bin_counts[bin] = get(bin_counts, bin, 0) + 1
+
+            solve_counter += 1
+            row = build_row(s_idx, point, artifact, edge_source, n_modes; branch_index=branch_index, sweep_file=sweep_file, iteration=solve_counter)
+            working_rows = merge_output_rows(working_rows, [row])
+            if isnothing(local_best) || abs(row.alpha) < abs(local_best.alpha)
+                local_best = row
+            end
+
+            @printf("  local %d / %d: EI=%.4e, x_M/L=%.4f, alpha=%.6f\n",
+                    local_iteration, local_max_iterations, row.EI, row.xM_over_L, row.alpha)
+
+            if abs(local_best.alpha) <= alpha_accept_tol
+                break
             end
         end
 
-        n_converged = n_sample - length(queue_indices) - count(i -> !haskey(best_rows, i) && !haskey(points_to_solve, i), 1:n_sample)
-        println("Iteration $(iteration): $(n_converged) / $(n_sample) points already converged.")
-
-        if isempty(queue_indices)
-            println("All points converged or budgets reached.")
-            break
+        if !isnothing(local_best) && hasproperty(local_best, :modal)
+            best_rows[s_idx] = local_best
+            last_anchor_xM = local_best.xM_over_L
         end
 
-        println("Running $(length(queue_indices)) cases...")
-        batch_results = Vector{Any}(undef, length(queue_indices))
-        
-        if parallel && nthreads() > 1
-            println("Running in parallel across $(nthreads()) threads")
-            @threads for qidx in eachindex(queue_indices)
-                s_idx = queue_indices[qidx]
-                point = points_to_solve[s_idx]
-                row = build_row(s_idx, point, artifact, edge_source, n_modes; branch_index=branch_index, sweep_file=sweep_file, iteration=iteration)
-                batch_results[qidx] = row
-                lock(log_lock) do
-                    @printf("  case %d / %d: EI=%.4e, x_M/L=%.4f, alpha=%.6f\n", s_idx, n_sample, point.EI, point.xM_over_L, row.alpha)
-                end
-            end
-        else
-            for (qidx, s_idx) in enumerate(queue_indices)
-                point = points_to_solve[s_idx]
-                row = build_row(s_idx, point, artifact, edge_source, n_modes; branch_index=branch_index, sweep_file=sweep_file, iteration=iteration)
-                batch_results[qidx] = row
-                @printf("  case %d / %d: EI=%.4e, x_M/L=%.4f, alpha=%.6f\n", s_idx, n_sample, point.EI, point.xM_over_L, row.alpha)
-            end
+        if !isempty(best_rows)
+            println("Saving progress to $output_path...")
+            current_final_rows = [best_rows[i] for i in sort(collect(keys(best_rows)))]
+            written_curve_keys = append_curve_csv(output_path, current_final_rows, n_modes, written_curve_keys)
+            written_beam_keys = append_beam_curve_csv(beam_output_path, current_final_rows, written_beam_keys)
         end
-
-        # 3. Update knowledge base
-        new_batch_rows = filter(!isnothing, batch_results)
-        working_rows = merge_output_rows(working_rows, new_batch_rows)
-        for row in new_batch_rows
-            existing = get(best_rows, row.sample_index, nothing)
-            if isnothing(existing) || abs(row.alpha) < abs(existing.alpha)
-                best_rows[row.sample_index] = row
-            end
-        end
-        
-        # INCREMENTAL SAVE: Write current results to CSV after each iteration
-        # This prevents data loss if the session is killed.
-        println("Saving progress to $output_path...")
-        current_final_rows = [best_rows[i] for i in sort(collect(keys(best_rows)))]
-        combined_save_rows = merge_output_rows(existing_output_rows, current_final_rows)
-        write_curve_csv(output_path, combined_save_rows, n_modes)
     end
 
     # Final trace of the branch using refined surrogate
@@ -694,19 +737,20 @@ function main(data_dir::AbstractString, sweep_file::AbstractString, edge_source_
     alpha_gp, sa_gp = surrogate_models(mp_norm_list, EI_list, left_grid, right_grid; extra_points=extra_pts)
     
     final_sampled = NamedTuple[]
-    for (sample_index, logEI) in enumerate(target_logs)
+    final_anchor_xM = nothing
+    for sample_index in target_indices
+        logEI = target_logs[sample_index]
         candidates = branch_candidates_at_logEI(mp_norm_list, logEI, alpha_gp, sa_gp; boundary_band=0.0)
-        if length(candidates) >= branch_index
-            push!(final_sampled, (; candidates[branch_index]..., sample_index=sample_index, curve_point_index=sample_index))
+        point = choose_branch_candidate(candidates, branch_index; anchor_xM=final_anchor_xM)
+        if !isnothing(point)
+            push!(final_sampled, (; point..., sample_index=sample_index, curve_point_index=sample_index))
+            final_anchor_xM = point.xM_over_L
         end
     end
 
     final_rows = [best_rows[i] for i in sort(collect(keys(best_rows)))]
-    combined_rows = merge_output_rows(existing_output_rows, final_rows)
-    
-    write_curve_csv(output_path, combined_rows, n_modes)
-    beam_output_path = beam_csv_path(output_path)
-    write_beam_curve_csv(beam_output_path, combined_rows)
+    written_curve_keys = append_curve_csv(output_path, final_rows, n_modes, written_curve_keys)
+    written_beam_keys = append_beam_curve_csv(beam_output_path, final_rows, written_beam_keys)
     overlay_path = replace(output_path, r"\.csv$" => "_branch$(branch_index)_overlay.pdf")
     
     write_alpha_overlay_plot(
@@ -735,6 +779,16 @@ if abspath(PROGRAM_FILE) == @__FILE__
     n_sample = length(ARGS) >= 5 ? parse(Int, ARGS[5]) : 100
     output_file = length(ARGS) >= 6 ? ARGS[6] : ""
     parallel = length(ARGS) >= 7 ? parse(Bool, ARGS[7]) : (nthreads() > 1)
-    
-    main(data_dir, sweep_file, String(edge_source), branch_index, n_sample, output_file, parallel)
+    local_max_iterations = length(ARGS) >= 8 ? parse(Int, ARGS[8]) : 5
+
+    main(
+        data_dir,
+        sweep_file,
+        String(edge_source),
+        branch_index,
+        n_sample,
+        output_file,
+        parallel;
+        local_max_iterations=local_max_iterations,
+    )
 end
