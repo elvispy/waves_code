@@ -445,7 +445,7 @@ function build_row(sample_index, point, artifact, edge_source, n_modes; branch_i
         omega = params.omega,
         U = result.U,
         power = result.power,
-        power_input = result.metadata.args.power_input,
+        power_input = result.metadata.args.power,
         thrust = result.thrust,
         tail_flat_ratio = result.tail_flat_ratio,
         eta_left_domain = metrics.eta_left_domain,
