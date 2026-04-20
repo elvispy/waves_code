@@ -232,10 +232,19 @@ function collect_zero_crossings_gp(mp_norm_list, EI_list, left_grid::AbstractMat
     return crossings
 end
 
-function nontrivial_candidates(candidates; boundary_band::Real)
+function nontrivial_candidates(candidates; boundary_band::Real=0.0)
     isempty(candidates) && return candidates
+    # 1. Sort all found roots by xM
     sorted = sort(candidates; by = c -> c.xM_over_L)
-    return filter(c -> c.xM_over_L > boundary_band, sorted)
+    
+    # 2. Smart Skip: If the first root is very close to the center (xM=0),
+    # it is likely the trivial symmetry root (Branch 0). 
+    # We define "close" as within 1% of the raft length.
+    if !isempty(sorted) && sorted[1].xM_over_L < 0.01
+        return sorted[2:end]
+    end
+    
+    return sorted
 end
 
 function target_logEI_values(EI_list; n_sample::Int)
@@ -958,13 +967,11 @@ function main(
     # Main active learning loop
     for iteration in 1:max_iterations
         # 1. Propose candidates using CURRENT surrogate (refined by any working_rows)
-        # We filter working_rows to only include ones that actually ran a solve (alpha not NaN)
-        # and match our current sweep/branch context.
         relevant_training = training_rows(working_rows; edge_source=edge_source, sweep_file=sweep_file)
         extra_pts = isempty(relevant_training) ? nothing : cached_training_points(relevant_training, edge_source)
         
         target_logs = target_logEI_values(EI_list; n_sample=n_sample)
-        boundary_band = length(mp_norm_list) >= 2 ? (maximum(mp_norm_list) - minimum(mp_norm_list)) / (201 - 1) : 0.0
+        boundary_band = 0.0 
         
         alpha_gp, sa_gp = surrogate_models(mp_norm_list, EI_list, left_grid, right_grid; extra_points=extra_pts)
         
@@ -1047,9 +1054,8 @@ function main(
     
     final_sampled = NamedTuple[]
     target_logs = target_logEI_values(EI_list; n_sample=n_sample)
-    boundary_band = length(mp_norm_list) >= 2 ? (maximum(mp_norm_list) - minimum(mp_norm_list)) / (201 - 1) : 0.0
     for (sample_index, logEI) in enumerate(target_logs)
-        candidates = branch_candidates_at_logEI(mp_norm_list, logEI, alpha_gp, sa_gp; boundary_band=boundary_band)
+        candidates = branch_candidates_at_logEI(mp_norm_list, logEI, alpha_gp, sa_gp; boundary_band=0.0)
         if length(candidates) >= branch_index
             push!(final_sampled, (; candidates[branch_index]..., sample_index=sample_index, curve_point_index=sample_index))
         end
