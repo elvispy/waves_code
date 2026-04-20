@@ -183,8 +183,9 @@ function nontrivial_candidates(candidates; boundary_band::Real=0.0)
 end
 
 function branch_candidates_at_logEI(mp_norm_list, logEI::Real, alpha_gp, sa_gp; mp_count::Int=401, boundary_band::Real=0.0, window=nothing)
-    mp_min = minimum(Float64.(mp_norm_list))
-    mp_max = maximum(Float64.(mp_norm_list))
+    # Search Domain: Hard lock to [0.01, 0.49] to avoid symmetry/edge effects
+    mp_min = 0.01
+    mp_max = 0.49
     
     if !isnothing(window)
         mp_min = max(mp_min, window[1])
@@ -260,10 +261,25 @@ end
 
 function choose_branch_candidate(candidates, branch_index::Int; anchor_xM=nothing)
     isempty(candidates) && return nothing
-    if isnothing(anchor_xM)
-        return length(candidates) >= branch_index ? candidates[branch_index] : candidates[end]
+    
+    # 1. Hard Physical Filter: Branch 1 is antisymmetric (SA_ratio < 0).
+    # Branch 0 is symmetric (SA_ratio > 0).
+    filtered = if branch_index == 1
+        filter(c -> c.sa_ratio < 0, candidates)
+    elseif branch_index == 0
+        filter(c -> c.sa_ratio > 0, candidates)
+    else
+        candidates
     end
-    return argmin(c -> abs(c.xM_over_L - anchor_xM), candidates)
+    
+    if isempty(filtered)
+        return nothing
+    end
+
+    if isnothing(anchor_xM)
+        return length(filtered) >= branch_index ? filtered[branch_index] : filtered[end]
+    end
+    return argmin(c -> abs(c.xM_over_L - anchor_xM), filtered)
 end
 
 function same_point(a, b; x_tol::Real=1e-4, rel_EI_tol::Real=1e-8)
@@ -272,7 +288,7 @@ function same_point(a, b; x_tol::Real=1e-4, rel_EI_tol::Real=1e-8)
 end
 
 function clamp_to_domain(x::Real, mp_norm_list)
-    return clamp(Float64(x), minimum(Float64.(mp_norm_list)), maximum(Float64.(mp_norm_list)))
+    return clamp(Float64(x), 0.01, 0.49)
 end
 
 function slice_rows(rows, sample_index::Int; branch_index::Int, edge_source::Symbol, sweep_file::AbstractString)
@@ -284,23 +300,24 @@ function slice_rows(rows, sample_index::Int; branch_index::Int, edge_source::Sym
     end
 end
 
-function propose_local_root_point(local_rows, gp_point, mp_norm_list; window=nothing)
+function propose_local_root_point(local_slice_rows, gp_point, mp_norm_list; window=nothing)
     # Target point from GP
     x_target = gp_point.xM_over_L
-    
-    # Define search bounds
-    xmin = minimum(Float64.(mp_norm_list))
-    xmax = maximum(Float64.(mp_norm_list))
+
+    # Define search bounds: Search Domain lock [0.01, 0.49]
+    xmin = 0.01
+    xmax = 0.49
     if !isnothing(window)
         xmin = max(xmin, window[1])
         xmax = min(xmax, window[2])
     end
 
-    if isempty(local_rows)
+    if isempty(local_slice_rows)
         return (; gp_point..., xM_over_L = clamp(x_target, xmin, xmax))
     end
 
-    rows_sorted = sort(local_rows; by = r -> r.xM_over_L)
+    rows_sorted = sort(local_slice_rows; by = r -> r.xM_over_L)
+
 
     # Best case: use a real sign bracket and a secant/regula-falsi style estimate.
     for i in 1:(length(rows_sorted) - 1)
@@ -703,6 +720,26 @@ function refine_single_slice!(
             sweep_file=sweep_file,
             iteration=iteration_offset + local_iteration,
         )
+
+        # Physical Identity Guard: Self-Healing Anchor
+        # Reject jump > 0.15 or physical sign violation.
+        jump = isnothing(local_anchor_xM) ? 0.0 : abs(row.xM_over_L - local_anchor_xM)
+        is_physically_valid = if branch_index == 1
+            row.sa_ratio_beam < 0
+        elseif branch_index == 0
+            row.sa_ratio_beam > 0
+        else
+            true
+        end
+
+        if jump > 0.15 || !is_physically_valid
+            push!(logs, @sprintf("  REJECTED local %d: jump=%.3f (>0.15) or invalid SA=%.3f (wanted %s)",
+                                 local_iteration, jump, row.sa_ratio_beam, branch_index == 1 ? "<0" : ">0"))
+            # We still add to working state for GP training but NOT to the accepted result set
+            local_rows_state = merge_output_rows(local_rows_state, [row])
+            continue
+        end
+
         push!(new_rows, row)
         local_rows_state = merge_output_rows(local_rows_state, [row])
         if isnothing(local_best) || abs(row.alpha) < abs(local_best.alpha)
