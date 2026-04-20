@@ -591,73 +591,40 @@ function main(data_dir::AbstractString, sweep_file::AbstractString, edge_source_
     # Main active learning loop
     for iteration in 1:max_iterations
         # 1. Propose candidates using refined surrogate
-        # Within each global iteration, we do a "local" iteration on the GP (paper-only)
-        # to ensure the candidates are as stable as possible before solving.
-        local_working_rows = copy(working_rows)
-        alpha_gp, sa_gp = nothing, nothing
+        # We track sequentially from HIGH EI to LOW EI to maintain branch identity.
+        relevant_training = training_rows(working_rows; edge_source=edge_source, sweep_file=sweep_file)
+        extra_pts = isempty(relevant_training) ? nothing : cached_training_points(relevant_training, edge_source)
+        alpha_gp, sa_gp = surrogate_models(mp_norm_list, EI_list, left_grid, right_grid; extra_points=extra_pts)
         
-        # Local "paper" refinement (hallucination prevention)
-        # and Sequential Anchor Tracking
-        for local_iter in 1:5
-            relevant_training = training_rows(local_working_rows; edge_source=edge_source, sweep_file=sweep_file)
-            extra_pts = isempty(relevant_training) ? nothing : cached_training_points(relevant_training, edge_source)
-            alpha_gp, sa_gp = surrogate_models(mp_norm_list, EI_list, left_grid, right_grid; extra_points=extra_pts)
-            
-            # Update local rows with the NEW GP guesses (fake solves with alpha=0)
-            proposed_batch = NamedTuple[]
-            
-            # We track sequentially from HIGH EI to LOW EI for stability
-            target_indices = sort(collect(1:n_sample), rev=true)
-            last_best_xM = nothing
-            
-            for s_idx in target_indices
-                logEI = target_logs[s_idx]
-                candidates = branch_candidates_at_logEI(mp_norm_list, logEI, alpha_gp, sa_gp; boundary_band=0.0)
-                
-                if isempty(candidates)
-                    continue
-                end
-                
-                # Selection logic:
-                cand = if isnothing(last_best_xM)
-                    # For the first slice (Highest EI), use branch_index
-                    length(candidates) >= branch_index ? candidates[branch_index] : candidates[end]
-                else
-                    # For subsequent slices, pick the one closest to our anchor
-                    argmin(c -> abs(c.xM_over_L - last_best_xM), candidates)
-                end
-                
-                last_best_xM = cand.xM_over_L
-                push!(proposed_batch, (; cand..., sample_index=s_idx, curve_point_index=s_idx))
-            end
-            
-            fake_solves = [(; p..., alpha=0.0, sa_ratio_beam=p.sa_ratio, sweep_file=sweep_file, edge_source=String(edge_source)) for p in proposed_batch]
-            local_working_rows = merge_output_rows(working_rows, fake_solves)
-        end
-        
-        # 2. Identify which samples need REAL solving
         queue_indices = Int[]
         points_to_solve = Dict{Int, NamedTuple}()
         bin_counts = solve_counts_by_bin(working_rows; width=logEI_bin_width, branch_index=branch_index, edge_source=edge_source, sweep_file=sweep_file)
 
-        # One final sequential pass to get the REAL proposal points for this iteration
-        # using the refined GP from the paper-refinement steps.
+        # Track sequentially from HIGH EI to LOW EI
+        target_indices = sort(collect(1:n_sample), rev=true)
         last_anchor_xM = nothing
-        for s_idx in sort(collect(1:n_sample), rev=true)
+        
+        for s_idx in target_indices
             logEI = target_logs[s_idx]
             candidates = branch_candidates_at_logEI(mp_norm_list, logEI, alpha_gp, sa_gp; boundary_band=0.0)
             
-            if isempty(candidates) continue end
+            if isempty(candidates)
+                continue
+            end
             
+            # Anchor Logic: pick the root closest to our previous slice's root
             point = if isnothing(last_anchor_xM)
+                # First slice: use the requested branch index
                 length(candidates) >= branch_index ? candidates[branch_index] : candidates[end]
             else
+                # Subsequent slices: follow the branch spatially
                 argmin(c -> abs(c.xM_over_L - last_anchor_xM), candidates)
             end
+            
             last_anchor_xM = point.xM_over_L
             point = (; point..., sample_index=s_idx, curve_point_index=s_idx)
             
-            # Check if we already have an acceptable result for this sample
+            # Check if we already have an acceptable result
             existing = get(best_rows, s_idx, nothing)
             if !isnothing(existing) && abs(existing.alpha) <= alpha_accept_tol
                 continue
@@ -674,7 +641,6 @@ function main(data_dir::AbstractString, sweep_file::AbstractString, edge_source_
 
         n_converged = n_sample - length(queue_indices) - count(i -> !haskey(best_rows, i) && !haskey(points_to_solve, i), 1:n_sample)
         println("Iteration $(iteration): $(n_converged) / $(n_sample) points already converged.")
-
 
         if isempty(queue_indices)
             println("All points converged or budgets reached.")
@@ -720,8 +686,6 @@ function main(data_dir::AbstractString, sweep_file::AbstractString, edge_source_
         current_final_rows = [best_rows[i] for i in sort(collect(keys(best_rows)))]
         combined_save_rows = merge_output_rows(existing_output_rows, current_final_rows)
         write_curve_csv(output_path, combined_save_rows, n_modes)
-        
-        # Intermediate retraining of GP for the next GLOBAL iteration
     end
 
     # Final trace of the branch using refined surrogate
