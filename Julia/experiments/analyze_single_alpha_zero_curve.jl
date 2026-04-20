@@ -653,7 +653,7 @@ function refine_single_slice!(
     alpha_accept_tol::Real,
     local_max_iterations::Int,
     iteration_offset::Int=0,
-    tunnel_width::Real=0.08,
+    tunnel_width::Real=0.10,
 )
     local_rows_state = copy(working_rows)
     local_best = best_row_for_sample(local_rows_state, s_idx; branch_index=branch_index, edge_source=edge_source, sweep_file=sweep_file)
@@ -804,7 +804,7 @@ end
 function main(data_dir::AbstractString, sweep_file::AbstractString, edge_source_in::AbstractString,
               branch_index::Int, n_sample::Int, output_file::AbstractString, parallel::Bool;
               cache_file=nothing, alpha_accept_tol::Float64=5e-3, n_modes::Int=8,
-              local_max_iterations::Int=5, tunnel_width::Real=0.08)
+              local_max_iterations::Int=5, tunnel_width::Real=0.10)
     
     data_dir = ensure_dir(normpath(data_dir))
     artifact = load_sweep_artifact(joinpath(data_dir, sweep_file))
@@ -869,7 +869,17 @@ function main(data_dir::AbstractString, sweep_file::AbstractString, edge_source_
     for chunk_start in 1:chunk_size:length(target_indices)
         chunk = target_indices[chunk_start:min(chunk_start + chunk_size - 1, length(target_indices))]
         chunk_anchors = Dict{Int, Union{Nothing, Float64}}()
-        anchor_guess = last_anchor_xM
+        
+        # Robust Anchor: Use the median of the last 3 solved points to avoid being derailed by outliers.
+        function get_robust_anchor(history_rows, current_last)
+            isempty(history_rows) && return current_last
+            # Extract all solved xM values sorted by EI (high to low)
+            solved_xMs = [r.xM_over_L for r in sort(history_rows; by=r->r.EI, rev=true)]
+            n_hist = min(3, length(solved_xMs))
+            return median(solved_xMs[1:n_hist])
+        end
+
+        anchor_guess = get_robust_anchor(values(best_rows), last_anchor_xM)
         for s_idx in chunk
             chunk_anchors[s_idx] = anchor_guess
             existing = best_row_for_sample(working_rows, s_idx; branch_index=branch_index, edge_source=edge_source, sweep_file=sweep_file)
@@ -980,7 +990,7 @@ if abspath(PROGRAM_FILE) == @__FILE__
     output_file = length(ARGS) >= 6 ? ARGS[6] : ""
     parallel = length(ARGS) >= 7 ? parse(Bool, ARGS[7]) : (nthreads() > 1)
     local_max_iterations = length(ARGS) >= 8 ? parse(Int, ARGS[8]) : 5
-    tunnel_width = length(ARGS) >= 9 ? parse(Float64, ARGS[9]) : 0.08
+    tunnel_width = length(ARGS) >= 9 ? parse(Float64, ARGS[9]) : 0.10
 
     main(
         data_dir,
