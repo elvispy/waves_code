@@ -679,7 +679,7 @@ function refine_single_slice!(
 end
 
 function write_alpha_overlay_plot(path::AbstractString, mp_norm_list, EI_list, left_grid::AbstractMatrix, right_grid::AbstractMatrix,
-                                  sampled, rows; edge_source::Symbol=:domain,
+                                  rows; edge_source::Symbol=:domain,
                                   mp_count::Int=241, logEI_count::Int=241)
     # Background GPR: only train on the initial coarse grid to preserve global field shape
     xtrain, ytrain, alpha_train, _, logEI_list =
@@ -720,37 +720,28 @@ function write_alpha_overlay_plot(path::AbstractString, mp_norm_list, EI_list, l
     if !isempty(solved_rows)
         solved_x = [r.xM_over_L for r in solved_rows]
         solved_y = [get(r, :target_log10_EI, log10(r.EI)) for r in solved_rows]
-        plot!(
-            plt,
-            solved_y,
-            solved_x;
-            color=:black,
-            linewidth=1.5,
-            label="solved branch",
-        )
+        
+        # Primary visual: scatter of true zeros from the solver
         scatter!(
             plt,
             solved_y,
             solved_x;
             color=:black,
-            markersize=3,
-            markerstrokewidth=0,
-            label="",
+            markersize=5,
+            markerstrokewidth=1,
+            markerstrokecolor=:white,
+            label="solved zeros (CSV)",
         )
-    end
-
-    # Optional light overlay of the final surrogate trace for debugging only.
-    if !isempty(sampled)
-        sampled_x = [p.xM_over_L for p in sampled]
-        sampled_y = log10.([p.EI for p in sampled])
+        
+        # Solid line connecting them for continuity
         plot!(
             plt,
-            sampled_y,
-            sampled_x;
-            color=:gray50,
-            linewidth=1,
-            linestyle=:dash,
-            label="surrogate trace",
+            solved_y,
+            solved_x;
+            color=:black,
+            linewidth=2,
+            alpha=0.7,
+            label="",
         )
     end
     savefig(plt, path)
@@ -915,23 +906,6 @@ function main(data_dir::AbstractString, sweep_file::AbstractString, edge_source_
         end
     end
 
-    # Final trace of the branch using refined surrogate
-    relevant_training = training_rows(working_rows; edge_source=edge_source, sweep_file=sweep_file)
-    extra_pts = cached_training_points(relevant_training, edge_source)
-    alpha_gp, sa_gp = surrogate_models(mp_norm_list, EI_list, left_grid, right_grid; extra_points=extra_pts)
-    
-    final_sampled = NamedTuple[]
-    final_anchor_xM = nothing
-    for sample_index in target_indices
-        logEI = target_logs[sample_index]
-        candidates = branch_candidates_at_logEI(mp_norm_list, logEI, alpha_gp, sa_gp; boundary_band=0.0)
-        point = choose_branch_candidate(candidates, branch_index; anchor_xM=final_anchor_xM)
-        if !isnothing(point)
-            push!(final_sampled, (; point..., sample_index=sample_index, curve_point_index=sample_index))
-            final_anchor_xM = point.xM_over_L
-        end
-    end
-
     final_rows = [best_rows[i] for i in sort(collect(keys(best_rows)))]
     written_curve_keys = append_curve_csv(output_path, final_rows, n_modes, written_curve_keys)
     written_beam_keys = append_beam_curve_csv(beam_output_path, final_rows, written_beam_keys)
@@ -943,7 +917,6 @@ function main(data_dir::AbstractString, sweep_file::AbstractString, edge_source_
         EI_list,
         left_grid,
         right_grid,
-        final_sampled,
         final_rows;
         edge_source=edge_source,
     )
