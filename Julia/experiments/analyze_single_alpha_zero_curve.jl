@@ -393,6 +393,7 @@ function curve_csv_header(n_modes::Int)
         "branch_index", "edge_source", "sweep_file", "iteration", "target_log10_EI",
         "sample_index", "curve_point_index", "EI", "log10_EI", "xM_over_L",
         "motor_position", "omega", "U", "power", "power_input", "thrust", "tail_flat_ratio",
+        "rho_raft", "L_raft",
         "eta_left_domain_re", "eta_left_domain_im", "eta_left_domain_abs", "eta_left_domain_phase_deg",
         "eta_right_domain_re", "eta_right_domain_im", "eta_right_domain_abs", "eta_right_domain_phase_deg",
         "eta_left_beam_re", "eta_left_beam_im", "eta_left_beam_abs", "eta_left_beam_phase_deg",
@@ -401,10 +402,14 @@ function curve_csv_header(n_modes::Int)
     ]
     for j in 0:(n_modes - 1)
         append!(header, [
-            "q$(j)_re", "q$(j)_im", "q$(j)_abs", "q$(j)_phase_deg",
-            "Q$(j)_re", "Q$(j)_im", "Q$(j)_abs", "q$(j)_phase_deg",
-            "F$(j)_re", "F$(j)_im", "F$(j)_abs", "F$(j)_phase_deg",
+            "q_w$(j)_re", "q_w$(j)_im", "q_w$(j)_abs", "q_w$(j)_phase_deg",
+            "Q_w$(j)_re", "Q_w$(j)_im", "Q_w$(j)_abs", "Q_w$(j)_phase_deg",
+            "F_w$(j)_re", "F_w$(j)_im", "F_w$(j)_abs", "F_w$(j)_phase_deg",
+            "q_psi$(j)_re", "q_psi$(j)_im", "q_psi$(j)_abs", "q_psi$(j)_phase_deg",
+            "Q_psi$(j)_re", "Q_psi$(j)_im", "Q_psi$(j)_abs", "Q_psi$(j)_phase_deg",
+            "F_psi$(j)_re", "F_psi$(j)_im", "F_psi$(j)_abs", "F_psi$(j)_phase_deg",
             "residual$(j)_re", "residual$(j)_im", "residual$(j)_abs", "residual$(j)_phase_deg",
+            "beta$(j)", "Psi_left$(j)", "Psi_right$(j)",
             "energy_frac$(j)",
             "mode_index$(j)",
             "mode_type$(j)",
@@ -444,6 +449,8 @@ function curve_csv_fields(row, n_modes::Int)
         string(row.power_input),
         string(row.thrust),
         string(row.tail_flat_ratio),
+        string(row.rho_raft),
+        string(row.L_raft),
     ]
     append!(fields, split(format_complex(row.eta_left_domain), ","))
     append!(fields, split(format_complex(row.eta_right_domain), ","))
@@ -460,8 +467,14 @@ function curve_csv_fields(row, n_modes::Int)
         append!(fields, split(format_complex(q_w[j]), ","))
         append!(fields, split(format_complex(Q_w[j]), ","))
         append!(fields, split(format_complex(F_w[j]), ","))
-        append!(fields, split(format_complex(R_w[j]), ","))
+        append!(fields, split(format_complex(row.modal.q[j]), ","))
+        append!(fields, split(format_complex(row.modal.Q[j]), ","))
+        append!(fields, split(format_complex(row.modal.F[j]), ","))
+        append!(fields, split(format_complex(row.modal.balance_residual[j]), ","))
         append!(fields, [
+            string(row.modal.beta[j]),
+            string(row.modal.Psi[1, j]),
+            string(row.modal.Psi[end, j]),
             string(row.modal.energy_frac[j]),
             string(row.modal.n[j]),
             row.modal.mode_type[j],
@@ -580,6 +593,8 @@ function build_row(sample_index, point, artifact, edge_source, n_modes; branch_i
         xM_over_L = point.xM_over_L,
         motor_position = params.motor_position,
         omega = params.omega,
+        rho_raft = params.rho_raft,
+        L_raft = params.L_raft,
         U = result.U,
         power = result.power,
         power_input = result.metadata.args.power,
@@ -892,7 +907,7 @@ function main(data_dir::AbstractString, sweep_file::AbstractString, edge_source_
             if !isempty(result.new_rows)
                 working_rows = merge_output_rows(working_rows, result.new_rows)
             end
-            if !isnothing(result.best_row) && hasproperty(result.best_row, :modal)
+            if !isnothing(result.best_row)
                 best_rows[s_idx] = result.best_row
                 last_anchor_xM = result.best_row.xM_over_L
             end
