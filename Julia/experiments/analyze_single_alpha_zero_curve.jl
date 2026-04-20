@@ -873,8 +873,10 @@ function main(data_dir::AbstractString, sweep_file::AbstractString, edge_source_
         # Robust Anchor: Use the median of the last 3 solved points to avoid being derailed by outliers.
         function get_robust_anchor(history_rows, current_last)
             isempty(history_rows) && return current_last
-            # Extract all solved xM values sorted by EI (high to low)
-            solved_xMs = [r.xM_over_L for r in sort(history_rows; by=r->r.EI, rev=true)]
+            # Collect and extract all solved xM values sorted by EI (high to low)
+            rows_vec = collect(history_rows)
+            sort!(rows_vec; by=r->r.EI, rev=true)
+            solved_xMs = [r.xM_over_L for r in rows_vec]
             n_hist = min(3, length(solved_xMs))
             return median(solved_xMs[1:n_hist])
         end
