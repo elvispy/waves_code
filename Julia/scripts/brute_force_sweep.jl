@@ -82,10 +82,18 @@ function main()
             EI = EI_list[ie]
         ))
         
-        # Solve and strip potential fields to save space
+        # Solve and strip large matrices to save space
         try
             res = flexible_solver(params)
             # Create a lightweight version for storage
+            # metadata.args contains almost everything, but we exclude phi_z (large matrix)
+            meta_clean = Dict{Symbol, Any}()
+            for k in keys(res.metadata.args)
+                if k != :phi_z
+                    meta_clean[k] = getproperty(res.metadata.args, k)
+                end
+            end
+
             results[im, ie] = (
                 U = res.U,
                 power = res.power,
@@ -94,7 +102,7 @@ function main()
                 pressure = res.pressure,
                 max_curvature = res.max_curvature,
                 wave_steepness = res.wave_steepness,
-                metadata = (args = res.metadata.args, params = res.metadata.params)
+                metadata = NamedTuple(meta_clean)
             )
         catch e
             @warn "Failed at im=$im, ie=$ie: $e"
