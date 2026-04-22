@@ -39,10 +39,12 @@ struct ModalDecomposition
     mode_type::Vector{String}
     betaL::Vector{Float64}
     beta::Vector{Float64}
-    q::Vector{ComplexF64}
-    q_w::Vector{ComplexF64}
+    q::Vector{ComplexF64} # Legacy orthonormal basis (psi)
+    q_w::Vector{ComplexF64} # Raw analytical basis (w/phi)
     Q::Vector{ComplexF64}
+    Q_w::Vector{ComplexF64}
     F::Vector{ComplexF64}
+    F_w::Vector{ComplexF64}
     balance_residual::Vector{ComplexF64}
     energy_frac::Vector{Float64}
     eta_recon::Vector{ComplexF64}
@@ -364,18 +366,20 @@ function decompose_raft_freefree_modes(
     # (Phi' W Phi) q_w = (Phi' W eta)
     G = Phi' * (Phi .* w)
     q_w = G \ (Phi' * Weta)
+    Q_w = G \ (Phi' * Wdp)
+    F_w = G \ (Phi' * Wf)
 
     beta4 = beta .^ 4
-    balance_residual = (args.EI .* beta4 .- args.rho_raft .* args.omega^2) .* q .- (Q .- F)
+    balance_residual = (args.EI .* beta4 .- args.rho_raft .* args.omega^2) .* q_w .- (Q_w .- F_w)
     eta_recon = Psi * q
 
     recon_num = sqrt(max(real(dot(eta_raft - eta_recon, (eta_raft - eta_recon) .* w)), 0.0))
     recon_den = sqrt(max(real(dot(eta_raft, eta_raft .* w)), 0.0))
     recon_rel_err = recon_den > 0 ? recon_num / recon_den : NaN
 
-    q_energy = abs2.(q)
+    q_energy = abs2.(q_w)
     q_energy_sum = sum(q_energy)
-    energy_frac = q_energy_sum > 0 ? q_energy ./ q_energy_sum : zeros(Float64, length(q))
+    energy_frac = q_energy_sum > 0 ? q_energy ./ q_energy_sum : zeros(Float64, length(q_w))
 
     modal = ModalDecomposition(
         collect(Int.(n_list)),
@@ -385,7 +389,9 @@ function decompose_raft_freefree_modes(
         collect(ComplexF64.(q)),
         collect(ComplexF64.(q_w)),
         collect(ComplexF64.(Q)),
+        collect(ComplexF64.(Q_w)),
         collect(ComplexF64.(F)),
+        collect(ComplexF64.(F_w)),
         collect(ComplexF64.(balance_residual)),
         collect(Float64.(energy_frac)),
         collect(ComplexF64.(eta_recon)),

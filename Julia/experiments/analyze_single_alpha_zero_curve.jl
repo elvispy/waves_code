@@ -443,9 +443,6 @@ function curve_csv_header(n_modes::Int)
             "q_w$(j)_re", "q_w$(j)_im", "q_w$(j)_abs", "q_w$(j)_phase_deg",
             "Q_w$(j)_re", "Q_w$(j)_im", "Q_w$(j)_abs", "Q_w$(j)_phase_deg",
             "F_w$(j)_re", "F_w$(j)_im", "F_w$(j)_abs", "F_w$(j)_phase_deg",
-            "q_psi$(j)_re", "q_psi$(j)_im", "q_psi$(j)_abs", "q_psi$(j)_phase_deg",
-            "Q_psi$(j)_re", "Q_psi$(j)_im", "Q_psi$(j)_abs", "Q_psi$(j)_phase_deg",
-            "F_psi$(j)_re", "F_psi$(j)_im", "F_psi$(j)_abs", "F_psi$(j)_phase_deg",
             "residual$(j)_re", "residual$(j)_im", "residual$(j)_abs", "residual$(j)_phase_deg",
             "beta$(j)", "Psi_left$(j)", "Psi_right$(j)",
             "energy_frac$(j)",
@@ -457,17 +454,11 @@ function curve_csv_header(n_modes::Int)
 end
 
 function curve_csv_fields(row, n_modes::Int)
-    # Compute T transformation from Psi -> W for all terms to be consistent
-    w_weights = Surferbot.trapz_weights(row.modal.x_raft)
-    G_mat = row.modal.Phi' * (row.modal.Phi .* w_weights)
-    B_mat = row.modal.Phi' * (row.modal.Psi .* w_weights)
-    T_psi_to_w = G_mat \ B_mat
-
-    # Map coefficients to W basis
+    # Map coefficients from the cleaned ModalDecomposition
     q_w = row.modal.q_w
-    Q_w = T_psi_to_w * row.modal.Q
-    F_w = T_psi_to_w * row.modal.F
-    R_w = T_psi_to_w * row.modal.balance_residual
+    Q_w = row.modal.Q_w
+    F_w = row.modal.F_w
+    R_w = row.modal.balance_residual
 
     fields = String[
         string(get(row, :branch_index, 1)),
@@ -503,10 +494,7 @@ function curve_csv_fields(row, n_modes::Int)
         append!(fields, split(format_complex(q_w[j]), ","))
         append!(fields, split(format_complex(Q_w[j]), ","))
         append!(fields, split(format_complex(F_w[j]), ","))
-        append!(fields, split(format_complex(row.modal.q[j]), ","))
-        append!(fields, split(format_complex(row.modal.Q[j]), ","))
-        append!(fields, split(format_complex(row.modal.F[j]), ","))
-        append!(fields, split(format_complex(row.modal.balance_residual[j]), ","))
+        append!(fields, split(format_complex(R_w[j]), ","))
         append!(fields, [
             string(row.modal.beta[j]),
             string(row.modal.Psi[1, j]),
@@ -518,6 +506,7 @@ function curve_csv_fields(row, n_modes::Int)
     end
     return fields
 end
+
 
 function append_curve_csv(path::AbstractString, rows, n_modes::Int, written_keys::Set)
     rows_to_write = [row for row in rows if !(row_key(row) in written_keys)]

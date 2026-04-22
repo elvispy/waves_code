@@ -145,3 +145,35 @@ $$
 \omega = \sqrt{\frac{EI\beta_n^4 + d\rho g}{\rho_R + \frac{d\rho}{\beta_n \tanh(\beta_n H)}}}
 $$
 Note: this is independent of the motor position!
+
+# Reduced Order Model for Special Points
+
+We define the asymmetry factor $\alpha$ as:
+$$
+\alpha = \frac{|\hat{\eta}(R)|^2 - |\hat{\eta}(L)|^2}{|\hat{\eta}(R)|^2 + |\hat{\eta}(L)|^2}
+$$
+where $R = L_{raft}/2$ and $L = -L_{raft}/2$.
+The complex elevation is $\hat{\eta}(x) = \sum_{n} \hat{q}_n \psi_n(x)$.
+Let $W_n = \psi_n(L/2)$. For free-free beam modes:
+- $\psi_n(L/2) = W_n$
+- $\psi_n(-L/2) = (-1)^n W_n$
+
+Thus:
+$$ \hat{\eta}(R) = \sum_{even} \hat{q}_n W_n + \sum_{odd} \hat{q}_n W_n = S + A $$
+$$ \hat{\eta}(L) = \sum_{even} \hat{q}_n W_n - \sum_{odd} \hat{q}_n W_n = S - A $$
+where we define:
+- $S := \sum_{even} \hat{q}_n W_n$ (Mean amplitude / Symmetric contribution)
+- $A := \sum_{odd} \hat{q}_n W_n$ (Asymmetry amplitude / Antisymmetric contribution)
+
+## 1. The $\alpha = 0$ case (Balanced edges)
+$\alpha = 0 \iff |\hat{\eta}(R)| = |\hat{\eta}(L)|$.
+For the "second family" branch we are tracking, this corresponds to the "mean amplitude" extinction, $S \approx 0$:
+$$ \sum_{even} \hat{q}_n W_n = 0 \quad \implies \quad \sum_{even} \frac{-\hat F_n(x_M)}{D_n} W_n = 0 $$
+where $D_n = EI\beta_n^4 + d\rho g -\omega^2\Big(\rho_R + m_{a,n}(\omega)\Big)$.
+
+## 2. The $\alpha = \pm 1$ case (One-sided extinction)
+$\alpha = 1 \iff \hat{\eta}(L) = 0 \implies S = A$
+$\alpha = -1 \iff \hat{\eta}(R) = 0 \implies S = -A$
+In terms of modal coefficients:
+$$ \sum_{even} \hat{q}_n W_n \mp \sum_{odd} \hat{q}_n W_n = 0 \quad \implies \quad \sum_{even} \frac{\hat F_n(x_M)}{D_n} W_n \mp \sum_{odd} \frac{\hat F_n(x_M)}{D_n} W_n = 0 $$
+This provides a simple algebraic condition for the motor positions $x_M$ that produce perfect one-sided wave cancellation.

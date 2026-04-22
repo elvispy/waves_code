@@ -1,7 +1,9 @@
+
 using Surferbot
 using JLD2
 using Plots
 using LinearAlgebra
+using Printf
 
 # Purpose: visualize uncoupled beam-end second-family diagnostics from the
 # native Julia sweep artifact and compare the numerical alpha=0 contour against
@@ -28,7 +30,7 @@ function labeled_ticks(values::AbstractVector{<:Real})
     return collect(zip(values, string.(values)))
 end
 
-function first_positive_root(xs::AbstractVector{<:Real}, vals::AbstractVector{<:Real}; branch_index::Int=1)
+function all_positive_roots(xs::AbstractVector{<:Real}, vals::AbstractVector{<:Real})
     roots = Float64[]
     for i in 1:(length(xs) - 1)
         a = vals[i]
@@ -41,9 +43,7 @@ function first_positive_root(xs::AbstractVector{<:Real}, vals::AbstractVector{<:
             root > 1e-6 && push!(roots, Float64(root))
         end
     end
-    unique!(roots)
-    length(roots) >= branch_index || return NaN
-    return sort(roots)[branch_index]
+    return unique!(roots)
 end
 
 function load_reference_basis(output_dir::AbstractString, cache_file::AbstractString)
@@ -63,6 +63,10 @@ function endpoint_weights(basis, combination::Symbol)
         return (left .+ right) ./ 2
     elseif combination == :A
         return (right .- left) ./ 2
+    elseif combination == :L
+        return left
+    elseif combination == :R
+        return right
     end
     error("Unsupported endpoint combination: $combination")
 end
@@ -72,21 +76,21 @@ function endpoint_weights_from_lr(left::AbstractVector, right::AbstractVector, c
         return (left .+ right) ./ 2
     elseif combination == :A
         return (right .- left) ./ 2
+    elseif combination == :L
+        return left
+    elseif combination == :R
+        return right
     end
     error("Unsupported endpoint combination: $combination")
 end
 
 function raw_mode_shapes(params, xM_norm::AbstractVector{<:Real}; max_mode::Int=7)
     L = params.L_raft
-    # xM_norm is x_M / L, where x_M is distance from center.
-    # So x_M / L in [-0.5, 0.5].
-    # Local xi for mode shape formula should be in [0, L].
     xi_motor = collect(float.(xM_norm)) .* L .+ L / 2
     n_points = length(xi_motor)
     Phi = zeros(Float64, n_points, max_mode + 1)
     beta = zeros(Float64, max_mode + 1)
 
-    # We also need values at the left end (xi=0) for S calculation
     xi_end = [0.0]
     Phi_end = zeros(Float64, 1, max_mode + 1)
 
@@ -98,21 +102,20 @@ function raw_mode_shapes(params, xM_norm::AbstractVector{<:Real}; max_mode::Int=
     end
     n_elastic = max(0, max_mode - 1)
     if n_elastic > 0
-        betaL_el = freefree_betaL_roots(n_elastic)
+        betaL_el = Surferbot.Modal.freefree_betaL_roots(n_elastic)
         for n in 2:max_mode
             beta[n + 1] = betaL_el[n - 1] / L
-            Phi[:, n + 1] .= freefree_mode_shape(xi_motor, L, betaL_el[n - 1])
-            Phi_end[1, n + 1] = freefree_mode_shape(xi_end, L, betaL_el[n - 1])[1]
+            Phi[:, n + 1] .= Surferbot.Modal.freefree_mode_shape(xi_motor, L, betaL_el[n - 1])
+            Phi_end[1, n + 1] = Surferbot.Modal.freefree_mode_shape(xi_end, L, betaL_el[n - 1])[1]
         end
     end
     return (; xM_norm=collect(Float64.(xM_norm)), Phi, beta, Phi_end=vec(Phi_end))
 end
 
-function analytic_second_family_branch(
+function analytic_second_family_points(
     artifact,
     output_dir::AbstractString;
     cache_file::AbstractString="second_family_point_cache.jld2",
-    branch_index::Int=1,
     mode_numbers::Tuple{Vararg{Int}}=(0, 2),
     combination::Symbol=:S,
 )
@@ -126,7 +129,10 @@ function analytic_second_family_branch(
     W_end = endpoint_weights(basis, combination)
 
     Dfun(EI, β) = EI * β^4 - basis.rho_raft * basis.omega^2
-    roots = fill(NaN, length(EI_list))
+    
+    pts_logEI = Float64[]
+    pts_xM = Float64[]
+    
     for i in eachindex(EI_list)
         EI = EI_list[i]
         vals = Float64[]
@@ -137,14 +143,17 @@ function analytic_second_family_branch(
             end
             push!(vals, s)
         end
-        roots[i] = first_positive_root(xM_norm, vals; branch_index=branch_index)
+        roots = all_positive_roots(xM_norm, vals)
+        for r in roots
+            push!(pts_logEI, logEI[i])
+            push!(pts_xM, r)
+        end
     end
-    return (; logEI, xM_norm=roots)
+    return (; logEI=pts_logEI, xM_norm=pts_xM)
 end
 
-function analytic_second_family_branch_pure(
+function analytic_second_family_points_pure(
     artifact;
-    branch_index::Int=1,
     mode_numbers::Tuple{Vararg{Int}}=(0, 2),
     combination::Symbol=:S,
 )
@@ -152,26 +161,18 @@ function analytic_second_family_branch_pure(
     EI_list = collect(Float64.(artifact.parameter_axes.EI))
     logEI = log10.(EI_list)
     # Use a finer motor position grid for root finding
-    xM_norm_grid = collect(range(-0.5, 0.5, length=500))
+    xM_norm_grid = collect(range(-0.5, 0.5, length=1000))
     raw = raw_mode_shapes(params, xM_norm_grid; max_mode=maximum(mode_numbers))
     mode_idx = [n + 1 for n in mode_numbers]
-    
-    # W_end: values at the raft end (xi=0)
     W_end = raw.Phi_end[mode_idx]
     
     Dfun(EI, β) = EI * β^4 - params.rho_raft * params.omega^2
 
-    # We must account for the non-orthogonality of W_n on the discrete grid.
-    # The true balance is: G * D * q^W = -F^W
-    # So q^W = - D^-1 * G^-1 * F^W
-    # S = (W_end)^T * q^W = - (W_end)^T * D^-1 * G^-1 * F^W(x_M)
-    # where F^W_n \propto W_n(x_M)
-    
     # Reconstruct the original raft grid to compute G
-    N = round(Int, (80 - 1) * 3 * params.L_raft / params.L_raft) + 1 # Approximate logic, better to load the actual grid
-    # To be perfectly rigorous, we should compute G on the exact raft grid used in the solve.
-    # We can reconstruct it simply:
-    x_raft = collect(range(-params.L_raft/2, params.L_raft/2, length=ceil(Int, 80 / (2 * pi / real(Surferbot.dispersion_k(params.omega, params.g, 0.05, params.nu, params.sigma, params.rho))) * params.L_raft) + mod(ceil(Int, 80 / (2 * pi / real(Surferbot.dispersion_k(params.omega, params.g, 0.05, params.nu, params.sigma, params.rho))) * params.L_raft), 2) + 1))
+    k_res = Surferbot.dispersion_k(params.omega, params.g, 0.05, params.nu, params.sigma, params.rho)
+    n_guess = max(80, ceil(Int, 80 / (2 * pi / real(k_res)) * params.L_raft))
+    n_raft = n_guess + mod(n_guess, 2) + 1
+    x_raft = collect(range(-params.L_raft/2, params.L_raft/2, length=n_raft))
     
     w = Surferbot.trapz_weights(x_raft)
     raw_grid = raw_mode_shapes(params, x_raft ./ params.L_raft; max_mode=maximum(mode_numbers))
@@ -179,25 +180,26 @@ function analytic_second_family_branch_pure(
     G = Phi_subset' * (Phi_subset .* w)
     G_inv = inv(G)
 
-    roots = fill(NaN, length(EI_list))
+    pts_logEI = Float64[]
+    pts_xM = Float64[]
+
     for i in eachindex(EI_list)
         EI = EI_list[i]
-        
-        # Build the D^-1 matrix
         D_inv = diagm(0 => [1.0 / Dfun(EI, raw.beta[j]) for j in mode_idx])
-        
-        # The transfer matrix from F^W to S
         transfer = W_end' * D_inv * G_inv
         
         vals = Float64[]
         for row in eachindex(xM_norm_grid)
             F_W_xM = raw.Phi[row, mode_idx]
-            s = dot(transfer, F_W_xM)
-            push!(vals, s)
+            push!(vals, dot(transfer, F_W_xM))
         end
-        roots[i] = first_positive_root(xM_norm_grid, vals; branch_index=branch_index)
+        roots = all_positive_roots(xM_norm_grid, vals)
+        for r in roots
+            push!(pts_logEI, logEI[i])
+            push!(pts_xM, r)
+        end
     end
-    return (; logEI, xM_norm=roots)
+    return (; logEI=pts_logEI, xM_norm=pts_xM)
 end
 
 function save_heatmap(path::AbstractString, logEI, xM_norm, field; title::AbstractString, cbar_title::AbstractString, clim=nothing, color=:viridis, colorbar_ticks=nothing)
@@ -213,25 +215,6 @@ function save_heatmap(path::AbstractString, logEI, xM_norm, field; title::Abstra
         size=(900, 700),
         dpi=200,
         clim=clim,
-        colorbar_ticks=colorbar_ticks,
-    )
-    savefig(plt, path)
-    return path
-end
-
-function save_contourf(path::AbstractString, logEI, xM_norm, field; title::AbstractString, cbar_title::AbstractString, levels, color=:viridis, colorbar_ticks=nothing)
-    plt = contourf(
-        logEI,
-        xM_norm,
-        field;
-        xlabel="log10(EI)",
-        ylabel="x_M / L",
-        title=title,
-        colorbar_title=cbar_title,
-        color=color,
-        levels=levels,
-        size=(900, 700),
-        dpi=200,
         colorbar_ticks=colorbar_ticks,
     )
     savefig(plt, path)
@@ -272,14 +255,25 @@ function save_labeled_ratio_contour(path::AbstractString, logEI, xM_norm, field)
     return path
 end
 
-function save_alpha_overlay(path::AbstractString, logEI, xM_norm, alpha; analytic_02, analytic_0246, analytic_A13, analytic_A1357)
+function save_alpha_overlay(
+    path::AbstractString,
+    logEI::AbstractVector{<:Real},
+    xM_norm::AbstractVector{<:Real},
+    alpha::AbstractMatrix{<:Real};
+    analytic_02=nothing,
+    analytic_0246=nothing,
+    analytic_A13=nothing,
+    analytic_A1357=nothing,
+    analytic_L=nothing,
+    analytic_R=nothing,
+)
     plt = heatmap(
         logEI,
         xM_norm,
         alpha;
         xlabel="log10(EI)",
         ylabel="x_M / L",
-        title="Numerical alpha with a posteriori (Psi basis) S=0 and A=0 predictors",
+        title="Numerical alpha with a priori S=0 and A=0 predictors",
         colorbar_title="alpha",
         color=:RdBu,
         size=(900, 700),
@@ -296,56 +290,105 @@ function save_alpha_overlay(path::AbstractString, logEI, xM_norm, alpha; analyti
         linewidth=2,
         label="numerical alpha=0",
     )
-    mask_02 = isfinite.(analytic_02.xM_norm)
-    plot!(
+    # Numerical alpha = +/- 1 contours
+    contour!(
         plt,
-        analytic_02.logEI[mask_02],
-        analytic_02.xM_norm[mask_02];
-        color=:gold,
-        linewidth=3,
-        label="a posteriori 0+2 (Psi)",
+        logEI,
+        xM_norm,
+        alpha;
+        levels=[-0.99, 0.99],
+        color=[:red, :blue],
+        linewidth=2,
+        label=["numerical alpha=-1" "numerical alpha=1"],
     )
-    mask_0246 = isfinite.(analytic_0246.xM_norm)
-    plot!(
-        plt,
-        analytic_0246.logEI[mask_0246],
-        analytic_0246.xM_norm[mask_0246];
-        color=:dodgerblue,
-        linewidth=3,
-        label="a posteriori 0+2+4+6 (Psi)",
-    )
-    mask_A13 = isfinite.(analytic_A13.xM_norm)
-    any(mask_A13) && plot!(
-        plt,
-        analytic_A13.logEI[mask_A13],
-        analytic_A13.xM_norm[mask_A13];
-        color=:magenta,
-        linewidth=3,
-        linestyle=:dash,
-        label="a posteriori A=0 (1+3, Psi)",
-    )
-    mask_A1357 = isfinite.(analytic_A1357.xM_norm)
-    any(mask_A1357) && plot!(
-        plt,
-        analytic_A1357.logEI[mask_A1357],
-        analytic_A1357.xM_norm[mask_A1357];
-        color=:limegreen,
-        linewidth=3,
-        linestyle=:dash,
-        label="a posteriori A=0 (1+3+5+7, Psi)",
-    )
+
+    if !isnothing(analytic_02)
+        scatter!(
+            plt,
+            analytic_02.logEI,
+            analytic_02.xM_norm;
+            color=:gold,
+            markersize=2,
+            markerstrokewidth=0,
+            label="a priori 0+2 (S=0)",
+        )
+    end
+    if !isnothing(analytic_0246)
+        scatter!(
+            plt,
+            analytic_0246.logEI,
+            analytic_0246.xM_norm;
+            color=:dodgerblue,
+            markersize=2,
+            markerstrokewidth=0,
+            label="a priori 0+2+4+6 (S=0)",
+        )
+    end
+    if !isnothing(analytic_A13)
+        scatter!(
+            plt,
+            analytic_A13.logEI,
+            analytic_A13.xM_norm;
+            color=:magenta,
+            markersize=2,
+            markerstrokewidth=0,
+            label="a priori 1+3 (A=0)",
+        )
+    end
+    if !isnothing(analytic_A1357)
+        scatter!(
+            plt,
+            analytic_A1357.logEI,
+            analytic_A1357.xM_norm;
+            color=:limegreen,
+            markersize=2,
+            markerstrokewidth=0,
+            label="a priori 1+3+5+7 (A=0)",
+        )
+    end
+    if !isnothing(analytic_L)
+        scatter!(
+            plt,
+            analytic_L.logEI,
+            analytic_L.xM_norm;
+            color=:blue,
+            markersize=2,
+            markerstrokewidth=0,
+            label="a priori L=0",
+        )
+    end
+    if !isnothing(analytic_R)
+        scatter!(
+            plt,
+            analytic_R.logEI,
+            analytic_R.xM_norm;
+            color=:red,
+            markersize=2,
+            markerstrokewidth=0,
+            label="a priori R=0",
+        )
+    end
     savefig(plt, path)
     return path
 end
 
-function save_alpha_overlay_pure(path::AbstractString, logEI, xM_norm, alpha; analytic_02, analytic_0246, analytic_A13, analytic_A1357)
+function save_alpha_overlay_pure(
+    path::AbstractString,
+    logEI::AbstractVector{<:Real},
+    xM_norm::AbstractVector{<:Real},
+    alpha::AbstractMatrix{<:Real};
+    analytic_02=nothing,
+    analytic_0246=nothing,
+    analytic_A13=nothing,
+    analytic_A1357=nothing,
+)
     plt = heatmap(
         logEI,
         xM_norm,
         alpha;
         xlabel="log10(EI)",
         ylabel="x_M / L",
-        title="Numerical alpha with a priori (W basis) S=0 predictor",
+        title="Numerical alpha with pure analytic a priori S=0 and A=0",
         colorbar_title="alpha",
         color=:RdBu,
         size=(900, 700),
@@ -362,62 +405,54 @@ function save_alpha_overlay_pure(path::AbstractString, logEI, xM_norm, alpha; an
         linewidth=2,
         label="numerical alpha=0",
     )
-    mask_02 = isfinite.(analytic_02.xM_norm)
-    any(mask_02) && plot!(
-        plt,
-        analytic_02.logEI[mask_02],
-        analytic_02.xM_norm[mask_02];
-        color=:gold,
-        linewidth=3,
-        label="a priori 0+2 (W)",
-    )
-    mask_0246 = isfinite.(analytic_0246.xM_norm)
-    any(mask_0246) && plot!(
-        plt,
-        analytic_0246.logEI[mask_0246],
-        analytic_0246.xM_norm[mask_0246];
-        color=:dodgerblue,
-        linewidth=3,
-        label="a priori 0+2+4+6 (W)",
-    )
-    mask_A13 = isfinite.(analytic_A13.xM_norm)
-    any(mask_A13) && plot!(
-        plt,
-        analytic_A13.logEI[mask_A13],
-        analytic_A13.xM_norm[mask_A13];
-        color=:magenta,
-        linewidth=3,
-        linestyle=:dash,
-        label="a priori A=0 (1+3, W)",
-    )
-    mask_A1357 = isfinite.(analytic_A1357.xM_norm)
-    any(mask_A1357) && plot!(
-        plt,
-        analytic_A1357.logEI[mask_A1357],
-        analytic_A1357.xM_norm[mask_A1357];
-        color=:limegreen,
-        linewidth=3,
-        linestyle=:dash,
-        label="a priori A=0 (1+3+5+7, W)",
-    )
+    if !isnothing(analytic_02)
+        scatter!(
+            plt,
+            analytic_02.logEI,
+            analytic_02.xM_norm;
+            color=:gold,
+            markersize=2,
+            markerstrokewidth=0,
+            label="pure a priori 0+2 (S=0)",
+        )
+    end
+    if !isnothing(analytic_0246)
+        scatter!(
+            plt,
+            analytic_0246.logEI,
+            analytic_0246.xM_norm;
+            color=:dodgerblue,
+            markersize=2,
+            markerstrokewidth=0,
+            label="pure a priori 0+2+4+6 (S=0)",
+        )
+    end
+    if !isnothing(analytic_A13)
+        scatter!(
+            plt,
+            analytic_A13.logEI,
+            analytic_A13.xM_norm;
+            color=:magenta,
+            markersize=2,
+            markerstrokewidth=0,
+            label="pure a priori 1+3 (A=0)",
+        )
+    end
+    if !isnothing(analytic_A1357)
+        scatter!(
+            plt,
+            analytic_A1357.logEI,
+            analytic_A1357.xM_norm;
+            color=:limegreen,
+            markersize=2,
+            markerstrokewidth=0,
+            label="pure a priori 1+3+5+7 (A=0)",
+        )
+    end
     savefig(plt, path)
     return path
 end
 
-"""
-    main(output_dir=joinpath(@__DIR__, "..", "output");
-         sweep_file="sweep_motor_position_EI_uncoupled_from_matlab.jld2")
-
-Write three diagnostic figures for the uncoupled beam-end second-family
-analysis:
-- `uncoupled_beam_log10_S_over_A.pdf`
-- `uncoupled_beam_cos_phase_gap.pdf`
-- `uncoupled_beam_alpha_with_analytic_overlay.pdf`
-
-Inputs:
-- `output_dir`: directory containing the sweep artifact and receiving figures.
-- `sweep_file`: native uncoupled Julia sweep artifact.
-"""
 function main(
     output_dir::AbstractString=joinpath(@__DIR__, "..", "output");
     sweep_file::AbstractString="sweep_motor_position_EI_uncoupled_from_matlab.jld2",
@@ -430,15 +465,24 @@ function main(
     EI_list = collect(Float64.(artifact.parameter_axes.EI))
     logEI = log10.(EI_list)
     xM_norm = collect(Float64.(artifact.parameter_axes.motor_position)) ./ artifact.base_params.L_raft
-    analytic_02 = analytic_second_family_branch(artifact, output_dir; cache_file=cache_file, mode_numbers=(0, 2), combination=:S)
-    analytic_0246 = analytic_second_family_branch(artifact, output_dir; cache_file=cache_file, mode_numbers=(0, 2, 4, 6), combination=:S)
-    analytic_A13 = analytic_second_family_branch(artifact, output_dir; cache_file=cache_file, branch_index=1, mode_numbers=(1, 3), combination=:A)
-    analytic_A1357 = analytic_second_family_branch(artifact, output_dir; cache_file=cache_file, branch_index=1, mode_numbers=(1, 3, 5, 7), combination=:A)
-    analytic_pure_02 = analytic_second_family_branch_pure(artifact; branch_index=1, mode_numbers=(0, 2), combination=:S)
-    analytic_pure_0246 = analytic_second_family_branch_pure(artifact; branch_index=1, mode_numbers=(0, 2, 4, 6), combination=:S)
-    analytic_pure_A13 = analytic_second_family_branch_pure(artifact; branch_index=1, mode_numbers=(1, 3), combination=:A)
-    analytic_pure_A1357 = analytic_second_family_branch_pure(artifact; branch_index=1, mode_numbers=(1, 3, 5, 7), combination=:A)
-    cos_ticks = labeled_ticks([-1.0, 0.0, 1.0])
+    
+    # S=0 predictors
+    analytic_02 = analytic_second_family_points(artifact, output_dir; cache_file=cache_file, mode_numbers=(0, 2), combination=:S)
+    analytic_0246 = analytic_second_family_points(artifact, output_dir; cache_file=cache_file, mode_numbers=(0, 2, 4, 6), combination=:S)
+    
+    # A=0 predictors
+    analytic_A13 = analytic_second_family_points(artifact, output_dir; cache_file=cache_file, mode_numbers=(1, 3), combination=:A)
+    analytic_A1357 = analytic_second_family_points(artifact, output_dir; cache_file=cache_file, mode_numbers=(1, 3, 5, 7), combination=:A)
+    
+    # Pure analytic a priori
+    analytic_pure_02 = analytic_second_family_points_pure(artifact; mode_numbers=(0, 2), combination=:S)
+    analytic_pure_0246 = analytic_second_family_points_pure(artifact; mode_numbers=(0, 2, 4, 6), combination=:S)
+    analytic_pure_A13 = analytic_second_family_points_pure(artifact; mode_numbers=(1, 3), combination=:A)
+    analytic_pure_A1357 = analytic_second_family_points_pure(artifact; mode_numbers=(1, 3, 5, 7), combination=:A)
+    
+    # L=0 and R=0 predictors
+    analytic_L = analytic_second_family_points(artifact, output_dir; cache_file=cache_file, mode_numbers=(0, 1, 2, 3), combination=:L)
+    analytic_R = analytic_second_family_points(artifact, output_dir; cache_file=cache_file, mode_numbers=(0, 1, 2, 3), combination=:R)
 
     ratio_path = joinpath(output_dir, "uncoupled_beam_log10_S_over_A.pdf")
     cos_path = joinpath(output_dir, "uncoupled_beam_cos_phase_gap.pdf")
@@ -455,7 +499,7 @@ function main(
         cbar_title="cos phase gap",
         clim=(-1, 1),
         color=:RdBu,
-        colorbar_ticks=cos_ticks,
+        colorbar_ticks=labeled_ticks([-1.0, 0.0, 1.0]),
     )
     save_alpha_overlay(
         overlay_path,
@@ -466,6 +510,8 @@ function main(
         analytic_0246=analytic_0246,
         analytic_A13=analytic_A13,
         analytic_A1357=analytic_A1357,
+        analytic_L=analytic_L,
+        analytic_R=analytic_R,
     )
     save_alpha_overlay_pure(
         pure_overlay_path,
