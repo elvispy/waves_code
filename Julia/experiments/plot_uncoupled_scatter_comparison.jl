@@ -6,8 +6,8 @@ using LinearAlgebra
 using Printf
 
 # Purpose: Generate two separate scatter plots for the uncoupled case:
-# 1. A Priori (Reduced Order Model roots)
-# 2. A Posteriori (Numerical simulation roots)
+# 1. Theoretical (Reduced Order Model roots)
+# 2. Integral (Numerical simulation roots)
 # Aesthetics copied from plot_uncoupled_beam_second_family_diagnostics.jl
 
 function all_roots(xs::AbstractVector{<:Real}, vals::AbstractVector{<:Real})
@@ -57,7 +57,7 @@ function raw_mode_shapes(params, xM_norm::AbstractVector{<:Real}; max_mode::Int=
     return (; Phi, Phi_left=vec(Phi_left), Phi_right=vec(Phi_right), beta_roots = [0.0; 0.0; betaL_el ./ L])
 end
 
-function get_apriori_roots(artifact, combination::Symbol; mode_numbers=(0, 2), n_ei=400)
+function get_theoretical_roots(artifact, combination::Symbol; mode_numbers=(0, 2), n_ei=400)
     params = artifact.base_params
     EI_list_raw = collect(Float64.(artifact.parameter_axes.EI))
     logEI_fine = collect(range(log10(minimum(EI_list_raw)), log10(maximum(EI_list_raw)), length=n_ei))
@@ -117,7 +117,7 @@ function get_apriori_roots(artifact, combination::Symbol; mode_numbers=(0, 2), n
     return (; logEI=pts_logEI, xM_norm=pts_xM)
 end
 
-function get_aposteriori_contours(artifact, level::Real; n_ei=400)
+function get_integral_contours(artifact, level::Real; n_ei=400)
     summaries = artifact.summaries
     eta_left = map(s -> s.eta_left_beam, summaries)
     eta_right = map(s -> s.eta_right_beam, summaries)
@@ -159,7 +159,7 @@ function get_aposteriori_contours(artifact, level::Real; n_ei=400)
     return (; logEI=pts_logEI, xM_norm=pts_xM)
 end
 
-function main(; show_aposteriori=false)
+function main(; show_integral=false)
     # Paths
     output_dir = joinpath(@__DIR__, "..", "output")
     sweep_path = joinpath(output_dir, "sweep_motor_position_EI_uncoupled_from_matlab.jld2")
@@ -185,13 +185,12 @@ function main(; show_aposteriori=false)
     ei_min, ei_max = minimum(logEI_raw), maximum(logEI_raw)
     xm_min, xm_max = minimum(xM_norm_raw), maximum(xM_norm_raw)
 
-    println("Calculating A Priori roots...")
-    # alpha=0 is satisfied if S=0 (even modes) OR A=0 (odd modes)
-    apriori_S0 = get_apriori_roots(artifact, :S; mode_numbers=(0, 2, 4, 6), n_ei=400)
-    apriori_A0 = get_apriori_roots(artifact, :A; mode_numbers=(1, 3, 5, 7), n_ei=400)
+    println("Calculating Theoretical roots...")
+    theoretical_S0 = get_theoretical_roots(artifact, :S; mode_numbers=(0, 2, 4, 6), n_ei=400)
+    theoretical_A0 = get_theoretical_roots(artifact, :A; mode_numbers=(1, 3, 5, 7), n_ei=400)
     
-    apriori_L = get_apriori_roots(artifact, :L; mode_numbers=(0, 1, 2, 3, 4, 5, 6, 7), n_ei=400)
-    apriori_R = get_apriori_roots(artifact, :R; mode_numbers=(0, 1, 2, 3, 4, 5, 6, 7), n_ei=400)
+    theoretical_L = get_theoretical_roots(artifact, :L; mode_numbers=(0, 1, 2, 3, 4, 5, 6, 7), n_ei=400)
+    theoretical_R = get_theoretical_roots(artifact, :R; mode_numbers=(0, 1, 2, 3, 4, 5, 6, 7), n_ei=400)
     
     ms = 5 # markersize
     
@@ -203,46 +202,45 @@ function main(; show_aposteriori=false)
         ylim=(xm_min, xm_max),
         grid=true,
         legend=:topright,
-        size=show_aposteriori ? (1000, 1400) : (1000, 700),
+        size=show_integral ? (1000, 1400) : (1000, 700),
         color=:RdBu,
         colorbar_title="alpha"
     )
 
-    # 1. A Priori Plot
+    # 1. Theoretical Plot
     p1 = heatmap(
         logEI_raw, xM_norm_raw, alpha_mat;
-        title="A Priori Estimates (Reduced Order Model)",
+        title="Theoretical Estimates (Reduced Order Model)",
         plt_opts...
     )
-    # Scatter both S=0 and A=0 for the alpha=0 state
-    scatter!(p1, apriori_S0.logEI, apriori_S0.xM_norm, label="alpha = 0 (S=0 ROM)", color=:black, markersize=ms, markershape=:circle, markerstrokewidth=0)
-    scatter!(p1, apriori_A0.logEI, apriori_A0.xM_norm, label=nothing, color=:black, markersize=ms, markershape=:circle, markerstrokewidth=0)
+    scatter!(p1, theoretical_S0.logEI, theoretical_S0.xM_norm, label="alpha = 0 (S=0 Theoretical)", color=:black, markersize=ms, markershape=:circle, markerstrokewidth=0)
+    scatter!(p1, theoretical_A0.logEI, theoretical_A0.xM_norm, label=nothing, color=:black, markersize=ms, markershape=:circle, markerstrokewidth=0)
     
-    scatter!(p1, apriori_L.logEI, apriori_L.xM_norm, label="alpha = 1 (L=0 ROM)", color=:blue, markersize=ms, markershape=:rect, markerstrokewidth=0)
-    scatter!(p1, apriori_R.logEI, apriori_R.xM_norm, label="alpha = -1 (R=0 ROM)", color=:red, markersize=ms, markershape=:utriangle, markerstrokewidth=0)
+    scatter!(p1, theoretical_L.logEI, theoretical_L.xM_norm, label="alpha = 1 (L=0 Theoretical)", color=:blue, markersize=ms, markershape=:rect, markerstrokewidth=0)
+    scatter!(p1, theoretical_R.logEI, theoretical_R.xM_norm, label="alpha = -1 (R=0 Theoretical)", color=:red, markersize=ms, markershape=:utriangle, markerstrokewidth=0)
     
-    if show_aposteriori
-        println("Extracting A Posteriori roots...")
-        aposteriori_0 = get_aposteriori_contours(artifact, 0.0; n_ei=400)
-        aposteriori_L = get_aposteriori_contours(artifact, 0.99; n_ei=400)
-        aposteriori_R = get_aposteriori_contours(artifact, -0.99; n_ei=400)
+    if show_integral
+        println("Extracting Integral roots...")
+        integral_0 = get_integral_contours(artifact, 0.0; n_ei=400)
+        integral_L = get_integral_contours(artifact, 0.99; n_ei=400)
+        integral_R = get_integral_contours(artifact, -0.99; n_ei=400)
 
-        # 2. A Posteriori Plot
+        # 2. Integral Plot
         p2 = heatmap(
             logEI_raw, xM_norm_raw, alpha_mat;
-            title="A Posteriori Estimates (Numerical Crossings)",
+            title="Integral Estimates (Numerical Crossings)",
             plt_opts...
         )
-        scatter!(p2, aposteriori_0.logEI, aposteriori_0.xM_norm, label="alpha = 0 (Numerical)", color=:black, markersize=ms, markershape=:circle, markerstrokewidth=0)
-        scatter!(p2, aposteriori_L.logEI, aposteriori_L.xM_norm, label="alpha = 1 (Numerical)", color=:blue, markersize=ms, markershape=:rect, markerstrokewidth=0)
-        scatter!(p2, aposteriori_R.logEI, aposteriori_R.xM_norm, label="alpha = -1 (Numerical)", color=:red, markersize=ms, markershape=:utriangle, markerstrokewidth=0)
+        scatter!(p2, integral_0.logEI, integral_0.xM_norm, label="alpha = 0 (Integral)", color=:black, markersize=ms, markershape=:circle, markerstrokewidth=0)
+        scatter!(p2, integral_L.logEI, integral_L.xM_norm, label="alpha = 1 (Integral)", color=:blue, markersize=ms, markershape=:rect, markerstrokewidth=0)
+        scatter!(p2, integral_R.logEI, integral_R.xM_norm, label="alpha = -1 (Integral)", color=:red, markersize=ms, markershape=:utriangle, markerstrokewidth=0)
         
         combined = plot(p1, p2, layout=(2, 1))
     else
         combined = p1
     end
     
-    save_path = joinpath(output_dir, "uncoupled_scatter_comparison.pdf")
+    save_path = joinpath(output_dir, "plot_uncoupled_scatter_comparison.pdf")
     savefig(combined, save_path)
     println("Saved scatter comparison to $save_path")
 end

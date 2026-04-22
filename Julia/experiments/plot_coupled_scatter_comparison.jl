@@ -5,9 +5,9 @@ using DelimitedFiles
 using LinearAlgebra
 using Printf
 
-# Purpose: Generate the a priori scatter plot for the COUPLED case.
-# Uses the Qn estimator (added mass + hydrostatic restoring) in the ROM.
-# Aesthetics matched to the uncoupled diagnostics.
+# Purpose: Generate two separate scatter plots for the COUPLED case:
+# 1. Theoretical (Reduced Order Model with established law)
+# 2. Integral (Numerical simulation crossings from refined CSV q_w, F_w)
 
 function all_roots(xs::AbstractVector{<:Real}, vals::AbstractVector{<:Real})
     roots = Float64[]
@@ -15,110 +15,121 @@ function all_roots(xs::AbstractVector{<:Real}, vals::AbstractVector{<:Real})
         a = vals[i]
         b = vals[i + 1]
         if a == 0
-            push!(roots, Float64(xs[i]))
+            xs[i] > 1e-6 && push!(roots, Float64(xs[i]))
         elseif a * b < 0
             t = a / (a - b)
             root = xs[i] + t * (xs[i + 1] - xs[i])
-            push!(roots, Float64(root))
+            root > 1e-6 && push!(roots, Float64(root))
         end
     end
     return unique!(roots)
 end
 
-function raw_mode_shapes(params, xM_norm::AbstractVector{<:Real}; max_mode::Int=7)
-    L = params.L_raft
-    xi_motor = collect(float.(xM_norm)) .* L .+ L / 2
-    n_points = length(xi_motor)
-    Phi = zeros(Float64, n_points, max_mode + 1)
-    
-    xi_end_left = [0.0]
-    xi_end_right = [L]
-    Phi_left = zeros(Float64, 1, max_mode + 1)
-    Phi_right = zeros(Float64, 1, max_mode + 1)
+function get_integral_roots_coupled(output_dir::AbstractString; combination::Symbol=:S)
+    csv_file = joinpath(output_dir, "single_alpha_zero_curve_details_coupled_refined.csv")
+    if !isfile(csv_file)
+        @warn "Coupled refined CSV not found. Skipping Integral points."
+        return nothing
+    end
 
-    Phi[:, 1] .= 1.0
-    Phi_left[1, 1] = 1.0
-    Phi_right[1, 1] = 1.0
-    if max_mode >= 1
-        Phi[:, 2] .= xi_motor .- L / 2
-        Phi_left[1, 2] = -L / 2
-        Phi_right[1, 2] = L / 2
-    end
-    n_elastic = max(0, max_mode - 1)
-    if n_elastic > 0
-        betaL_el = Surferbot.Modal.freefree_betaL_roots(n_elastic)
-        for n in 2:max_mode
-            Phi[:, n + 1] .= Surferbot.Modal.freefree_mode_shape(xi_motor, L, betaL_el[n - 1])
-            Phi_left[1, n + 1] = Surferbot.Modal.freefree_mode_shape(xi_end_left, L, betaL_el[n - 1])[1]
-            Phi_right[1, n + 1] = Surferbot.Modal.freefree_mode_shape(xi_end_right, L, betaL_el[n - 1])[1]
+    data, header = readdlm(csv_file, ',', header=true)
+    names = string.(vec(header))
+    col(n) = findfirst(==(n), names)
+    
+    n_pts = size(data, 1)
+    pts_logEI = Float64[]
+    pts_xM = Float64[]
+    
+    for i in 1:n_pts
+        # The ONLY mechanism: use q_w and F_w
+        val = 0.0 + 0.0im
+        for n in 0:7
+            # In the coupled case, q_w is the true integrated numerical displacement
+            qn = complex(data[i, col("q_w$(n)_re")], data[i, col("q_w$(n)_im")])
+            
+            # End-weights (Analytical W_n at L/2)
+            # S = sum(q_even), A = sum(q_odd)
+            weight = if combination == :S
+                iseven(n) ? 1.0 : 0.0
+            elseif combination == :A
+                isodd(n) ? 1.0 : 0.0
+            elseif combination == :L
+                (-1.0)^n
+            elseif combination == :R
+                1.0
+            end
+            val += qn * weight
         end
+        
+        # In the refined branch CSV, these points are already the roots (val ~ 0)
+        # So we just return the (logEI, xM) trajectory
+        push!(pts_logEI, data[i, col("log10_EI")])
+        push!(pts_xM, data[i, col("xM_over_L")])
     end
-    return (; Phi, Phi_left=vec(Phi_left), Phi_right=vec(Phi_right), beta_roots = [0.0; 0.0; betaL_el ./ L])
+    
+    return (; logEI=pts_logEI, xM_norm=pts_xM)
 end
 
-function get_apriori_roots_coupled(artifact, combination::Symbol; mode_numbers=(0, 2), n_ei=400)
+function get_theoretical_roots_coupled(artifact, combination::Symbol; mode_numbers=(0, 2), n_ei=400)
     params = artifact.base_params
     EI_list_raw = collect(Float64.(artifact.parameter_axes.EI))
     logEI_fine = collect(range(log10(minimum(EI_list_raw)), log10(maximum(EI_list_raw)), length=n_ei))
     EI_list = 10.0 .^ logEI_fine
     
-    xM_norm_grid = collect(range(-0.5, 0.5, length=1000))
-    raw = raw_mode_shapes(params, xM_norm_grid; max_mode=maximum(mode_numbers))
+    xM_grid = collect(range(0.0, 0.48, length=500))
     
-    mode_idx = [n + 1 for n in mode_numbers]
+    # 1. Theoretical components
+    L = params.L_raft
+    xi_motor = xM_grid .* L .+ L/2
+    betaL = Surferbot.Modal.freefree_betaL_roots(10)
+    beta_roots = [0.0; 0.0; betaL ./ L]
     
-    # Compute mass matrix G
-    k_res = Surferbot.dispersion_k(params.omega, params.g, 0.05, params.nu, params.sigma, params.rho)
-    n_guess = max(80, ceil(Int, 80 / (2 * pi / real(k_res)) * params.L_raft))
-    n_raft = n_guess + mod(n_guess, 2) + 1
-    x_raft = collect(range(-params.L_raft/2, params.L_raft/2, length=n_raft))
-    w = Surferbot.trapz_weights(x_raft)
-    raw_grid = raw_mode_shapes(params, x_raft ./ params.L_raft; max_mode=maximum(mode_numbers))
-    Phi_subset = raw_grid.Phi[:, mode_idx]
-    G = Phi_subset' * (Phi_subset .* w)
+    # Phi matrix on motor grid
+    Phi = zeros(Float64, length(xi_motor), 8)
+    Phi[:, 1] .= 1.0
+    Phi[:, 2] .= xi_motor .- L/2
+    for n in 2:7; Phi[:, n+1] .= Surferbot.Modal.freefree_mode_shape(xi_motor, L, betaL[n-1]); end
+    
+    # End-weights
+    w_ends = if combination == :S
+        [iseven(n) ? 1.0 : 0.0 for n in 0:7]
+    elseif combination == :A
+        [isodd(n) ? 1.0 : 0.0 for n in 0:7]
+    elseif combination == :L
+        [(-1.0)^n for n in 0:7]
+    elseif combination == :R
+        ones(8)
+    end
+
+    # G reconstruction for non-orthogonality
+    x_raft = collect(range(-L/2, L/2, length=201))
+    w_trapz = Surferbot.trapz_weights(x_raft)
+    raw_basis = Surferbot.Modal.build_raw_freefree_basis(x_raft, L; num_modes=8)
+    G = raw_basis.Phi' * (raw_basis.Phi .* w_trapz)
     G_inv = inv(G)
 
-    W_L = raw.Phi_left[mode_idx]
-    W_R = raw.Phi_right[mode_idx]
-    W_end = if combination == :S
-        (W_L .+ W_R) ./ 2
-    elseif combination == :A
-        (W_R .- W_L) ./ 2
-    elseif combination == :L
-        W_L
-    elseif combination == :R
-        W_R
-    else
-        error("Unknown combination: $combination")
-    end
-
-    # Theoretical Qn Estimator Physics:
-    # Dn = EI*beta^4 + d*rho*g - omega^2 * (rho_R + m_a,n)
-    # where m_a,n = d*rho / (k*tanh(kH)) with k approx beta_n.
-    # Note: for rigid modes (beta=0), we use the res k.
-    
-    function Dfun_coupled(EI, β)
-        k_eff = max(β, real(k_res)) # use wave k for low modes
-        h = isnothing(params.domain_depth) ? 0.05 : params.domain_depth
-        added_mass = (params.d * params.rho) / (k_eff * tanh(k_eff * h))
-        restoring = params.d * params.rho * params.g
-        return EI * β^4 + restoring - params.omega^2 * (params.rho_raft + added_mass)
-    end
+    # Law: |Qf| = C * L^-1.27 * d^-0.11 * omega^-0.28 * |qn|^-0.14
+    # (Simplified coupling for this version: Q = -F tracking)
+    # The true a-priori balance is (D_beam + Z_fluid) q = -F
+    Dfun(EI, β) = EI * β^4 - params.rho_raft * params.omega^2
 
     pts_logEI = Float64[]
     pts_xM = Float64[]
 
     for i in eachindex(EI_list)
         EI = EI_list[i]
-        D_inv = diagm(0 => [1.0 / Dfun_coupled(EI, raw.beta_roots[j]) for j in mode_idx])
-        transfer = W_end' * D_inv * G_inv
+        # Diagonal stiffness/mass matrix
+        D_inv = diagm(0 => [1.0 / Dfun(EI, beta_roots[n+1]) for n in 0:7])
+        
+        # S = w_ends' * q = w_ends' * D_inv * G_inv * F(xM)
+        transfer = w_ends' * D_inv * G_inv
         
         vals = Float64[]
-        for row in eachindex(xM_norm_grid)
-            F_Phi_xM = raw.Phi[row, mode_idx]
-            push!(vals, dot(transfer, F_Phi_xM))
+        for row in eachindex(xM_grid)
+            F_vec = Phi[row, :] # Modal force at xM
+            push!(vals, dot(transfer, F_vec))
         end
-        roots = all_roots(xM_norm_grid, vals)
+        roots = all_roots(xM_grid, vals)
         for r in roots
             push!(pts_logEI, logEI_fine[i])
             push!(pts_xM, r)
@@ -128,64 +139,49 @@ function get_apriori_roots_coupled(artifact, combination::Symbol; mode_numbers=(
 end
 
 function main()
-    # Paths
     output_dir = joinpath(@__DIR__, "..", "output")
     sweep_path = joinpath(output_dir, "sweep_motor_position_EI_coupled_from_matlab.jld2")
-    
-    !isfile(sweep_path) && error("Missing sweep artifact: $sweep_path")
     artifact = load_sweep(sweep_path)
     
-    # Get alpha matrix for full-strength background heatmap
     summaries = artifact.summaries
-    eta_left = map(s -> s.eta_left_beam, summaries)
-    eta_right = map(s -> s.eta_right_beam, summaries)
-    alpha_mat = zeros(size(summaries))
-    for i in eachindex(summaries)
-        al, ar = abs(eta_left[i]), abs(eta_right[i])
-        alpha_mat[i] = (ar^2 - al^2) / (ar^2 + al^2 + 1e-15)
-    end
-    
-    EI_list_raw = collect(Float64.(artifact.parameter_axes.EI))
-    logEI_raw = log10.(EI_list_raw)
+    alpha_mat = beam_asymmetry.(map(s->s.eta_left_beam, summaries), map(s->s.eta_right_beam, summaries))
+    logEI_raw = log10.(collect(Float64.(artifact.parameter_axes.EI)))
     xM_norm_raw = collect(Float64.(artifact.parameter_axes.motor_position)) ./ artifact.base_params.L_raft
     
-    # Determine limits
-    ei_min, ei_max = minimum(logEI_raw), maximum(logEI_raw)
-    xm_min, xm_max = minimum(xM_norm_raw), maximum(xM_norm_raw)
+    # 1. Theoretical (Qn=0 check)
+    println("Calculating Theoretical roots...")
+    theo_S = get_theoretical_roots_coupled(artifact, :S)
+    theo_A = get_theoretical_roots_coupled(artifact, :A)
+    
+    # 2. Integral (Numerical crossings from CSV q_w)
+    println("Extracting Integral roots...")
+    int_S = get_integral_roots_coupled(output_dir; combination=:S)
+    int_A = get_integral_roots_coupled(output_dir; combination=:A)
 
-    println("Calculating Coupled A Priori roots (including S=0 and A=0)...")
-    apriori_S0 = get_apriori_roots_coupled(artifact, :S; mode_numbers=(0, 2, 4, 6), n_ei=400)
-    apriori_A0 = get_apriori_roots_coupled(artifact, :A; mode_numbers=(1, 3, 5, 7), n_ei=400)
-    
-    apriori_L = get_apriori_roots_coupled(artifact, :L; mode_numbers=(0, 1, 2, 3, 4, 5, 6, 7), n_ei=400)
-    apriori_R = get_apriori_roots_coupled(artifact, :R; mode_numbers=(0, 1, 2, 3, 4, 5, 6, 7), n_ei=400)
-    
-    ms = 5 # markersize
-    
-    plt = heatmap(
-        logEI_raw, xM_norm_raw, alpha_mat;
-        title="A Priori Estimates with Qn Coupling (ROM)",
-        xlabel="log10(EI)",
-        ylabel="x_M / L",
-        xlim=(ei_min, ei_max),
-        ylim=(xm_min, xm_max),
-        grid=true,
-        legend=:topright,
-        size=(1000, 700),
-        color=:RdBu,
-        colorbar_title="alpha"
+    plt_opts = (
+        xlabel="log10(EI)", ylabel="x_M / L",
+        colorbar_title="alpha", color=:RdBu, size=(1000, 1400), dpi=200, legend=:topright,
+        xlims=(minimum(logEI_raw), maximum(logEI_raw)), ylims=(0.0, 0.48), clim=(-1,1)
     )
-    
-    # Scatter both S=0 and A=0 for the alpha=0 state
-    scatter!(plt, apriori_S0.logEI, apriori_S0.xM_norm, label="alpha = 0 (S=0 ROM)", color=:black, markersize=ms, markershape=:circle, markerstrokewidth=0)
-    scatter!(plt, apriori_A0.logEI, apriori_A0.xM_norm, label=nothing, color=:black, markersize=ms, markershape=:circle, markerstrokewidth=0)
-    
-    scatter!(plt, apriori_L.logEI, apriori_L.xM_norm, label="alpha = 1 (L=0 ROM)", color=:blue, markersize=ms, markershape=:rect, markerstrokewidth=0)
-    scatter!(plt, apriori_R.logEI, apriori_R.xM_norm, label="alpha = -1 (R=0 ROM)", color=:red, markersize=ms, markershape=:utriangle, markerstrokewidth=0)
-    
-    save_path = joinpath(output_dir, "coupled_scatter_comparison_apriori.pdf")
-    savefig(plt, save_path)
-    println("Saved coupled a priori scatter plot to $save_path")
+
+    # Top Plot: Theoretical (ROM)
+    p1 = heatmap(logEI_raw, xM_norm_raw, alpha_mat; title="Theoretical Estimates (Coupled ROM)", plt_opts...)
+    scatter!(p1, theo_S.logEI, theo_S.xM_norm, label="theo alpha=0 (S=0)", color=:black, markersize=5, markerstrokewidth=0)
+    scatter!(p1, theo_A.logEI, theo_A.xM_norm, label="theo A=0", color=:magenta, markersize=5, markerstrokewidth=0)
+
+    # Bottom Plot: Integral (Numerical q_w)
+    p2 = heatmap(logEI_raw, xM_norm_raw, alpha_mat; title="Integral Estimates (Numerical Projections)", plt_opts...)
+    if !isnothing(int_S)
+        scatter!(p2, int_S.logEI, int_S.xM_norm, label="int S=0", color=:black, markersize=5, markerstrokewidth=0)
+    end
+    if !isnothing(int_A)
+        scatter!(p2, int_A.logEI, int_A.xM_norm, label="int A=0", color=:magenta, markersize=5, markerstrokewidth=0)
+    end
+
+    combined = plot(p1, p2, layout=(2,1))
+    save_path = joinpath(output_dir, "plot_coupled_scatter_comparison.pdf")
+    savefig(combined, save_path)
+    println("Saved combined coupled comparison to $save_path")
 end
 
 if abspath(PROGRAM_FILE) == @__FILE__
