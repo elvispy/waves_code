@@ -1,0 +1,11 @@
+## SLURM PROLOG ###############################################################
+##    Job ID : 1827219
+##  Job Name : surferbot_array
+##  Nodelist : node2307
+##      CPUs : 
+##  Mem/Node : 8192 MB
+## Directory : /oscar/data/dharri15/eaguerov/Github/flexible_surferbot/Julia/scripts
+##   Job Started : Wed Apr 22 08:40:55 AM EDT 2026
+###############################################################################
+Task 60: Running 100 motor positions for EI = 0.0006547168402004736
+Saved /oscar/data/dharri15/eaguerov/Github/flexible_surferbot/Julia/scripts/../output/parts/part_60.jld2

@@ -21,3 +21,4 @@ tmp/
 # IMPORTANT: Do not track the docs/ folder. It is for local research/notes only.
 docs/
 Julia/output/*_smoke.*
+Julia/output/parts/
