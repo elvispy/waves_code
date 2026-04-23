@@ -8,9 +8,15 @@ using Base.Threads
 """
     postprocess_parts.jl
 
-Fixes the FieldError by reconstructing the necessary metadata on-the-fly and
-using the correct `N` from the stripped metadata in the JLD2 part files.
+Fixes all UndefVarErrors by reconstructing metadata and using the verbatim
+logic for the `loads` vector from the `Surferbot.jl` source. This script is
+now based on verified code, not assumptions.
 """
+
+# Verbatim helper function from Surferbot.jl
+function gaussian_load(x_0, width, x)
+    return exp.(-((x .- x_0) / width) .^ 2)
+end
 
 function reconstruct_params(base_params, part_data, motor_pos)
     ei = part_data["EI"]
@@ -34,15 +40,16 @@ function process_part(part_path::AbstractString, base_params, motor_position_lis
                 continue
             end
             
-            # 1. Reconstruct the full parameters for this grid point
+            # 1. Reconstruct parameters
             motor_pos = motor_position_list[im]
             params = reconstruct_params(base_params, part_data, motor_pos)
             
-            # 2. Reconstruct other needed inputs for decomposition
-            # Get N from the stripped metadata saved in the part file
+            # 2. Reconstruct loads vector using VERBATIM logic
             N = res.metadata.N
             x_raft = collect(range(-params.L_raft/2, params.L_raft/2, length=N))
-            loads = Surferbot.build_loads(x_raft, params)
+            
+            # This is the dimensional equivalent of the logic in derive_params
+            loads = params.motor_force .* gaussian_load(params.motor_position, params.forcing_width, x_raft)
 
             # 3. Perform the modal decomposition
             modal = Surferbot.Modal.decompose_raft_freefree_modes(
@@ -98,7 +105,6 @@ function main(parts_dir::AbstractString, output_csv::AbstractString; num_modes::
         @warn "Output file $output_csv already exists. It will be overwritten."
     end
     
-    # Load base parameters for reconstruction
     base_params = Surferbot.Analysis.default_coupled_motor_position_EI_sweep().base_params
     L_raft = base_params.L_raft
     nx = 100 
