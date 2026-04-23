@@ -49,7 +49,8 @@ function process_part(part_path::AbstractString, base_params, motor_position_lis
             x_raft = collect(range(-params.L_raft/2, params.L_raft/2, length=N))
             
             # This is the dimensional equivalent of the logic in derive_params
-            loads = params.motor_force .* gaussian_load(params.motor_position, params.forcing_width, x_raft)
+            motor_force = isnothing(params.motor_force) ? 1.0 : params.motor_force
+            loads = motor_force .* gaussian_load(params.motor_position, params.forcing_width, x_raft)
 
             # 3. Perform the modal decomposition
             modal = Surferbot.Modal.decompose_raft_freefree_modes(
