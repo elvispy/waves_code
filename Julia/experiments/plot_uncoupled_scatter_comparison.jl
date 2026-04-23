@@ -162,7 +162,7 @@ end
 function main(; show_integral=false)
     # Paths
     output_dir = joinpath(@__DIR__, "..", "output")
-    sweep_path = joinpath(output_dir, "sweep_motor_position_EI_uncoupled_from_matlab.jld2")
+    sweep_path = joinpath(output_dir, "sweeps", "sweep_motor_position_EI_uncoupled_from_matlab.jld2")
     
     !isfile(sweep_path) && error("Missing sweep artifact: $sweep_path")
     artifact = load_sweep(sweep_path)
@@ -240,7 +240,7 @@ function main(; show_integral=false)
         combined = p1
     end
     
-    save_path = joinpath(output_dir, "plot_uncoupled_scatter_comparison.pdf")
+    save_path = joinpath(output_dir, "figures", "plot_uncoupled_scatter_comparison.pdf")
     savefig(combined, save_path)
     println("Saved scatter comparison to $save_path")
 end

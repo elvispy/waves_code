@@ -5,7 +5,8 @@ using Statistics
 using LinearAlgebra
 
 function main()
-    path = "Julia/output/sweep_motor_position_EI_coupled_from_matlab.jld2"
+    output_dir = joinpath(@__DIR__, "..", "output")
+    path = joinpath(output_dir, "sweeps", "sweep_motor_position_EI_coupled_from_matlab.jld2")
     if !isfile(path)
         println("Error: JLD2 file not found at $path")
         return
@@ -64,7 +65,7 @@ function main()
                 
     combined = plot(p1, p2, p3, layout=(3,1), size=(1000, 2400), margin=10Plots.mm)
     
-    output_path = "Julia/output/branch_physical_signatures.pdf"
+    output_path = joinpath(output_dir, "figures", "plot_branch_signatures.pdf")
     savefig(combined, output_path)
     println("Saved branch physical signatures plot to $output_path")
 end

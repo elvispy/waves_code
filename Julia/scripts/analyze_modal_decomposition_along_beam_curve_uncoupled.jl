@@ -60,16 +60,17 @@ Inputs:
 - `pdf_file`: output figure filename.
 - `csv_file`: output modal-summary table filename.
 """
-function main(
-    data_dir::AbstractString=joinpath(@__DIR__, "..", "output");
-    sweep_file::AbstractString="sweep_motor_position_EI_uncoupled.jld2",
+function main(;
+    sweep_file::AbstractString="sweep_motor_position_EI_uncoupled_from_matlab.jld2",
     n_sample::Int=12,
     n_modes::Int=8,
-    pdf_file::AbstractString="analyze_modal_decomposition_along_beam_curve_uncoupled.pdf",
-    csv_file::AbstractString="analyze_modal_decomposition_along_beam_curve_uncoupled.csv",
 )
-    data_dir = ensure_dir(normpath(data_dir))
-    sweep_path = joinpath(data_dir, sweep_file)
+    output_dir = joinpath(@__DIR__, "..", "output")
+    sweep_path = joinpath(output_dir, "sweeps", sweep_file)
+    
+    pdf_path = joinpath(output_dir, "figures", "analyze_modal_decomposition_along_beam_curve_uncoupled.pdf")
+    csv_path = joinpath(output_dir, "csv", "analyze_modal_decomposition_along_beam_curve_uncoupled.csv")
+
     artifact = load_uncoupled_sweep(sweep_path)
 
     base = artifact.base_params
@@ -133,10 +134,8 @@ function main(
     end
 
     fig = plot(p1, p2, p3, p4; layout=(2, 2), size=(1200, 900), plot_title="Modal decomposition along lowest uncoupled beam-end S≈0 curve")
-    pdf_path = joinpath(data_dir, pdf_file)
     savefig(fig, pdf_path)
 
-    csv_path = joinpath(data_dir, csv_file)
     write_modal_summary_csv(csv_path, sample_EI, sample_mp, mode_types, all_q, all_energy, all_phase)
 
     println("Saved $pdf_path")
@@ -145,7 +144,6 @@ function main(
 end
 
 if abspath(PROGRAM_FILE) == @__FILE__
-    data_dir = length(ARGS) >= 1 ? ARGS[1] : joinpath(@__DIR__, "..", "output")
-    sweep_file = length(ARGS) >= 2 ? ARGS[2] : "sweep_motor_position_EI_uncoupled_from_matlab.jld2"
-    main(data_dir; sweep_file=sweep_file)
+    sweep_file = length(ARGS) >= 1 ? ARGS[1] : "sweep_motor_position_EI_uncoupled_from_matlab.jld2"
+    main(sweep_file=sweep_file)
 end

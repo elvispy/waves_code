@@ -9,10 +9,10 @@ using LinearAlgebra
 # This script is designed to run the full grid and save the results for later analysis.
 
 function main()
-    output_dir = "Julia/output"
-    sweep_file = joinpath(output_dir, "sweep_motor_position_EI_coupled_from_matlab.jld2")
-    cache_file = joinpath(output_dir, "second_family_point_cache.jld2")
-    results_cache = joinpath(output_dir, "coupled_decomposition_results.jld2")
+    output_dir = joinpath(@__DIR__, "..", "output")
+    sweep_file = joinpath(output_dir, "sweeps", "sweep_motor_position_EI_coupled_from_matlab.jld2")
+    cache_file = joinpath(output_dir, "jld2", "second_family_point_cache.jld2")
+    results_cache = joinpath(output_dir, "jld2", "coupled_decomposition_results.jld2")
     
     if !isfile(sweep_file)
         println("Sweep file not found: $sweep_file")
@@ -103,7 +103,7 @@ function main()
     contour!(p3, logEI, xM_norm, real.(S_total), levels=[0.0], color=:green, linewidth=2, label="Total a posteriori (S_F+S_Q=0)")
 
     combined = plot(p1, p2, p3, layout=(1,3), size=(1500, 500))
-    path = joinpath(output_dir, "coupled_a_posteriori_prediction.pdf")
+    path = joinpath(output_dir, "figures", "coupled_a_posteriori_prediction.pdf")
     savefig(combined, path)
     println("Saved $path")
 end
