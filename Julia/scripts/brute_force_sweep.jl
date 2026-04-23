@@ -8,9 +8,9 @@ function main()
     
     nx = 100
     nei = 300
-    output_dir = joinpath(@__DIR__, "..", "output", "parts")
+    output_dir = joinpath(@__DIR__, "..", "output", "jld2")
     mkpath(output_dir)
-    output_path = joinpath(output_dir, "part_$(task_id).jld2")
+    output_path = joinpath(output_dir, "brute_force_sweep_part_$(task_id).jld2")
 
     # 2. Reconstruct Grid
     L_raft = 0.05

@@ -4,10 +4,19 @@ using Plots
 using LinearAlgebra
 using Printf
 using DelimitedFiles
+using CSV
+using DataFrames
 
-# Purpose: final corrected uncoupled diagnostics.
-# Integral Law: Root finding using Gram-Schmidt orthonormal coefficients (Psi basis).
-# Theoretical Law: Root finding using analytical ROM (W basis).
+"""
+This script should plot a heatmap of the alpha values in the xM-EI plane.
+Then, it should calculate qn, Fn in two ways:
+ - Theoretical: estimate Fn from a delta approximation, qn as Fn / Dn. Then, we form S_{02} = q0(xM) W0(L/2) + q2(xM) W2(L/2) and use root finding
+ to find S_{02}(xM) = 0. This xM solution is EI dependent, so we have a scatter point xM(EI). We do the same for S_{0246} and A_{13}, A_{1357} and also the left-only and right-only sums.
+ - Integral: The only difference is that we extract qn and Fn from actual solves, and form S_{02} with the known values. Thus, we have |S_{02}(xM)|, and we use root finding for a EI slice to find the approximate xM(EI) that makes |S_{02}|=0. We repeat for all EI to get a scatter of xM(EI) points.
+
+This file SHOULD NOT:
+ - use eta_1 and eta_end to calculate A and S directly. We want to test the (qn, Fn) modal law to predict alpha = 0.
+"""
 
 function all_positive_roots(xs::AbstractVector{<:Real}, vals::AbstractVector{<:Real})
     roots = Float64[]
@@ -56,47 +65,49 @@ function raw_mode_shapes(params, xM_norm::AbstractVector{<:Real}; max_mode::Int=
     return (; xM_norm=collect(Float64.(xM_norm)), Phi, Phi_L=vec(Phi_L), Phi_R=vec(Phi_R))
 end
 
-# Find integral roots using the orthonormal Psi basis from the summaries
-function get_all_roots_integral_psi(
-    artifact;
+# Find integral roots using the full grid CSV (Direct modal coefficients q_n)
+function get_all_roots_integral(
+    csv_path::AbstractString;
     mode_numbers=(0, 2),
     combination::Symbol=:S,
 )
-    params = artifact.base_params
-    EI_list = collect(Float64.(artifact.parameter_axes.EI))
-    logEI_axis = log10.(EI_list)
-    mp_norm_list = collect(Float64.(artifact.parameter_axes.motor_position)) ./ params.L_raft
+    df = CSV.read(csv_path, DataFrame)
+    
+    # End-weights at x=L/2 for the analytical W basis
+    w_ends = [iseven(n) ? 1.0 : -1.0 for n in mode_numbers]
+    weights = if combination == :S
+        [iseven(n) ? 1.0 : 0.0 for n in mode_numbers]
+    elseif combination == :A
+        [isodd(n) ? 1.0 : 0.0 for n in mode_numbers]
+    elseif combination == :L
+        [(-1.0)^n for n in mode_numbers]
+    elseif combination == :R
+        ones(length(mode_numbers))
+    end
 
     pts_logEI = Float64[]
     pts_xM = Float64[]
 
-    for ie in eachindex(EI_list)
+    for group in groupby(df, :log10_EI)
+        logEI = first(group.log10_EI)
+        xM_slice = group.xM_over_L
+        
         col_vals = Float64[]
-        for im in eachindex(mp_norm_list)
-            sum_row = artifact.summaries[im, ie]
-            
-            # The summaries don't store full Psi coefficients.
-            # But they store eta_left_beam and eta_right_beam.
-            # IN THE INTEGRAL SENSE: S = (L+R)/2, A = (R-L)/2
-            # These ARE the projections onto the orthonormal basis for symmetric/antisymmetric modes.
-            L, R = sum_row.eta_left_beam, sum_row.eta_right_beam
-            
-            val = if combination == :S
-                (L + R) / 2
-            elseif combination == :A
-                (R - L) / 2
-            elseif combination == :L
-                L
-            elseif combination == :R
-                R
+        for row in eachrow(group)
+            val = 0.0 + 0.0im
+            for (i, n) in enumerate(mode_numbers)
+                q_re = row[Symbol("q_w$(n)_re")]
+                q_im = row[Symbol("q_w$(n)_im")]
+                qn = complex(q_re, q_im)
+                # S = sum( q_n * W_n(L/2) ) for even n
+                val += qn * w_ends[i] * weights[i]
             end
             push!(col_vals, real(val))
         end
-
-        # Use interpolation to find the "true" numerical prediction crossing
-        roots = all_positive_roots(mp_norm_list, col_vals)
+        
+        roots = all_positive_roots(xM_slice, col_vals)
         for r in roots
-            push!(pts_logEI, logEI_axis[ie])
+            push!(pts_logEI, logEI)
             push!(pts_xM, r)
         end
     end
@@ -161,7 +172,13 @@ end
 
 function main()
     output_dir = joinpath(@__DIR__, "..", "output")
-    sweep_file = "sweep_motor_position_EI_uncoupled_from_matlab.jld2"
+    sweep_file = joinpath("jld2", "sweep_motor_position_EI_uncoupled_from_matlab.jld2")
+    csv_file = joinpath(output_dir, "csv", "sweeper_uncoupled_full_grid.csv")
+    
+    if !isfile(csv_file)
+        error("Full-grid CSV not found: $csv_file. Run experiments/sweeper_modal_coefficients.jl first.")
+    end
+
     artifact = load_sweep(joinpath(output_dir, sweep_file))
     
     logEI_axis = log10.(collect(Float64.(artifact.parameter_axes.EI)))
@@ -170,12 +187,10 @@ function main()
     summaries = artifact.summaries
     alpha = beam_asymmetry.(map(s->s.eta_left_beam, summaries), map(s->s.eta_right_beam, summaries))
     
-    # 1. Integral search (Direct numerical crossings using interpolation)
-    println("Searching for all Integral branches...")
-    int_S = get_all_roots_integral_psi(artifact; combination=:S)
-    int_A = get_all_roots_integral_psi(artifact; combination=:A)
-    int_L = get_all_roots_integral_psi(artifact; combination=:L)
-    int_R = get_all_roots_integral_psi(artifact; combination=:R)
+    # 1. Integral search (Direct numerical crossings using MODAL SUM from CSV)
+    println("Searching for all Integral branches (sum of q_n from CSV)...")
+    int_S = get_all_roots_integral(csv_file; mode_numbers=(0, 2, 4, 6), combination=:S)
+    int_A = get_all_roots_integral(csv_file; mode_numbers=(1, 3, 5, 7), combination=:A)
     
     # 2. Theoretical search (Algebraic ROM)
     println("Searching for all Theoretical branches...")
@@ -188,29 +203,30 @@ function main()
 
     plt_opts = (
         xlabel="log10(EI)", ylabel="x_M / L",
-        colorbar_title="alpha", color=:RdBu, size=(900, 700), dpi=200, legend=:topright,
-        xlims=(minimum(logEI_axis), maximum(logEI_axis)), ylims=(0.0, 0.48), clim=(-1,1)
+        colorbar_title="alpha", c=:balance, size=(900, 700), dpi=200, 
+        legend=:topright, interpolate=true, levels=31,
+        xlims=(minimum(logEI_axis), maximum(logEI_axis)), ylims=(0.0, 0.48), clims=(-1,1)
     )
 
     # 3. Integral Plot
     p3 = heatmap(logEI_axis, xM_axis, alpha; title="Numerical alpha with INTEGRAL modal predictors", plt_opts...)
+    contour!(p3, logEI_axis, xM_axis, alpha; levels=[0.0], color=:white, linewidth=2, label="Numerical alpha=0")
     scatter!(p3, int_S.logEI, int_S.xM_norm; color=:black, markersize=5, markerstrokewidth=0, label="int alpha=0")
     scatter!(p3, int_A.logEI, int_A.xM_norm; color=:black, markersize=5, markerstrokewidth=0, label=nothing)
-    scatter!(p3, int_L.logEI, int_L.xM_norm; color=:blue, markersize=5, markerstrokewidth=0, label="int L=0")
-    scatter!(p3, int_R.logEI, int_R.xM_norm; color=:red, markersize=5, markerstrokewidth=0, label="int R=0")
-    savefig(p3, joinpath(output_dir, "plot_uncoupled_beam_second_family_diagnostics_3.pdf"))
+    savefig(p3, joinpath(output_dir, "figures", "plot_uncoupled_beam_second_family_diagnostics_3.pdf"))
 
     # 4. Theoretical Plot
     p4 = heatmap(logEI_axis, xM_axis, alpha; title="Numerical alpha with THEORETICAL modal predictors", plt_opts...)
+    contour!(p4, logEI_axis, xM_axis, alpha; levels=[0.0], color=:white, linewidth=2, label="Numerical alpha=0")
     scatter!(p4, theo_S02.logEI, theo_S02.xM_norm; color=:gold, markersize=5, markerstrokewidth=0, label="theo 0+2 (S=0)")
     scatter!(p4, theo_S0246.logEI, theo_S0246.xM_norm; color=:dodgerblue, markersize=5, markerstrokewidth=0, label="theo 0+2+4+6 (S=0)")
     scatter!(p4, theo_A13.logEI, theo_A13.xM_norm; color=:magenta, markersize=5, markerstrokewidth=0, label="theo 1+3 (A=0)")
     scatter!(p4, theo_A1357.logEI, theo_A1357.xM_norm; color=:limegreen, markersize=5, markerstrokewidth=0, label="theo 1+3+5+7 (A=0)")
     scatter!(p4, theo_L.logEI, theo_L.xM_norm; color=:blue, markersize=5, markerstrokewidth=0, label="theo L=0")
     scatter!(p4, theo_R.logEI, theo_R.xM_norm; color=:red, markersize=5, markerstrokewidth=0, label="theo R=0")
-    savefig(p4, joinpath(output_dir, "plot_uncoupled_beam_second_family_diagnostics_4.pdf"))
+    savefig(p4, joinpath(output_dir, "figures", "plot_uncoupled_beam_second_family_diagnostics_4.pdf"))
 
-    println("Saved _3.pdf and _4.pdf with full multi-branch scatter using Psi-orthonormal integral.")
+    println("Saved _3.pdf and _4.pdf with full multi-branch scatter using ACTUAL modal integrals.")
 end
 
 main()

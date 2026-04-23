@@ -125,12 +125,12 @@ end
 
 function main()
     output_dir = joinpath(@__DIR__, "..", "output")
-    sweep_path = joinpath(output_dir, "sweeps", "sweep_motor_position_EI_coupled_from_matlab.jld2")
-    csv_path = joinpath(output_dir, "csv", "brute_force_modal_integrals_full_grid.csv")
-    figure_path = joinpath(output_dir, "figures", "plot_coupled_scatter_comparison_final.pdf")
+    sweep_path = joinpath(output_dir, "jld2", "sweep_motor_position_EI_coupled_from_matlab.jld2")
+    csv_path = joinpath(output_dir, "csv", "sweeper_coupled_full_grid.csv")
+    figure_path = joinpath(output_dir, "figures", "plot_coupled_scatter_comparison.pdf")
 
     !isfile(sweep_path) && error("Sweep artifact not found: $sweep_path")
-    !isfile(csv_path) && error("Full-grid modal CSV not found: $csv_path")
+    !isfile(csv_path) && error("Full-grid modal CSV not found: $csv_path. Run experiments/sweeper_modal_coefficients.jl first.")
     
     artifact = load_sweep(sweep_path)
     df = CSV.read(csv_path, DataFrame)
@@ -149,18 +149,20 @@ function main()
     int_L = get_integral_roots_from_csv(df, :L, 0:7)
     int_R = get_integral_roots_from_csv(df, :R, 0:7)
 
-    plt_opts = (xlabel="log10(EI)", ylabel="x_M / L", colorbar_title="alpha", color=:RdBu, size=(1000, 1400), dpi=200, legend=:topright,
-                xlims=extrema(logEI_raw), ylims=extrema(xM_norm_raw), clim=(-1,1))
+    plt_opts = (xlabel="log10(EI)", ylabel="x_M / L", colorbar_title="alpha", c=:balance, size=(1000, 1400), dpi=300, legend=:topright,
+                interpolate=true, levels=31, xlims=extrema(logEI_raw), ylims=extrema(xM_norm_raw), clims=(-1,1))
 
-    p1 = heatmap(logEI_raw, xM_norm_raw, alpha_mat; title="Theoretical (Uncoupled ROM)", plt_opts...)
-    scatter!(p1, theo_S.logEI, theo_S.xM_norm, label="theo S=0", color=:black, markersize=5, markerstrokewidth=0)
-    scatter!(p1, theo_A.logEI, theo_A.xM_norm, label="theo A=0", color=:magenta, markersize=5, markerstrokewidth=0)
+    p1 = heatmap(logEI_raw, xM_norm_raw, alpha_mat; title="Theoretical (Uncoupled ROM Baseline)", plt_opts...)
+    contour!(p1, logEI_raw, xM_norm_raw, alpha_mat; levels=[0.0], color=:white, linewidth=2, label="Numerical alpha=0")
+    scatter!(p1, theo_S.logEI, theo_S.xM_norm, label="theo S=0", color=:black, markersize=4, markerstrokewidth=0)
+    scatter!(p1, theo_A.logEI, theo_A.xM_norm, label="theo A=0", color=:magenta, markersize=4, markerstrokewidth=0)
     
-    p2 = heatmap(logEI_raw, xM_norm_raw, alpha_mat; title="Integral (Numerical Projections)", plt_opts...)
-    scatter!(p2, int_S.logEI, int_S.xM_norm, label="int S=0", color=:black, markersize=5, markerstrokewidth=0)
-    scatter!(p2, int_A.logEI, int_A.xM_norm, label="int A=0", color=:magenta, markersize=5, markerstrokewidth=0)
-    scatter!(p2, int_L.logEI, int_L.xM_norm, label="int L=0", color=:blue, markersize=5, markerstrokewidth=0)
-    scatter!(p2, int_R.logEI, int_R.xM_norm, label="int R=0", color=:red, markersize=5, markerstrokewidth=0)
+    p2 = heatmap(logEI_raw, xM_raw_raw, alpha_mat; title="Integral (Coupled Numerical Projections)", plt_opts...)
+    contour!(p2, logEI_raw, xM_norm_raw, alpha_mat; levels=[0.0], color=:white, linewidth=2, label="Numerical alpha=0")
+    scatter!(p2, int_S.logEI, int_S.xM_norm, label="int S=0", color=:black, markersize=4, markerstrokewidth=0)
+    scatter!(p2, int_A.logEI, int_A.xM_norm, label="int A=0", color=:magenta, markersize=4, markerstrokewidth=0)
+    scatter!(p2, int_L.logEI, int_L.xM_norm, label="int L=0", color=:blue, markersize=4, markerstrokewidth=0)
+    scatter!(p2, int_R.logEI, int_R.xM_norm, label="int R=0", color=:red, markersize=4, markerstrokewidth=0)
 
     combined = plot(p1, p2, layout=(2,1))
     savefig(combined, figure_path)

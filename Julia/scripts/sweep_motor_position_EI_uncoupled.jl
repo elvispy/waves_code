@@ -51,7 +51,7 @@ function main(
         solver=flexible_solver,
         beam_metrics_fn=beam_edge_metrics,
         label="uncoupled_motor_position_EI",
-        save_path=joinpath(save_dir, outfile),
+        save_path=joinpath(save_dir, "jld2", outfile),
     )
 end
 

@@ -32,7 +32,7 @@ end
 
 function main()
     output_dir = joinpath(@__DIR__, "..", "output")
-    csv_path = joinpath(output_dir, "single_alpha_zero_curve_details_coupled_refined.csv")
+    csv_path = joinpath(output_dir, "csv", "analyze_single_alpha_zero_curve.csv")
     
     if !isfile(csv_path)
         error("Missing dataset: $csv_path. Please run the tracker first.")

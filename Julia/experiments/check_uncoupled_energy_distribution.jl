@@ -3,7 +3,7 @@ using DelimitedFiles
 using Statistics
 
 data_dir = normpath(joinpath(@__DIR__, "..", "output"))
-branch_csv = "single_alpha_zero_curve_details_uncoupled_refined.csv"
+branch_csv = joinpath("csv", "analyze_single_alpha_zero_curve.csv")
 lines = readlines(joinpath(data_dir, branch_csv))
 header = split(lines[1], ",")
 
@@ -31,7 +31,7 @@ top_20 = rows[1:20]
 EI_max = parse(Float64, top_20[1][iEI])
 xM_max = parse(Float64, top_20[1][get_col_idx("motor_position")])
 
-sweep_file = "sweep_motor_position_EI_uncoupled_from_matlab.jld2"
+sweep_file = joinpath("jld2", "sweep_motor_position_EI_uncoupled_from_matlab.jld2")
 artifact = load_sweep(joinpath(data_dir, sweep_file))
 params = apply_parameter_overrides(artifact.base_params, (EI=EI_max, motor_position=xM_max))
 result = flexible_solver(params)

@@ -8,8 +8,8 @@ using Statistics
 
 function main()
     # 1. Load a coupled sweep point
-    output_dir = "Julia/output"
-    sweep_file = joinpath(output_dir, "sweep_motor_position_EI_coupled_from_matlab.jld2")
+    output_dir = joinpath(@__DIR__, "..", "output")
+    sweep_file = joinpath(output_dir, "jld2", "sweep_motor_position_EI_coupled_from_matlab.jld2")
     artifact = load_sweep(sweep_file)
     
     # We pick a point where alpha is small

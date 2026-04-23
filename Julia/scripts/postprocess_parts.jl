@@ -159,7 +159,7 @@ function main(parts_dir::AbstractString, output_csv::AbstractString; num_modes::
 end
 
 if abspath(PROGRAM_FILE) == @__FILE__
-    parts_dir = get(ARGS, 1, "Julia/output/sweeps")
-    output_csv = get(ARGS, 2, "Julia/output/csv/brute_force_modal_integrals_full_grid.csv")
+    parts_dir = get(ARGS, 1, joinpath(@__DIR__, "..", "output", "jld2"))
+    output_csv = get(ARGS, 2, joinpath(@__DIR__, "..", "output", "csv", "postprocess_parts.csv"))
     main(parts_dir, output_csv)
 end

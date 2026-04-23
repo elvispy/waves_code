@@ -6,7 +6,7 @@ using LinearAlgebra
 
 function main()
     output_dir = joinpath(@__DIR__, "..", "output")
-    path = joinpath(output_dir, "sweeps", "sweep_motor_position_EI_coupled_from_matlab.jld2")
+    path = joinpath(output_dir, "jld2", "sweep_motor_position_EI_coupled_from_matlab.jld2")
     if !isfile(path)
         println("Error: JLD2 file not found at $path")
         return

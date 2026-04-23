@@ -45,7 +45,7 @@ end
 
 function main(;
     output_dir::AbstractString=joinpath(@__DIR__, "..", "output"),
-    branch_csv::AbstractString="single_alpha_zero_curve_details_uncoupled_refined.csv",
+    branch_csv::AbstractString=joinpath("csv", "analyze_single_alpha_zero_curve.csv"),
     target_log10_EI::Float64=-3.389,
     max_abs_alpha::Float64=0.01,
     num_modes::Int=8,
@@ -56,7 +56,7 @@ function main(;
     xM_over_L = parse(Float64, row[col("xM_over_L")])
     alpha = parse(Float64, row[col("alpha_beam")])
 
-    artifact = load_sweep(joinpath(output_dir, "sweep_motor_position_EI_uncoupled_from_matlab.jld2"))
+    artifact = load_sweep(joinpath(output_dir, "jld2", "sweep_motor_position_EI_uncoupled_from_matlab.jld2"))
     params = apply_parameter_overrides(
         artifact.base_params,
         (EI=EI, motor_position=xM_over_L * artifact.base_params.L_raft),

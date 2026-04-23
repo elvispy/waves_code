@@ -10,11 +10,11 @@ using LinearAlgebra
 # Uses coefficients directly from the CSV to avoid parameter mismatch.
 
 function main()
-    output_dir = "Julia/output"
-    csv_file = joinpath(output_dir, "single_alpha_zero_curve_details_coupled_refined.csv")
+    output_dir = joinpath(@__DIR__, "..", "output")
+    csv_file = joinpath(output_dir, "csv", "analyze_single_alpha_zero_curve.csv")
     
     if !isfile(csv_file)
-        csv_file = joinpath(output_dir, "coupled_branch_smoke.csv")
+        csv_file = joinpath(output_dir, "csv", "coupled_branch_smoke.csv")
         if !isfile(csv_file) return end
     end
     
@@ -72,9 +72,9 @@ function main()
     xlabel!(plt, "log10(EI)")
     ylabel!(plt, "Magnitude")
     
-    path = joinpath(output_dir, "coupled_modal_balance_direct.pdf")
-    savefig(plt, path)
-    println("Saved $path")
+    fig_path = joinpath(output_dir, "figures", "plot_coupled_posteriori.pdf")
+    savefig(plt, fig_path)
+    println("Saved $fig_path")
     
     reduction = abs.(S_total) ./ (abs.(S_mech_contribution) .+ abs.(S_hydro_contribution))
     println("Residual S ratio: ", mean(reduction) * 100, "%")

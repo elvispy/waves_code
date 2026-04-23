@@ -66,7 +66,7 @@ function main(;
     n_modes::Int=8,
 )
     output_dir = joinpath(@__DIR__, "..", "output")
-    sweep_path = joinpath(output_dir, "sweeps", sweep_file)
+    sweep_path = joinpath(output_dir, "jld2", sweep_file)
     
     pdf_path = joinpath(output_dir, "figures", "analyze_modal_decomposition_along_beam_curve_uncoupled.pdf")
     csv_path = joinpath(output_dir, "csv", "analyze_modal_decomposition_along_beam_curve_uncoupled.csv")

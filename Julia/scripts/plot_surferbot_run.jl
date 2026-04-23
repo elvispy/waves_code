@@ -18,9 +18,9 @@ Inputs:
 - `duration_periods`: simulated periods to cover in the animation.
 - `nframes`: optional explicit frame count overriding `fps * duration`.
 """
-function main(input; outdir=nothing, basename::AbstractString="waves", fps::Int=30, duration_periods::Real=10, nframes=nothing)
+function main(input; outdir=nothing, basename::AbstractString="plot_surferbot_run", fps::Int=30, duration_periods::Real=10, nframes=nothing)
     if outdir === nothing
-        outdir = input isa AbstractString ? (isdir(input) ? input : dirname(input)) : pwd()
+        outdir = joinpath(@__DIR__, "..", "output", "figures")
     end
     return render_surferbot_run(
         input;
@@ -37,7 +37,7 @@ if abspath(PROGRAM_FILE) == @__FILE__
     isempty(ARGS) && error("Usage: julia --project=. scripts/plot_surferbot_run.jl <run-input> [outdir] [basename] [fps] [duration_periods] [nframes]")
     input = ARGS[1]
     outdir = length(ARGS) >= 2 ? ARGS[2] : nothing
-    basename = length(ARGS) >= 3 ? ARGS[3] : "waves"
+    basename = length(ARGS) >= 3 ? ARGS[3] : "plot_surferbot_run"
     fps = length(ARGS) >= 4 ? parse(Int, ARGS[4]) : 30
     duration_periods = length(ARGS) >= 5 ? parse(Float64, ARGS[5]) : 10.0
     nframes = length(ARGS) >= 6 ? parse(Int, ARGS[6]) : nothing

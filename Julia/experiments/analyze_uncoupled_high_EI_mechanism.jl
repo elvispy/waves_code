@@ -117,12 +117,12 @@ function write_summary_csv(path, rows)
 end
 
 function main(; data_dir=joinpath(@__DIR__, "..", "output"),
-                branch_csv="single_alpha_zero_curve_details_uncoupled_refined.csv",
-                sweep_file="sweep_motor_position_EI_uncoupled_from_matlab.jld2",
+                branch_csv=joinpath("csv", "analyze_single_alpha_zero_curve.csv"),
+                sweep_file=joinpath("jld2", "sweep_motor_position_EI_uncoupled_from_matlab.jld2"),
                 top_n::Int=20,
                 offsets=[-0.015, -0.01, -0.005, 0.0, 0.005, 0.01, 0.015],
-                raw_output="uncoupled_high_EI_mechanism_raw.csv",
-                summary_output="uncoupled_high_EI_mechanism_summary.csv")
+                raw_output="analyze_uncoupled_high_EI_mechanism_raw.csv",
+                summary_output="analyze_uncoupled_high_EI_mechanism_summary.csv")
     rows = parse_csv(joinpath(data_dir, branch_csv))
     top_rows = top_high_EI_rows(rows; top_n=top_n)
     artifact = load_sweep(joinpath(data_dir, sweep_file))
@@ -178,10 +178,12 @@ function main(; data_dir=joinpath(@__DIR__, "..", "output"),
     end
 
     raw = sort(raw; by = r -> (r.ei_rank, r.delta_xM_over_L))
-    write_raw_csv(joinpath(data_dir, raw_output), raw)
-    write_summary_csv(joinpath(data_dir, summary_output), summary)
-    println("Saved $(joinpath(data_dir, raw_output))")
-    println("Saved $(joinpath(data_dir, summary_output))")
+    raw_path = joinpath(data_dir, "csv", raw_output)
+    summary_path = joinpath(data_dir, "csv", summary_output)
+    write_raw_csv(raw_path, raw)
+    write_summary_csv(summary_path, summary)
+    println("Saved $raw_path")
+    println("Saved $summary_path")
 end
 
 if abspath(PROGRAM_FILE) == @__FILE__

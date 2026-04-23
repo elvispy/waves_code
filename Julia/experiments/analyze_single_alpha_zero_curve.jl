@@ -799,7 +799,10 @@ function write_sa_overlay_plot(path::AbstractString, mp_norm_list, EI_list, left
 end
 
 function default_output_file(sweep_file)
-    return replace(basename(sweep_file), r"\.jld2$" => "_single_branch.csv")
+    # Match script name: analyze_single_alpha_zero_curve
+    # We add the sweep_file base name as a suffix to distinguish different runs if needed,
+    # or just use the script name. The user prefers script name.
+    return "analyze_single_alpha_zero_curve.csv"
 end
 
 function default_cache_file(sweep_file)
@@ -807,6 +810,7 @@ function default_cache_file(sweep_file)
 end
 
 function beam_csv_path(csv_path)
+    # Multiple outputs from the same script: add suffix
     return replace(csv_path, r"\.csv$" => "_beam.csv")
 end
 
@@ -815,23 +819,18 @@ function main(data_dir::AbstractString, sweep_file::AbstractString, edge_source_
               cache_file=nothing, sa_accept_tol::Float64=1e-3, n_modes::Int=8,
               local_max_iterations::Int=5, tunnel_width::Real=0.10)
     
-    data_dir = ensure_dir(normpath(data_dir))
-    artifact = load_sweep_artifact(joinpath(data_dir, sweep_file))
+    output_dir = ensure_dir(normpath(data_dir))
+    sweep_path = joinpath(output_dir, "jld2", sweep_file)
+    artifact = load_sweep_artifact(sweep_path)
+    
     output_name = isempty(output_file) ? default_output_file(sweep_file) : String(output_file)
-    output_path = joinpath(data_dir, output_name)
+    output_path = joinpath(output_dir, "csv", output_name)
     edge_source = Symbol(edge_source_in)
 
     cache_path = if isnothing(cache_file)
-        # Check if default_cache_file is defined and not nothing
-        default_name = default_cache_file(sweep_file)
-        if isnothing(default_name)
-            nothing
-        else
-            candidate = joinpath(data_dir, String(default_name))
-            isfile(candidate) ? candidate : nothing
-        end
+        nothing
     else
-        joinpath(data_dir, String(cache_file))
+        joinpath(output_dir, "jld2", String(cache_file))
     end
     
     cached_rows = isnothing(cache_path) ? NamedTuple[] : load_cached_curve_rows(cache_path, n_modes)
@@ -996,7 +995,9 @@ function main(data_dir::AbstractString, sweep_file::AbstractString, edge_source_
     final_rows = [best_rows[i] for i in sort(collect(keys(best_rows)))]
     written_curve_keys = append_curve_csv(output_path, final_rows, n_modes, written_curve_keys)
     written_beam_keys = append_beam_curve_csv(beam_output_path, final_rows, written_beam_keys)
-    overlay_path = replace(output_path, r"\.csv$" => "_branch$(branch_index)_overlay.pdf")
+    
+    overlay_name = "analyze_single_alpha_zero_curve_branch$(branch_index)_overlay.pdf"
+    overlay_path = joinpath(output_dir, "figures", overlay_name)
     
     write_sa_overlay_plot(
         overlay_path,

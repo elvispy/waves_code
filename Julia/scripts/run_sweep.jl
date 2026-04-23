@@ -42,10 +42,10 @@ function main(save_dir::AbstractString=joinpath(@__DIR__, "..", "output"))
         solver=flexible_solver,
         beam_metrics_fn=beam_edge_metrics,
         label="generic_sweep",
-        save_path=joinpath(save_dir, "generic_sweep.jld2"),
+        save_path=joinpath(save_dir, "jld2", "run_sweep.jld2"),
     )
 
-    println("Saved $(joinpath(save_dir, \"generic_sweep.jld2\"))")
+    println("Saved $(joinpath(save_dir, \"jld2\", \"run_sweep.jld2\"))")
     println("grid dimensions: $(size(artifact.summaries))")
     return artifact
 end

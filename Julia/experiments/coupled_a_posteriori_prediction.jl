@@ -10,9 +10,9 @@ using LinearAlgebra
 
 function main()
     output_dir = joinpath(@__DIR__, "..", "output")
-    sweep_file = joinpath(output_dir, "sweeps", "sweep_motor_position_EI_coupled_from_matlab.jld2")
+    sweep_file = joinpath(output_dir, "jld2", "sweep_motor_position_EI_coupled_from_matlab.jld2")
     cache_file = joinpath(output_dir, "jld2", "second_family_point_cache.jld2")
-    results_cache = joinpath(output_dir, "jld2", "coupled_decomposition_results.jld2")
+    results_cache = joinpath(output_dir, "jld2", "coupled_a_posteriori_prediction_results.jld2")
     
     if !isfile(sweep_file)
         println("Sweep file not found: $sweep_file")
@@ -106,6 +106,6 @@ function main()
     path = joinpath(output_dir, "figures", "coupled_a_posteriori_prediction.pdf")
     savefig(combined, path)
     println("Saved $path")
-end
+    end
 
 main()
