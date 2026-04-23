@@ -8,21 +8,13 @@ using Base.Threads
 """
     postprocess_parts.jl
 
-Fixes the FieldError by reconstructing the necessary metadata on-the-fly.
-Processes a directory of partial `.jld2` sweep artifacts, performs modal
-decomposition, and collates results into a single, self-contained master CSV.
+Fixes the FieldError by reconstructing the necessary metadata on-the-fly and
+using the correct `N` from the stripped metadata in the JLD2 part files.
 """
 
 function reconstruct_params(base_params, part_data, motor_pos)
-    # The part file contains the EI for the entire slice
     ei = part_data["EI"]
-    
-    overrides = (
-        motor_position = motor_pos,
-        EI = ei,
-    )
-    
-    # Use the same function as the sweep scripts to ensure consistency
+    overrides = (motor_position = motor_pos, EI = ei)
     return Surferbot.Sweep.apply_parameter_overrides(base_params, overrides)
 end
 
@@ -46,11 +38,13 @@ function process_part(part_path::AbstractString, base_params, motor_position_lis
             motor_pos = motor_position_list[im]
             params = reconstruct_params(base_params, part_data, motor_pos)
             
-            # Reconstruct other needed inputs for decomposition
-            x_raft = collect(range(-params.L_raft/2, params.L_raft/2, length=params.N))
+            # 2. Reconstruct other needed inputs for decomposition
+            # Get N from the stripped metadata saved in the part file
+            N = res.metadata.N
+            x_raft = collect(range(-params.L_raft/2, params.L_raft/2, length=N))
             loads = Surferbot.build_loads(x_raft, params)
 
-            # 2. Perform the modal decomposition
+            # 3. Perform the modal decomposition
             modal = Surferbot.Modal.decompose_raft_freefree_modes(
                 x_raft, 
                 res.eta, 
@@ -61,7 +55,7 @@ function process_part(part_path::AbstractString, base_params, motor_position_lis
                 verbose=false
             )
             
-            # 3. Build a row for the DataFrame, including key physical params
+            # 4. Build a row for the DataFrame
             row_data = (
                 log10_EI = log10(params.EI),
                 xM_over_L = params.motor_position / params.L_raft,
@@ -104,13 +98,12 @@ function main(parts_dir::AbstractString, output_csv::AbstractString; num_modes::
         @warn "Output file $output_csv already exists. It will be overwritten."
     end
     
-    # Load base parameters to be used for reconstruction
+    # Load base parameters for reconstruction
     base_params = Surferbot.Analysis.default_coupled_motor_position_EI_sweep().base_params
     L_raft = base_params.L_raft
-    nx = 100 # From the brute_force_sweep script
+    nx = 100 
     motor_position_list = collect(range(0.0, 0.49; length=nx) .* L_raft)
 
-    # Process all parts in parallel
     all_rows = Vector{Any}(undef, num_parts)
     @threads for i in 1:num_parts
         @printf("Processing part %d/%d: %s
@@ -118,7 +111,6 @@ function main(parts_dir::AbstractString, output_csv::AbstractString; num_modes::
         all_rows[i] = process_part(part_files[i], base_params, motor_position_list, num_modes)
     end
     
-    # Flatten the array of arrays and write to CSV
     println("Collating results...")
     flat_rows = vcat(filter(!isempty, all_rows)...)
     
