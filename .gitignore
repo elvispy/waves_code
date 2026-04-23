@@ -22,3 +22,4 @@ tmp/
 docs/
 Julia/output/*_smoke.*
 Julia/output/parts/
+Julia/logs/
