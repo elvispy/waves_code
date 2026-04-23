@@ -47,7 +47,7 @@ function process_part(part_path::AbstractString, base_params, motor_position_lis
             params = reconstruct_params(base_params, part_data, motor_pos)
             
             # Reconstruct other needed inputs for decomposition
-            x_raft = Surferbot.raft_nodes(params)
+            x_raft = collect(range(-params.L_raft/2, params.L_raft/2, length=params.N))
             loads = Surferbot.build_loads(x_raft, params)
 
             # 2. Perform the modal decomposition
