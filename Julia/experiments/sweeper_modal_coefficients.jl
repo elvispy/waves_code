@@ -69,46 +69,48 @@ function run_sweep(output_path, is_coupled; nx=100, nei=300, num_modes=8, task_i
     if isnothing(task_id)
         println("Starting full sweep: $(is_coupled ? "Coupled" : "Uncoupled") -> $output_path")
         println("Grid: $nei EI points x $nx xM points ($((nei*nx)) total)")
+        
+        @threads for iei in indices
+            process_ei_slice(iei, EI_list, motor_position_list, base_params, output_path, num_modes, write_lock, task_id, nx, nei)
+        end
+    else
+        for iei in indices
+            process_ei_slice(iei, EI_list, motor_position_list, base_params, output_path, num_modes, write_lock, task_id, nx, nei)
+        end
     end
+end
 
-    # If task_id is provided, we don't need internal threads, Slurm handles it
-    loop_macro = isnothing(task_id) ? Threads.@threads : identity
-
-    @sync for iei in indices
-        # We use @spawn or similar if we wanted internal parallelism, 
-        # but for Slurm Array Tasks, this loop runs exactly once.
-        ei = EI_list[iei]
-        rows_to_write = String[]
+function process_ei_slice(iei, EI_list, motor_position_list, base_params, output_path, num_modes, write_lock, task_id, nx, nei)
+    ei = EI_list[iei]
+    rows_to_write = String[]
+    
+    for im in 1:nx
+        params = Surferbot.Sweep.apply_parameter_overrides(base_params, (
+            motor_position = motor_position_list[im],
+            EI = ei
+        ))
         
-        for im in 1:nx
-            params = Surferbot.Sweep.apply_parameter_overrides(base_params, (
-                motor_position = motor_position_list[im],
-                EI = ei
-            ))
-            
-            try
-                res = flexible_solver(params)
-                modal = decompose_raft_freefree_modes(res; num_modes=num_modes, verbose=false)
-                push!(rows_to_write, format_row(params, res, modal))
-            catch e
-                @warn "Failed at EI=$(ei), xM=$(motor_position_list[im]): $e"
+        try
+            res = flexible_solver(params)
+            modal = decompose_raft_freefree_modes(res; num_modes=num_modes, verbose=false)
+            push!(rows_to_write, format_row(params, res, modal))
+        catch e
+            @warn "Failed at EI=$(ei), xM=$(motor_position_list[im]): $e"
+        end
+    end
+    
+    lock(write_lock) do
+        open(output_path, "a") do io
+            for row in rows_to_write
+                println(io, row)
             end
         end
-        
-        # Batch write for the EI slice
-        lock(write_lock) do
-            # Use append mode for array tasks
-            open(output_path, "a") do io
-                for row in rows_to_write
-                    println(io, row)
-                end
-            end
-        end
-        if isnothing(task_id)
-            @printf("Completed EI index %3d/%3d (log10EI = %.2f)\n", iei, nei, log10(ei))
-        else
-            @printf("Task %d: Completed EI = %.2e\n", task_id, ei)
-        end
+    end
+    
+    if isnothing(task_id)
+        @printf("Completed EI index %3d/%3d (log10EI = %.2f)\n", iei, nei, log10(ei))
+    else
+        @printf("Task %d: Completed EI = %.2e\n", task_id, ei)
     end
 end
 
