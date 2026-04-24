@@ -1,4 +1,11 @@
 
+"""
+plot_branch_signatures.jl
+
+Visualizes the symmetric (S) and antisymmetric (A) radiation magnitudes, 
+along with their phase alignment (cos(delta_theta)), across the motor-position/EI 
+parameter plane.
+"""
 using JLD2
 using Plots
 using Statistics

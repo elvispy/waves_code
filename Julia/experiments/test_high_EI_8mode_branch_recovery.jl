@@ -1,3 +1,10 @@
+"""
+test_high_EI_8mode_branch_recovery.jl
+
+Tests whether the high-EI alpha=0 branch can be accurately recovered using 
+an 8-mode reduced implicit equation. Compares empirical q_n and F_n 
+reconstructions against numerical branch data.
+"""
 using Surferbot
 using JLD2
 using Statistics

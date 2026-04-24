@@ -1,3 +1,9 @@
+"""
+derive_geometric_law.jl
+
+Generates a randomized high-fidelity evidence dataset (varying L, H, d, EI) 
+to derive geometric scaling laws for the fluid force components.
+"""
 using Surferbot
 using LinearAlgebra
 using Printf

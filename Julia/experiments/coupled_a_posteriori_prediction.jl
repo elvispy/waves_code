@@ -1,3 +1,10 @@
+"""
+coupled_a_posteriori_prediction.jl
+
+Performs a full-grid analysis of the hydrodynamic pressure contribution (Q) 
+to radiation cancellation in the coupled case. Decomposes the symmetric 
+radiation into mechanical and hydrodynamic components.
+"""
 using Surferbot
 using JLD2
 using Plots

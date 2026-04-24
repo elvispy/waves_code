@@ -1,3 +1,10 @@
+"""
+audit_displacement_law.jl
+
+Audits the empirical "Raft-Displacement Law" (|Q_f| scaling) using randomized 
+numerical trials. Calibrates the law's intercept and reports relative 
+prediction errors.
+"""
 using Surferbot
 using LinearAlgebra
 using Printf

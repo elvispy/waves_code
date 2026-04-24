@@ -1,3 +1,10 @@
+"""
+coupled_apriori_test.jl
+
+Tests the diagonal hydrodynamic coupling hypothesis (Q_n ≈ H_nn * q_n) 
+for the coupled case. Extracts the effective impedance shift from numerical 
+solves to inform a priori prediction laws.
+"""
 using Surferbot
 using JLD2
 using Printf

@@ -1,3 +1,10 @@
+"""
+sweeper_modal_coefficients.jl
+
+A memory-efficient, parallelized sweeper that streams modal coefficients 
+(q, Q, F) directly to CSV. Designed to process large parameter grids (30,000+ points) 
+without OOM errors. Supports Slurm Array Tasks.
+"""
 using Surferbot
 using Printf
 using Base.Threads

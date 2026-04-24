@@ -1,3 +1,9 @@
+"""
+table_second_family_errors.jl
+
+Batch-calculates relative errors for the delta-load approximation and modal 
+force balance equations across a specified number of branch points.
+"""
 using Surferbot
 using JLD2
 using DelimitedFiles
