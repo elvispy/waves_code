@@ -24,8 +24,8 @@ The fields mirror the MATLAB helper `decompose_raft_freefree_modes`:
 - `n`: retained mode labels (`0`, `1`, ...)
 - `mode_type`: `"rigid"` or `"elastic"` for each retained mode
 - `betaL`, `beta`: nondimensional and dimensional modal wavenumbers
-- `q`: modal coefficients of the raft displacement
-- `Q`, `F`: modal coefficients of `d * pressure` and forcing load
+- `q`, `Q`, `F`: modal coefficients in the orthonormalized Psi basis (used for CSV serialization)
+- `q_w`, `Q_w`, `F_w`: modal coefficients in the raw analytical W basis
 - `balance_residual`: per-mode beam-balance mismatch
 - `energy_frac`: normalized `|q_n|^2`
 - `eta_recon`: reconstructed raft displacement
@@ -120,6 +120,7 @@ end
 Free-free elastic mode shape evaluated on `xi in [0, L]`.
 """
 function freefree_mode_shape(xi::AbstractVector{<:Real}, L::Real, betaL::Real)
+    # Note: Returns mode shapes normalized to unit peak (L-infinity), not L2 norm.
     beta = betaL / L
     bx = beta .* collect(float.(xi))
     alpha = (sin(betaL) - sinh(betaL)) / (cosh(betaL) - cos(betaL))

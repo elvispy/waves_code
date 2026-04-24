@@ -109,6 +109,9 @@ the parameters explicit names and types. The most important groups are:
 - raft properties: `L_raft`, `d`, `EI`, `rho_raft`
 - numerical resolution: `n`, `M`, `ooa`, `L_domain`, `domain_depth`
 - boundary condition: `bc`
+
+Note: JLD2 reconstructed parameters from saved sweeps require explicit 
+conversion back to `FlexibleParams` for library function dispatch.
 """
 Base.@kwdef struct FlexibleParams{T<:Real}
     sigma::T = 72.2e-3
