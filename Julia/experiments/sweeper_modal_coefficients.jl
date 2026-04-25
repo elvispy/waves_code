@@ -26,13 +26,17 @@ function generate_header(num_modes)
 end
 
 function format_row(params, res, modal)
+    metrics = Surferbot.Analysis.beam_edge_metrics(res)
+    alpha = Surferbot.Analysis.beam_asymmetry(metrics.eta_left_beam, metrics.eta_right_beam)
+
     row_data = [
         log10(params.EI),
         params.motor_position / params.L_raft,
         params.L_raft,
         params.omega,
         isnothing(params.d) ? 0.0 : params.d,
-        params.rho_raft
+        params.rho_raft,
+        alpha
     ]
     
     # Extract W-basis coefficients
