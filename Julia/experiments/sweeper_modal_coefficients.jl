@@ -15,7 +15,7 @@ without OOM errors. Supports Slurm Array Tasks.
 # Directly streams (q, Q, F) results to CSV to prevent OOM errors.
 
 function generate_header(num_modes)
-    header = ["log10_EI", "xM_over_L", "L_raft", "omega", "d", "rho_raft"]
+    header = ["log10_EI", "xM_over_L", "L_raft", "omega", "d", "rho_raft", "alpha"]
     for n in 0:(num_modes-1)
         append!(header, [
             "q_w$(n)_re", "q_w$(n)_im",
