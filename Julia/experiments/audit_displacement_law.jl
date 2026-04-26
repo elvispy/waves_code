@@ -1,3 +1,9 @@
+using Surferbot
+using LinearAlgebra
+using Printf
+using Statistics
+using Random
+
 """
 audit_displacement_law.jl
 
@@ -5,11 +11,6 @@ Audits the empirical "Raft-Displacement Law" (|Q_f| scaling) using randomized
 numerical trials. Calibrates the law's intercept and reports relative 
 prediction errors.
 """
-using Surferbot
-using LinearAlgebra
-using Printf
-using Statistics
-using Random
 
 # Purpose: Test the "Raft-Displacement Law" against 20 randomized trials.
 # Law: |Q_f| = C * L^-1.27 * d^-0.11 * omega^-0.28 * |q0|^-0.14

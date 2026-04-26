@@ -1,3 +1,6 @@
+using JLD2
+using Printf
+
 """
 compare_high_EI_branch_mode_sets.jl
 
@@ -5,8 +8,6 @@ Evaluates how different subsets of even modes (e.g., {0,2} vs. {0,2,4,6})
 influence the accuracy of alpha=0 branch predictions in the high-stiffness 
 uncoupled regime.
 """
-using JLD2
-using Printf
 
 # Purpose: compare reduced branch predictions for different even-mode sets
 # against the high-EI uncoupled branch data, reusing the cached rerun basis.

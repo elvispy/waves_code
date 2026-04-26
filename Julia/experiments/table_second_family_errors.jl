@@ -1,13 +1,14 @@
+using Surferbot
+using JLD2
+using DelimitedFiles
+using Printf
+
 """
 table_second_family_errors.jl
 
 Batch-calculates relative errors for the delta-load approximation and modal 
 force balance equations across a specified number of branch points.
 """
-using Surferbot
-using JLD2
-using DelimitedFiles
-using Printf
 
 function linear_interp(x::AbstractVector{<:Real}, y::AbstractVector, xq::Real)
     xq <= x[1] && return y[1]

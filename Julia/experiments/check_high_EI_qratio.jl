@@ -1,3 +1,7 @@
+using Surferbot
+using Statistics
+using Printf
+
 """
 check_high_EI_qratio.jl
 
@@ -5,9 +9,6 @@ Verifies the high-stiffness asymptotic relation q2/q0 ≈ (W2/W0) * (D0/D2)
 using uncoupled sweep data. Reports the empirical ratio vs. theoretical 
 prediction.
 """
-using Surferbot
-using Statistics
-using Printf
 
 # Purpose: check the high-EI ratio relation q2/q0 ≈ (W2/W0) * (D0/D2)
 # on the existing uncoupled first nontrivial branch CSV, with no new solves.

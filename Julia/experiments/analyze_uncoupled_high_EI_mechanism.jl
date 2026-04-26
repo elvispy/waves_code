@@ -1,3 +1,7 @@
+using Surferbot
+using Base.Threads
+using DelimitedFiles
+
 """
 analyze_uncoupled_high_EI_mechanism.jl
 
@@ -5,9 +9,6 @@ Analyzes the local radiation mechanisms around high-stiffness (high-EI)
 points on the uncoupled alpha=0 branch. Identifies whether symmetric or 
 antisymmetric energy dominates at the cancellation points.
 """
-using Surferbot
-using Base.Threads
-using DelimitedFiles
 
 # Purpose: run local x_M cuts around the top-20 highest-EI points on the
 # uncoupled beam-based alpha=0 branch and classify the local mechanism.

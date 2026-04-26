@@ -1,3 +1,8 @@
+using Surferbot
+using JLD2
+using Statistics
+using Printf
+
 """
 test_high_EI_8mode_branch_recovery.jl
 
@@ -5,10 +10,6 @@ Tests whether the high-EI alpha=0 branch can be accurately recovered using
 an 8-mode reduced implicit equation. Compares empirical q_n and F_n 
 reconstructions against numerical branch data.
 """
-using Surferbot
-using JLD2
-using Statistics
-using Printf
 
 # Purpose: test the high-EI second-family branch with the first 8 modal
 # coefficients. The script does two things:

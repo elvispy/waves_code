@@ -1,3 +1,10 @@
+using Surferbot
+using JLD2
+using Plots
+using Statistics
+using Printf
+using LinearAlgebra
+
 """
 coupled_a_posteriori_prediction.jl
 
@@ -5,12 +12,6 @@ Performs a full-grid analysis of the hydrodynamic pressure contribution (Q)
 to radiation cancellation in the coupled case. Decomposes the symmetric 
 radiation into mechanical and hydrodynamic components.
 """
-using Surferbot
-using JLD2
-using Plots
-using Statistics
-using Printf
-using LinearAlgebra
 
 # Cluster Job: Analyze the modal contribution of pressure (Q) to the second family zeros.
 # This script is designed to run the full grid and save the results for later analysis.

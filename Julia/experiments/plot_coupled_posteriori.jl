@@ -1,10 +1,3 @@
-"""
-plot_coupled_posteriori.jl
-
-Calculates and visualizes the a posteriori contributions of mechanical forcing 
-(F) and hydrodynamic pressure (Q) to the symmetric radiation field in the 
-coupled case, using CSV-extracted modal coefficients.
-"""
 using Surferbot
 using JLD2
 using Plots
@@ -12,6 +5,14 @@ using Statistics
 using Printf
 using DelimitedFiles
 using LinearAlgebra
+
+"""
+plot_coupled_posteriori.jl
+
+Calculates and visualizes the a posteriori contributions of mechanical forcing 
+(F) and hydrodynamic pressure (Q) to the symmetric radiation field in the 
+coupled case, using CSV-extracted modal coefficients.
+"""
 
 # Simplified Plotting script for the A Posteriori Coupled Prediction.
 # Uses coefficients directly from the CSV to avoid parameter mismatch.

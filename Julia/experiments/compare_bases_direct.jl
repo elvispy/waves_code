@@ -1,3 +1,8 @@
+using Surferbot
+using Printf
+using LinearAlgebra
+using Statistics
+
 """
 compare_bases_direct.jl
 
@@ -5,10 +10,6 @@ Performs a direct numerical comparison between the orthonormal Psi basis
 (discrete Gram-Schmidt) and the raw analytical W basis (Phi). Reports Gram 
 matrix identity errors and coefficient transformation residuals.
 """
-using Surferbot
-using Printf
-using LinearAlgebra
-using Statistics
 
 # Compare the numerical basis (Psi_n) and the analytical basis (W_n) directly.
 

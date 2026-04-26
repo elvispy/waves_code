@@ -1,3 +1,7 @@
+using Surferbot
+using JLD2
+using Printf
+
 """
 report_second_family_point_diagnostics.jl
 
@@ -5,9 +9,6 @@ Generates a detailed, cache-backed diagnostic report for a single parameter
 point on the second-family branch. Audits the delta-load proxy and modal 
 force balance for uncoupled high-stiffness cases.
 """
-using Surferbot
-using JLD2
-using Printf
 
 # Purpose: produce a readable, cache-backed diagnostic report for one clean
 # point on the uncoupled beam-end second-family branch.

@@ -1,11 +1,12 @@
+using Surferbot
+using Printf
+
 """
 check_empirical_second_family_reduced_model.jl
 
 Validates the delta-load force projection and the two-term reduced branch 
 equation against a full numerical solve at a clean alpha=0 branch point.
 """
-using Surferbot
-using Printf
 
 # Purpose: on one clean branch point, check the delta-load force projection,
 # the two-term reduced branch equation, and the S_02 closure against the full

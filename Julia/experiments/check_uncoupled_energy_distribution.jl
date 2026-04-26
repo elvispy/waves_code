@@ -1,12 +1,13 @@
+using Surferbot
+using DelimitedFiles
+using Statistics
+
 """
 check_uncoupled_energy_distribution.jl
 
 Analyzes the fractional modal energy distribution (symmetric vs. antisymmetric) 
 along the highest stiffness alpha=0 branch points.
 """
-using Surferbot
-using DelimitedFiles
-using Statistics
 
 data_dir = normpath(joinpath(@__DIR__, "..", "output"))
 branch_csv = joinpath("csv", "analyze_single_alpha_zero_curve.csv")
