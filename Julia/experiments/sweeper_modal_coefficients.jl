@@ -16,6 +16,13 @@ without OOM errors. Supports Slurm Array Tasks.
 
 function generate_header(num_modes)
     header = ["log10_EI", "xM_over_L", "L_raft", "omega", "d", "rho_raft", "alpha"]
+    # Add edge elevations (complex)
+    append!(header, [
+        "eta_1_beam_re", "eta_1_beam_im",
+        "eta_1_domain_re", "eta_1_domain_im",
+        "eta_end_beam_re", "eta_end_beam_im",
+        "eta_end_domain_re", "eta_end_domain_im"
+    ])
     for n in 0:(num_modes-1)
         append!(header, [
             "q_w$(n)_re", "q_w$(n)_im",
@@ -39,6 +46,14 @@ function format_row(params, res, modal)
         params.rho_raft,
         alpha
     ]
+
+    # Append edge elevations (complex)
+    append!(row_data, [
+        real(metrics.eta_left_beam), imag(metrics.eta_left_beam),
+        real(metrics.eta_left_domain), imag(metrics.eta_left_domain),
+        real(metrics.eta_right_beam), imag(metrics.eta_right_beam),
+        real(metrics.eta_right_domain), imag(metrics.eta_right_domain)
+    ])
     
     # Extract W-basis coefficients
     # modal.q, modal.Q, modal.F are already in the projected basis
