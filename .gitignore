@@ -19,6 +19,9 @@ Julia/.julia*/
 sweep1.mat
 tmp/
 # IMPORTANT: Do not track the docs/ folder. It is for local research/notes only.
+docs/**
+!docs/
+!docs/surferbot_paper_draft.tex
 docs/superpowers
 Julia/output/*_smoke.*
 Julia/output/parts/
