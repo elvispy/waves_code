@@ -19,20 +19,27 @@ export ModalDecomposition,
 
 Container for the free-free modal projection of a raft displacement field.
 
-The fields mirror the MATLAB helper `decompose_raft_freefree_modes`:
+The fields mirror the MATLAB helper `decompose_raft_freefree_modes`.
 
+# Fields
 - `n`: retained mode labels (`0`, `1`, ...)
 - `mode_type`: `"rigid"` or `"elastic"` for each retained mode
-- `betaL`, `beta`: nondimensional and dimensional modal wavenumbers
-- `q`, `Q`, `F`: modal coefficients in the orthonormalized Psi basis (used for CSV serialization)
-- `q_w`, `Q_w`, `F_w`: modal coefficients in the raw analytical W basis
+- `betaL`: nondimensional modal wavenumbers
+- `beta`: dimensional modal wavenumbers
+- `q`: modal coefficients in the orthonormalized Psi basis
+- `q_w`: modal coefficients in the raw analytical W basis
+- `Q`: generalized pressure coefficients in Psi basis
+- `Q_w`: generalized pressure coefficients in W basis
+- `F`: generalized load coefficients in Psi basis
+- `F_w`: generalized load coefficients in W basis
 - `balance_residual`: per-mode beam-balance mismatch
 - `energy_frac`: normalized `|q_n|^2`
 - `eta_recon`: reconstructed raft displacement
 - `recon_rel_err`: weighted relative reconstruction error
 - `x_raft`: raft-node coordinates
 - `Psi`: weighted-orthonormal basis on the raft grid
-- `gram_cond`: condition number of `Psi' W Psi`
+- `Phi`: raw analytical basis on the raft grid
+- `gram_cond`: condition number of the Gram matrix
 """
 struct ModalDecomposition
     n::Vector{Int}
@@ -58,8 +65,17 @@ end
 """
     RawFreefreeBasis
 
-Discrete raft-grid basis built directly from the rigid modes and sampled
-free-free shapes `W_n`, before weighted orthonormalization.
+Discrete raft-grid basis built from rigid modes and sampled free-free shapes.
+
+# Fields
+- `n`: mode labels
+- `mode_type`: "rigid" or "elastic"
+- `betaL`: nondimensional wavenumbers
+- `beta`: dimensional wavenumbers
+- `x_raft`: grid points
+- `w`: integration weights
+- `Phi`: basis matrix
+- `gram_cond`: Gram matrix condition number
 """
 struct RawFreefreeBasis
     n::Vector{Int}
@@ -73,10 +89,15 @@ struct RawFreefreeBasis
 end
 
 """
-    trapz_weights(x)
+    trapz_weights(x::AbstractVector{<:Real})
 
-Return vector weights such that `sum(trapz_weights(x) .* f)` matches
-trapezoidal quadrature on the same grid.
+Compute weights for trapezoidal quadrature.
+
+# Arguments
+- `x`: Grid points (must be strictly increasing).
+
+# Returns
+- Vector of weights.
 """
 function trapz_weights(x::AbstractVector{<:Real})
     xvec = collect(float.(x))
@@ -98,9 +119,17 @@ function trapz_weights(x::AbstractVector{<:Real})
 end
 
 """
-    freefree_betaL_roots(n)
+    freefree_betaL_roots(n::Integer)
 
-Positive elastic roots of `cosh(betaL) * cos(betaL) = 1`.
+Compute the positive elastic roots of the free-free beam characteristic equation.
+
+The equation is `cosh(betaL) * cos(betaL) = 1`.
+
+# Arguments
+- `n`: Number of roots to find.
+
+# Returns
+- Vector of roots.
 """
 function freefree_betaL_roots(n::Integer)
     n < 0 && throw(ArgumentError("n must be nonnegative"))
@@ -115,12 +144,19 @@ function freefree_betaL_roots(n::Integer)
 end
 
 """
-    freefree_mode_shape(xi, L, betaL)
+    freefree_mode_shape(xi::AbstractVector{<:Real}, L::Real, betaL::Real)
 
-Free-free elastic mode shape evaluated on `xi in [0, L]`.
+Evaluate the free-free elastic mode shape on a given grid.
+
+# Arguments
+- `xi`: Grid coordinates in `[0, L]`.
+- `L`: Length of the beam.
+- `betaL`: Nondimensional wavenumber root.
+
+# Returns
+- Vector of mode shape values, normalized to unit L-infinity norm.
 """
 function freefree_mode_shape(xi::AbstractVector{<:Real}, L::Real, betaL::Real)
-    # Note: Returns mode shapes normalized to unit peak (L-infinity), not L2 norm.
     beta = betaL / L
     bx = beta .* collect(float.(xi))
     alpha = (sin(betaL) - sinh(betaL)) / (cosh(betaL) - cos(betaL))
@@ -130,10 +166,18 @@ function freefree_mode_shape(xi::AbstractVector{<:Real}, L::Real, betaL::Real)
 end
 
 """
-    weighted_mgs(Phi, w)
+    weighted_mgs(Phi::AbstractMatrix{<:Real}, w::AbstractVector{<:Real})
 
-Weighted modified Gram-Schmidt with inner product
-`<u, v>_W = u' * (v .* w)`.
+Perform weighted modified Gram-Schmidt orthonormalization.
+
+The inner product is defined as `<u, v>_W = u' * (v .* w)`.
+
+# Arguments
+- `Phi`: Input basis matrix.
+- `w`: Integration weights.
+
+# Returns
+- A tuple `(Psi, keep)` where `Psi` is the orthonormal basis and `keep` is a boolean mask of retained columns.
 """
 function weighted_mgs(Phi::AbstractMatrix{<:Real}, w::AbstractVector{<:Real})
     nrow, ncol = size(Phi)
@@ -167,10 +211,16 @@ end
 """
     build_raw_freefree_basis(x_raft, L_raft; num_modes=8, include_rigid=true)
 
-Build the discrete rigid-plus-elastic basis from sampled free-free modes `W_n`
-on the raft grid, before weighted orthonormalization. The retained columns are
-filtered with the same `keep` mask that `weighted_mgs` would use, so the raw
-and orthonormalized bases span the same discrete subspace.
+Construct the discrete rigid-plus-elastic basis before orthonormalization.
+
+# Arguments
+- `x_raft`: Grid points on the raft.
+- `L_raft`: Length of the raft.
+- `num_modes`: Number of modes to generate (default: 8).
+- `include_rigid`: Whether to include rigid-body modes (default: true).
+
+# Returns
+- A `RawFreefreeBasis` object.
 """
 function build_raw_freefree_basis(
     x_raft::AbstractVector{<:Real},
@@ -236,10 +286,17 @@ function build_raw_freefree_basis(
 end
 
 """
-    psi_to_w_transform(Phi, Psi, w)
+    psi_to_w_transform(Phi::AbstractMatrix{<:Real}, Psi::AbstractMatrix{<:Real}, w::AbstractVector{<:Real})
 
-Return the linear map `T` such that, on the same raft grid,
-`Phi * c_w ≈ Psi * c_psi` with `c_w = T * c_psi`.
+Compute the transformation matrix from orthonormal `Psi` basis to raw `Phi` basis.
+
+# Arguments
+- `Phi`: Raw analytical basis matrix.
+- `Psi`: Orthonormal basis matrix.
+- `w`: Integration weights.
+
+# Returns
+- Matrix `T` such that `Phi * c_w ≈ Psi * c_psi` with `c_w = T * c_psi`.
 """
 function psi_to_w_transform(
     Phi::AbstractMatrix{<:Real},
@@ -256,8 +313,16 @@ end
 """
     coefficients_in_w_basis(coeff_psi, Phi, Psi, w)
 
-Map coefficients from the orthonormalized `Psi` basis into the raw sampled
-`W` basis on the same raft grid.
+Convert coefficients from the orthonormal `Psi` basis to the raw `Phi` basis.
+
+# Arguments
+- `coeff_psi`: Coefficients in the `Psi` basis.
+- `Phi`: Raw analytical basis matrix.
+- `Psi`: Orthonormal basis matrix.
+- `w`: Integration weights.
+
+# Returns
+- Coefficients in the `Phi` basis.
 """
 function coefficients_in_w_basis(
     coeff_psi::AbstractVector,
@@ -272,11 +337,20 @@ end
 """
     decompose_raft_freefree_modes(x, eta, pressure, loads, args; num_modes=8, include_rigid=true, verbose=true)
 
-Project the raft displacement onto a free-free beam basis.
+Project raft displacement field onto a free-free beam basis.
 
-This ports the MATLAB helper `decompose_raft_freefree_modes`. The caller must
-provide the full surface `x`/`eta` arrays plus raft-only `pressure` and
-`loads`, and the `args` tuple returned by the Julia solver.
+# Arguments
+- `x`: Full surface grid coordinates.
+- `eta`: Full surface displacement field.
+- `pressure`: Raft pressure field.
+- `loads`: Raft load field.
+- `args`: Metadata/parameters from the solver.
+- `num_modes`: Number of modes to retain (default: 8).
+- `include_rigid`: Whether to include rigid modes (default: true).
+- `verbose`: Whether to print a summary table (default: true).
+
+# Returns
+- A `ModalDecomposition` object.
 """
 function decompose_raft_freefree_modes(
     x::AbstractVector,
@@ -407,11 +481,30 @@ function decompose_raft_freefree_modes(
     return modal
 end
 
+"""
+    decompose_raft_freefree_modes(result; kwargs...)
+
+Convenience wrapper for `decompose_raft_freefree_modes` using a `FlexibleResult`.
+"""
 function decompose_raft_freefree_modes(result; kwargs...)
     args = result.metadata.args
     return decompose_raft_freefree_modes(result.x, result.eta, args.pressure, args.loads, args; kwargs...)
 end
 
+"""
+    find_zero_bisection(f, a::Real, b::Real; maxiter::Int=200, atol::Float64=1e-12)
+
+Root-finding using the bisection method.
+
+# Arguments
+- `f`: Function to find the zero of.
+- `a`, `b`: Bracketing interval.
+- `maxiter`: Maximum iterations (default: 200).
+- `atol`: Absolute tolerance (default: 1e-12).
+
+# Returns
+- The approximate root.
+"""
 function find_zero_bisection(f, a::Real, b::Real; maxiter::Int=200, atol::Float64=1e-12)
     fa = f(a)
     fb = f(b)
@@ -438,6 +531,11 @@ function find_zero_bisection(f, a::Real, b::Real; maxiter::Int=200, atol::Float6
     return (left + right) / 2
 end
 
+"""
+    print_modal_log(modal::ModalDecomposition)
+
+Print a formatted summary table of the modal decomposition.
+"""
 function print_modal_log(modal::ModalDecomposition)
     println()
     println("Modal decomposition (free-free beam basis)")

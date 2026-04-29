@@ -38,8 +38,10 @@ const MATLAB_EXPORT_HEADER = [
 """
     matlab_motor_position_ei_sources()
 
-Return the supported MATLAB sweep sources and their Julia-native destination
-metadata.
+Return the supported MATLAB sweep sources and their Julia-native destination metadata.
+
+# Returns
+- A NamedTuple with keys `:coupled` and `:uncoupled`, each containing path and preset information.
 """
 function matlab_motor_position_ei_sources()
     return (
@@ -59,10 +61,18 @@ function matlab_motor_position_ei_sources()
 end
 
 """
-    load_motor_position_ei_export(path)
+    load_motor_position_ei_export(path::AbstractString)
 
-Read a plain numeric CSV exported from the MATLAB motor-position/EI sweep
-table.
+Read a plain numeric CSV exported from the MATLAB motor-position/EI sweep table.
+
+# Arguments
+- `path`: Path to the CSV file.
+
+# Returns
+- A matrix of Float64 values from the export.
+
+# Errors
+- Throws an error if the header does not match `MATLAB_EXPORT_HEADER`.
 """
 function load_motor_position_ei_export(path::AbstractString)
     rows, header = readdlm(path, ',', Float64, header=true)
@@ -71,6 +81,17 @@ function load_motor_position_ei_export(path::AbstractString)
     return rows
 end
 
+"""
+    axis_maps(rows::AbstractMatrix{<:Real})
+
+Identify the unique axes and build coordinate maps for the sweep matrix.
+
+# Arguments
+- `rows`: Data rows from the export.
+
+# Returns
+- A tuple `(EI_axis, motor_position_axis, ei_map, mp_map)`.
+"""
 function axis_maps(rows::AbstractMatrix{<:Real})
     EI = sort(unique(vec(rows[:, 1])))
     motor_position = sort(unique(vec(rows[:, 2])))
@@ -84,7 +105,15 @@ end
 
 Build a Julia-native `SweepArtifact` from exported MATLAB sweep rows.
 
-`U` is set to `NaN` because the original MATLAB sweep files do not store it.
+Note: `U` is set to `NaN` because original MATLAB sweep files do not store it.
+
+# Arguments
+- `rows`: Matrix of exported sweep data.
+- `label`: Descriptive label for the artifact.
+- `base_params`: Base parameters used for the sweep.
+
+# Returns
+- A `SweepArtifact` object.
 """
 function artifact_from_motor_position_ei_export(rows::AbstractMatrix{<:Real}; label::AbstractString, base_params)
     EI_axis, motor_position_axis, ei_map, mp_map = axis_maps(rows)

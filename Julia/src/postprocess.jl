@@ -7,27 +7,17 @@ export calculate_surferbot_outputs
 """
     calculate_surferbot_outputs(args, phi, phi_z, getNonCompactFDmatrix, getNonCompactFDmatrix2D)
 
-Recover thrust, drift speed, mean input power, and surface fields from the
-harmonic solution of the coupled fluid-raft problem.
+Compute thrust, drift speed, input power, and surface fields from the harmonic solution.
 
-The main postprocessing steps follow the paper and MATLAB implementation:
+# Arguments
+- `args`: Metadata and parameters used for the simulation.
+- `phi`: Potential field matrix.
+- `phi_z`: Vertical derivative of the potential field matrix.
+- `getNonCompactFDmatrix`: Function handle to generate 1D FD matrices.
+- `getNonCompactFDmatrix2D`: Function handle to generate 2D FD matrices.
 
-1. Reconstruct the surface elevation from the kinematic relation
-   `eta_hat = phi_z / (i*omega)` in dimensional form.
-2. Restrict the solution to the raft-contact region and compute raft-only
-   slope and curvature operators.
-3. Reconstruct the harmonic pressure on the raft from the Bernoulli relation.
-4. Form the total raft load `Q`, combining the applied forcing and the fluid
-   pressure contribution.
-5. Compute the mean thrust from the load-slope work plus the capillary edge
-   correction.
-6. Infer the drift speed `U` from the drag-law closure.
-7. Compute the mean actuator power from the paper's cycle-averaged work-rate
-   formula.
-
-The returned `power` uses the same sign convention as the MATLAB solver. A
-separate helper should be used if a strictly positive input-power quantity is
-needed for optimization.
+# Returns
+- A tuple `(U, power, thrust, eta, p, max_curvature, wave_steepness)`.
 """
 function calculate_surferbot_outputs(args, phi, phi_z, getNonCompactFDmatrix, getNonCompactFDmatrix2D)
     N = args.N
@@ -77,10 +67,7 @@ function calculate_surferbot_outputs(args, phi, phi_z, getNonCompactFDmatrix, ge
     max_curvature = maximum(abs.(eta_xx_raft))
     
     # Calculate wave steepness (ak)
-    # We use the far-field wavenumber k and the maximum elevation amplitude
     k_real = real(args.k)
-    # Maximum amplitude of the free surface (excluding potential singularities at edges)
-    # Actually, the entire eta is harmonically decomposed, so its absolute value is the amplitude.
     max_a = maximum(abs.(eta))
     wave_steepness = max_a * k_real
     
@@ -88,9 +75,16 @@ function calculate_surferbot_outputs(args, phi, phi_z, getNonCompactFDmatrix, ge
 end
 
 """
-    trapz(x, y)
+    trapz(x::AbstractVector, y::AbstractVector)
 
-Simple trapezoidal quadrature used for raft-integrated thrust and power terms.
+Perform numerical integration using the trapezoidal rule.
+
+# Arguments
+- `x`: Coordinates of the grid points.
+- `y`: Values of the function at the grid points.
+
+# Returns
+- The approximate integral value.
 """
 function trapz(x::AbstractVector, y::AbstractVector)
     total = zero(promote_type(eltype(x), eltype(y)))
@@ -100,4 +94,4 @@ function trapz(x::AbstractVector, y::AbstractVector)
     return total
 end
 
-end
+end # module

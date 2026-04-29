@@ -3,23 +3,20 @@ module Integration
 export simpson_weights
 
 """
-    simpson_weights(N::Int, h::Union{Float64, Vector{Float64}})
+    simpson_weights(N::Int, h::Union{Float64, AbstractVector{Float64}})
 
-Simpson's 1/3 rule weights on either a uniform or a non-uniform grid.
+Compute Simpson's 1/3 rule weights for numerical integration.
 
-Parameters
-----------
-N : Int
-  Number of grid points (must be odd and >= 3).
-  If `h` is an array, N is ignored and inferred from len(h).
-h : Float64 or Vector{Float64}
-  - If Float64: uniform spacing.
-  - If 1-D array of length N: the grid coordinates (must be sorted).
+Supports both uniform and non-uniform grids.
 
-Returns
--------
-w : Vector{Float64}
-  Weights such that `sum(w .* f)` approximates ∫ f over the grid.
+# Arguments
+- `N`: Number of grid points. Must be odd and ≥ 3. (Ignored if `h` is an array).
+- `h`: Spacing parameter. 
+    - If `Float64`: Uniform spacing between points.
+    - If `AbstractVector`: Grid coordinates (must be sorted).
+
+# Returns
+- `w`: Vector of weights such that `sum(w .* f)` approximates the integral of `f`.
 """
 function simpson_weights(N::Int, h::Union{Float64, AbstractVector{Float64}})
     # Non-uniform grid branch

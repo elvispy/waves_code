@@ -7,11 +7,21 @@ export DtN_generator
 """
     DtN_generator(N::Int, h::Float64 = 1.0)
 
-This function generates the matrix M so that M * phi is an approximation of
-1/π * lim_{ε→0} ∫_{|x-x0| > ε} (phi(x0, 0) - phi(x, 0)) / (x-x0)^2 dx
+Generate the Dirichlet-to-Neumann (DtN) mapping matrix.
 
-For harmonic functions in the plane with decaying behaviour, this is exactly
-d/dz phi(x, 0)|_{x = x0}
+The matrix `M` is constructed such that `M * phi` approximates the Hilbert transform
+integral:
+`1/π * lim_{ε→0} ∫_{|x-x0| > ε} (phi(x0, 0) - phi(x, 0)) / (x-x0)^2 dx`
+
+For harmonic functions in the upper half-plane, this represents the vertical derivative
+of the potential at the surface.
+
+# Arguments
+- `N`: Number of grid points.
+- `h`: Grid spacing (default: 1.0).
+
+# Returns
+- A square matrix (N x N) representing the DtN operator.
 """
 function DtN_generator(N::Int, h::Float64 = 1.0)
     # Create the main diagonal with 66's

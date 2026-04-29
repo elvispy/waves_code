@@ -19,13 +19,12 @@ export OptimizationParams,
 """
     OptimizationParams
 
-Container for the optimization variables and simple box constraints.
+Container for optimization variables and simple box constraints.
 
-- `theta0[1] = xA`, the motor position along the raft.
-- `theta0[2] = logEI`, the logarithm of the flexural rigidity.
-
-The use of `logEI` keeps `EI = exp(logEI)` strictly positive and improves
-scaling during optimization.
+# Fields
+- `theta0`: Initial values for `[xA, logEI]`.
+- `lower`: Lower bounds for the parameters.
+- `upper`: Upper bounds for the parameters.
 """
 Base.@kwdef struct OptimizationParams
     theta0::Vector{Float64}
@@ -38,25 +37,16 @@ end
 
 Configuration for the penalized thrust optimization problem.
 
-The objective minimized by this module is
-
-`J(theta) = -T(theta) + mu * softplus(P_in(theta) - Pmax)^2 + gamma * softplus(kappa_max - kappa_limit)^2 + delta * softplus(ak - ak_limit)^2`
-
-where:
-
-- `T(theta)` is the mean thrust
-- `P_in(theta)` is the mean actuator power input
-- `Pmax` is the allowed power budget
-- `mu` is the power penalty weight
-- `beta` controls the sharpness of the softplus transition
-- `gamma` is the weight for the curvature penalty
-- `kappa_max_limit` is the threshold for the dimensionless curvature penalty
-- `delta` is the weight for the wave steepness penalty
-- `ak_limit` is the threshold for the wave steepness penalty (ak)
-
-`fd_step` is used for directional differentiation of the scalar postprocessed
-objective, and `sens_step` is used for finite-difference approximation of the
-assembly derivatives `dA/dtheta` and `db/dtheta`.
+# Fields
+- `Pmax`: Actuator power budget.
+- `mu`: Power penalty weight (default: 1.0).
+- `beta`: Softplus sharpness parameter (default: 50.0).
+- `gamma`: Curvature penalty weight (default: 0.0).
+- `kappa_max_limit`: Dimensionless curvature threshold (default: 1.0).
+- `delta`: Wave steepness penalty weight (default: 0.0).
+- `ak_limit`: Wave steepness threshold (default: 0.1).
+- `fd_step`: Step size for postprocessed derivatives (default: 1e-6).
+- `sens_step`: Step size for sensitivity assembly (default: 1e-6).
 """
 Base.@kwdef struct OptimizationConfig
     Pmax::Float64
@@ -75,13 +65,14 @@ end
 
 Summary of a completed optimization run.
 
-- `theta` stores the final optimization variables `[xA, logEI]`
-- `objective` is the final penalized objective value
-- `thrust` is the final mean thrust
-- `power_input` is the final mean input power used in the penalty
-- `gradient` is the final objective gradient
-- `iterations` is the number of iterations performed
-- `converged` indicates whether the gradient tolerance was met
+# Fields
+- `theta`: Final optimization variables `[xA, logEI]`.
+- `objective`: Final penalized objective value.
+- `thrust`: Final mean thrust.
+- `power_input`: Final mean input power.
+- `gradient`: Final objective gradient.
+- `iterations`: Number of iterations performed.
+- `converged`: Whether convergence criteria were met.
 """
 struct OptimizationResult
     theta::Vector{Float64}
@@ -94,13 +85,16 @@ struct OptimizationResult
 end
 
 """
-    softplus(z, beta)
+    softplus(z::Real, beta::Real)
 
 Smooth approximation of `max(z, 0)`.
 
-This is used to impose the power constraint through a differentiable penalty.
-For large positive `z`, `softplus(z, beta) ≈ z`; for large negative `z`, it is
-close to zero.
+# Arguments
+- `z`: Input value.
+- `beta`: Sharpness parameter.
+
+# Returns
+- Smoothly rectified value.
 """
 function softplus(z::Real, beta::Real)
     if beta * z > 40
@@ -115,15 +109,16 @@ end
 """
     softplus_penalty(power_input, Pmax, mu; beta=50.0)
 
-Return the smooth penalty applied when the input power exceeds the allowed
-budget `Pmax`.
+Calculate the smooth penalty for exceeding the power budget.
 
-The penalty is
+# Arguments
+- `power_input`: Calculated actuator input power.
+- `Pmax`: Power budget.
+- `mu`: Penalty weight.
+- `beta`: Sharpness parameter (default: 50.0).
 
-`mu * softplus(power_input - Pmax)^2`
-
-so that points below the power budget are essentially unpenalized, while
-points above the budget are pushed back toward feasibility.
+# Returns
+- Calculated penalty value.
 """
 function softplus_penalty(power_input::Real, Pmax::Real, mu::Real; beta::Real=50.0)
     excess = power_input - Pmax
@@ -133,11 +128,14 @@ end
 """
     theta_to_params(theta, base_params)
 
-Map the optimization variables `theta = [xA, logEI]` into a concrete
-`FlexibleParams` instance.
+Map optimization variables `theta = [xA, logEI]` to `FlexibleParams`.
 
-This is the bridge between the low-dimensional optimization problem and the
-full Surferbot simulation.
+# Arguments
+- `theta`: Vector of optimization variables.
+- `base_params`: Template parameters for constant values.
+
+# Returns
+- A new `FlexibleParams` instance.
 """
 function theta_to_params(theta::AbstractVector{<:Real}, base_params::FlexibleParams)
     @assert length(theta) == 2
@@ -166,14 +164,13 @@ function theta_to_params(theta::AbstractVector{<:Real}, base_params::FlexiblePar
 end
 
 """
-    input_power(power)
+    input_power(power::Real)
     input_power(result)
 
-Convert the solver's power sign convention into a positive actuator input power.
+Convert solver power (negative for input) to positive input power.
 
-The paper defines the mean input power through the cycle-averaged actuator work
-rate. In the current solver implementation the reported `power` is negative
-when the actuator injects power, so this helper returns `P_in = -power`.
+# Returns
+- Positive input power value.
 """
 input_power(power::Real) = -float(power)
 input_power(result) = input_power(result.power)
@@ -181,8 +178,7 @@ input_power(result) = input_power(result.power)
 """
     build_output_args(derived, params)
 
-Assemble the dimensional and nondimensional quantities required by the
-postprocessing formulas for thrust, speed, and input power.
+Assemble arguments for output calculation from derived states and parameters.
 """
 function build_output_args(derived, params)
     return (
@@ -210,10 +206,9 @@ function build_output_args(derived, params)
 end
 
 """
-    split_state(solution, derived)
+    split_state(solution::AbstractVector, derived)
 
-Split the stacked harmonic state vector into the fields `phi` and `phi_z` on
-the `(M, N)` grid.
+Split the stacked state vector into potential and its derivative matrices.
 """
 function split_state(solution::AbstractVector, derived)
     NP = derived.N * derived.M
@@ -225,13 +220,16 @@ end
 """
     evaluate_from_state(solution, derived, params, config)
 
-Evaluate the scalar optimization objective and the physically relevant outputs
-from a solved harmonic state.
+Calculate objective and physical outputs from a solved state.
 
-This helper applies the postprocessing formulas from the solver to obtain
-thrust, drift speed, and mean input power, then forms the penalized objective
+# Arguments
+- `solution`: State vector.
+- `derived`: Derived grid/system information.
+- `params`: Physical parameters.
+- `config`: Optimization configuration.
 
-`J = -T + penalty(P_in - Pmax)`.
+# Returns
+- NamedTuple of objective components and physical fields.
 """
 function evaluate_from_state(solution::AbstractVector, derived, params, config::OptimizationConfig)
     phi, phi_z = split_state(solution, derived)
@@ -272,12 +270,10 @@ end
 """
     evaluate_primal(theta, base_params, config)
 
-Solve the primal linear system for the parameter vector `theta` and return the
-full state together with postprocessed outputs.
+Solve the forward problem for parameters `theta`.
 
-Mathematically, this computes the state `x(theta)` from
-
-`A(theta) * x(theta) = b(theta)`.
+# Returns
+- NamedTuple containing system state and postprocessed outputs.
 """
 function evaluate_primal(theta::AbstractVector{<:Real}, base_params::FlexibleParams, config::OptimizationConfig)
     params = theta_to_params(theta, base_params)
@@ -298,26 +294,36 @@ end
 """
     thrust_objective(theta, base_params, config)
 
-Return the scalar penalized objective for the current parameter vector.
-
-The objective is minimized by the optimizer, so higher thrust lowers the
-objective, while excess actuator power increases it.
+Compute the scalar penalized objective for `theta`.
 """
 function thrust_objective(theta::AbstractVector{<:Real}, base_params, config::OptimizationConfig)
     eval = evaluate_primal(theta, base_params, config)
     return eval.outputs.objective
 end
 
-"""Clamp the optimization variables to their box constraints."""
+"""
+    clamp_theta(theta, opt_params)
+
+Clamp optimization variables to their defined bounds.
+"""
 function clamp_theta(theta, opt_params::OptimizationParams)
     return clamp.(theta, opt_params.lower, opt_params.upper)
 end
 
-"""Choose a scale-aware central-difference step for a scalar variable."""
+"""
+    central_step(value::Real, base_step::Real)
+
+Compute a scale-aware step size for central differences.
+"""
 function central_step(value::Real, base_step::Real)
     return base_step * max(1.0, abs(float(value)))
 end
 
+"""
+    directional_objective_derivative(state, state_direction, theta, theta_direction, derived, base_params, config)
+
+Compute the directional derivative of the objective via finite differences.
+"""
 function directional_objective_derivative(state, state_direction, theta, theta_direction, derived, base_params, config::OptimizationConfig)
     h = config.fd_step
     theta_plus = theta .+ h .* theta_direction
@@ -334,11 +340,10 @@ end
 """
     objective_and_gradient(theta, base_params, config)
 
-Return the scalar objective, its gradient, and the primal evaluation at
-`theta`.
+Calculate the objective value and its gradient using implicit differentiation.
 
-The gradient is computed by forward implicit differentiation using ForwardDiff
-for the assembly derivatives.
+# Returns
+- `(objective, gradient, primal_evaluation)`.
 """
 function objective_and_gradient(theta::AbstractVector{<:Real}, base_params, config::OptimizationConfig)
     primal = evaluate_primal(theta, base_params, config)
@@ -377,7 +382,7 @@ end
 """
     backtracking_line_search(theta, direction, objective_value, gradient, base_params, config, opt_params)
 
-Simple Armijo backtracking line search used by the local LBFGS driver.
+Armijo-rule backtracking line search for the local optimizer.
 """
 function backtracking_line_search(theta, direction, objective_value, gradient, base_params, config, opt_params)
     step = 1.0
@@ -397,12 +402,7 @@ end
 """
     lbfgs_direction(gradient, s_history, y_history)
 
-Compute the limited-memory BFGS search direction from the stored secant pairs.
-
-This implements the standard two-loop recursion using the history
-
-- `s_k = theta_{k+1} - theta_k`
-- `y_k = grad_{k+1} - grad_k`
+Compute search direction using the Limited-memory BFGS algorithm.
 """
 function lbfgs_direction(gradient, s_history, y_history)
     q = copy(gradient)
@@ -434,17 +434,18 @@ end
 """
     run_thrust_optimization(base_params, opt_params, config; maxiter=20, gtol=1e-6, memory=5)
 
-Run a standalone limited-memory BFGS optimization of the Surferbot design
-variables `[xA, logEI]`.
+Optimize the Surferbot design variables to maximize penalized thrust.
 
-The routine minimizes the penalized objective
+# Arguments
+- `base_params`: Template physical parameters.
+- `opt_params`: Optimization variable bounds and initial guess.
+- `config`: Penalty and step size settings.
+- `maxiter`: Maximum iterations (default: 20).
+- `gtol`: Gradient norm tolerance (default: 1e-6).
+- `memory`: L-BFGS history length (default: 5).
 
-`J(theta) = -T(theta) + mu * softplus(P_in(theta) - Pmax)^2 + gamma * softplus(max_curvature - kappa_max_limit)^2 + delta * softplus(ak - ak_limit)^2`
-
-subject to simple box constraints enforced by clamping after each step.
-
-This driver is intentionally kept outside `Surferbot.jl` so that optimization
-remains a separate engineering layer on top of the primal solver.
+# Returns
+- An `OptimizationResult` object.
 """
 function run_thrust_optimization(base_params, opt_params::OptimizationParams, config::OptimizationConfig; maxiter::Int=20, gtol::Float64=1e-6, memory::Int=5)
     theta = clamp_theta(copy(opt_params.theta0), opt_params)

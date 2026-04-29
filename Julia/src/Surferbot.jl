@@ -96,22 +96,30 @@ export FlexibleParams,
        flexible_surferbot_v2_julia
 
 """
-    FlexibleParams
+    FlexibleParams{T<:Real}
 
-Physical, geometric, and numerical parameters for the flexible Surferbot
-solver.
+Physical, geometric, and numerical parameters for the flexible Surferbot solver.
 
-This struct mirrors the MATLAB entry point `flexible_surferbot_v2` while giving
-the parameters explicit names and types. The most important groups are:
-
-- fluid properties: `sigma`, `rho`, `nu`, `g`
-- forcing: `omega`, `motor_position`, `motor_force`, `forcing_width`
-- raft properties: `L_raft`, `d`, `EI`, `rho_raft`
-- numerical resolution: `n`, `M`, `ooa`, `L_domain`, `domain_depth`
-- boundary condition: `bc`
-
-Note: JLD2 reconstructed parameters from saved sweeps require explicit 
-conversion back to `FlexibleParams` for library function dispatch.
+# Fields
+- `sigma`: Surface tension.
+- `rho`: Fluid density.
+- `omega`: Angular frequency of forcing.
+- `nu`: Kinematic viscosity.
+- `g`: Gravitational acceleration.
+- `L_raft`: Length of the raft.
+- `motor_position`: Horizontal position of the actuator.
+- `d`: Beam width or thickness parameter.
+- `EI`: Flexural rigidity.
+- `rho_raft`: Linear mass density of the raft.
+- `L_domain`: Length of the fluid domain.
+- `domain_depth`: Depth of the fluid domain.
+- `n`: Number of grid points on the raft.
+- `M`: Number of grid points in the vertical direction.
+- `ooa`: Order of accuracy for finite differences.
+- `motor_inertia`: Inertia of the actuator motor.
+- `motor_force`: Specified forcing amplitude.
+- `forcing_width`: Width of the Gaussian forcing profile.
+- `bc`: Boundary condition symbol (`:radiative` or `:neumann`).
 """
 Base.@kwdef struct FlexibleParams{T<:Real}
     sigma::T = 72.2e-3
@@ -136,20 +144,23 @@ Base.@kwdef struct FlexibleParams{T<:Real}
 end
 
 """
-    FlexibleResult
+    FlexibleResult{T<:Real}
 
 Primary outputs of the flexible Surferbot solve.
 
-- `U`: drift speed inferred from the drag-law closure
-- `power`: mean actuator power returned by the current sign convention
-- `thrust`: mean wave-driven thrust
-- `phi`, `phi_z`: harmonic potential fields
-- `eta`, `pressure`: reconstructed free-surface elevation and raft pressure
-- `max_curvature`: maximum dimensionless curvature of the raft
-- `wave_steepness`: maximum wave steepness (ak)
-
-`metadata` stores the dimensional arguments used by the postprocessing layer
-and, optionally, the assembled linear system when `return_system=true`.
+# Fields
+- `U`: Drift speed.
+- `power`: Mean actuator power.
+- `thrust`: Mean wave-driven thrust.
+- `x`: Horizontal grid coordinates.
+- `z`: Vertical grid coordinates.
+- `phi`: Potential field matrix.
+- `phi_z`: Vertical derivative of potential.
+- `eta`: Reconstructed free-surface elevation.
+- `pressure`: Reconstructed pressure field.
+- `max_curvature`: Maximum dimensionless raft curvature.
+- `wave_steepness`: Maximum wave steepness.
+- `metadata`: NamedTuple containing arguments and optional system matrix.
 """
 struct FlexibleResult{T<:Real}
     U::T
@@ -167,10 +178,15 @@ struct FlexibleResult{T<:Real}
 end
 
 """
-    derive_params(params)
+    derive_params(params::FlexibleParams)
 
-Construct all derived scales, nondimensional groups, grids, and distributed
-loads needed by the linear solver.
+Calculate derived scales, nondimensional groups, and grid parameters.
+
+# Arguments
+- `params`: Input configuration object.
+
+# Returns
+- A NamedTuple containing all derived quantities and grids.
 """
 function derive_params(params::FlexibleParams{T}) where {T<:Real}
     motor_force = isnothing(params.motor_force) ? params.motor_inertia * params.omega^2 : params.motor_force
@@ -191,13 +207,9 @@ function derive_params(params::FlexibleParams{T}) where {T<:Real}
         Lambda = d / params.L_raft,
     )
 
-    # Initial guess for domain depth and k
-    # We use a fixed number of iterations for AD stability instead of a while loop with NaN
     current_depth = isnothing(params.domain_depth) ? T(2.5) * params.g / params.omega^2 : params.domain_depth
     k = dispersion_k(params.omega, params.g, current_depth, params.nu, params.sigma, params.rho)
     
-    # Simple refinement if needed to ensure deep water behavior
-    # We limit to 50 iterations for AD safety while ensuring convergence
     if isnothing(params.domain_depth)
         for _ in 1:50
             if isnan(k) || tanh(real(k) * current_depth) < T(0.99)
@@ -269,9 +281,15 @@ function derive_params(params::FlexibleParams{T}) where {T<:Real}
 end
 
 """
-    assemble_flexible_system(params)
+    assemble_flexible_system(params::FlexibleParams)
 
-Assemble the sparse harmonic linear system for the coupled fluid-raft problem.
+Assemble the coupled fluid-raft linear system.
+
+# Arguments
+- `params`: Input configuration object.
+
+# Returns
+- A NamedTuple containing the system matrix `A`, vector `b`, and indexing information.
 """
 function assemble_flexible_system(params::FlexibleParams{T}) where {T<:Real}
     derived = derive_params(params)
@@ -418,8 +436,14 @@ end
 """
     flexible_solver(params; return_system=false)
 
-Solve the coupled flexible Surferbot problem and postprocess the solution into
-physically meaningful outputs.
+Solve the coupled flexible Surferbot problem.
+
+# Arguments
+- `params`: Input configuration object.
+- `return_system`: Whether to include the assembled system in the result (default: false).
+
+# Returns
+- A `FlexibleResult` object, or a tuple `(result, system)` if `return_system` is true.
 """
 function flexible_solver(params::FlexibleParams{T}; return_system::Bool=false) where {T<:Real}
     system = assemble_flexible_system(params)
@@ -485,7 +509,10 @@ end
 """
     flexible_surferbot_v2_julia(; kwargs...)
 
-MATLAB-style compatibility wrapper around `flexible_solver`.
+Convenience wrapper for `flexible_solver` with keyword arguments.
+
+# Returns
+- A tuple `(U, x, z, phi, eta, args)`.
 """
 function flexible_surferbot_v2_julia(; kwargs...)
     result = flexible_solver(FlexibleParams{Float64}(; kwargs...))
@@ -493,4 +520,4 @@ function flexible_surferbot_v2_julia(; kwargs...)
     return result.U, result.x, result.z, result.phi, result.eta, args
 end
 
-end
+end # module

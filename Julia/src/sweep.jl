@@ -15,7 +15,20 @@ export SweepSummary,
 """
     SweepSummary
 
-Standard per-case summary for Julia-native parameter sweeps.
+Container for per-case summary data from a parameter sweep.
+
+# Fields
+- `U`: Drift speed.
+- `power`: Power (solver convention).
+- `power_input`: Actuator input power.
+- `thrust`: Mean thrust.
+- `eta_left_beam`: Left beam displacement.
+- `eta_right_beam`: Right beam displacement.
+- `eta_left_domain`: Left domain displacement.
+- `eta_right_domain`: Right domain displacement.
+- `eta_beam_ratio`: Ratio of beam edge displacements.
+- `eta_domain_ratio`: Ratio of domain edge displacements.
+- `tail_flat_ratio`: Metric for wave flatness at the tail.
 """
 struct SweepSummary
     U::Float64
@@ -32,10 +45,15 @@ struct SweepSummary
 end
 
 """
-    SweepArtifact
+    SweepArtifact{N, Axes<:NamedTuple}
 
-Native Julia sweep artifact containing the swept parameter axes and one
-`SweepSummary` for each Cartesian grid point.
+A complete sweep dataset including axes and summaries.
+
+# Fields
+- `label`: Description of the sweep.
+- `base_params`: Template parameters used.
+- `parameter_axes`: Axes of the sweep grid.
+- `summaries`: N-dimensional array of results.
 """
 struct SweepArtifact{N,Axes<:NamedTuple}
     label::String
@@ -45,26 +63,25 @@ struct SweepArtifact{N,Axes<:NamedTuple}
 end
 
 """
-    apply_parameter_overrides(base_params, overrides)
+    apply_parameter_overrides(base_params, overrides::NamedTuple)
 
-Create a new `FlexibleParams` instance by overriding selected fields from a
-base parameter set.
+Generate parameters by overriding fields in a base set.
+
+# Arguments
+- `base_params`: Base parameter object (or JLD2 reconstructed).
+- `overrides`: NamedTuple of field values to change.
+
+# Returns
+- A new `FlexibleParams` object.
 """
 function apply_parameter_overrides(base_params, overrides::NamedTuple)
-    # Reconstructed types from JLD2 don't have the same constructor, 
-    # and store values in a .fields vector if they were reconstructed.
     target_type = Main.Surferbot.FlexibleParams
     valid_names = fieldnames(target_type)
-    
     kwargs = Dict{Symbol, Any}()
     
-    # Handle JLD2 Reconstructed types
     T_base = typeof(base_params)
     if hasfield(T_base, :fields) && length(T_base.parameters) >= 2
-        # Reconstructed types store field names in the type parameters
-        # and values in the .fields field.
-        # FN: field names is usually the 2nd parameter
-        fnames = T_base.parameters[2] # FN
+        fnames = T_base.parameters[2] 
         fvals = getfield(base_params, :fields)
         for (name, val) in zip(fnames, fvals)
             if name in valid_names
@@ -72,7 +89,6 @@ function apply_parameter_overrides(base_params, overrides::NamedTuple)
             end
         end
     else
-        # Normal type
         for name in fieldnames(T_base)
             if name in valid_names
                 kwargs[name] = getfield(base_params, name)
@@ -80,7 +96,6 @@ function apply_parameter_overrides(base_params, overrides::NamedTuple)
         end
     end
     
-    # Apply overrides
     for (k, v) in pairs(overrides)
         if k in valid_names
             kwargs[k] = v
@@ -91,9 +106,15 @@ function apply_parameter_overrides(base_params, overrides::NamedTuple)
 end
 
 """
-    expand_parameter_grid(grid)
+    expand_parameter_grid(grid::NamedTuple)
 
-Return the full Cartesian product of a sweep grid as a vector of named tuples.
+Compute the Cartesian product of all parameters in a grid.
+
+# Arguments
+- `grid`: NamedTuple where values are collections.
+
+# Returns
+- Vector of NamedTuples representing all combinations.
 """
 function expand_parameter_grid(grid::NamedTuple)
     names = keys(grid)
@@ -109,7 +130,14 @@ end
 """
     summarize_result(result, beam_metrics_fn)
 
-Extract the standard sweep summary from a solver result.
+Condense a solver result into a `SweepSummary`.
+
+# Arguments
+- `result`: Result from the solver.
+- `beam_metrics_fn`: Function to extract beam-end metrics.
+
+# Returns
+- A `SweepSummary` instance.
 """
 function summarize_result(result, beam_metrics_fn)
     metrics = beam_metrics_fn(result)
@@ -132,9 +160,20 @@ function summarize_result(result, beam_metrics_fn)
 end
 
 """
-    sweep_parameters(base_params, grid; solver, beam_metrics_fn, label=\"\", save_path=nothing)
+    sweep_parameters(base_params, grid; solver, beam_metrics_fn, label="", save_path=nothing)
 
-Run the solver over the full Cartesian product defined by `grid`.
+Run a parameter sweep over a Cartesian grid.
+
+# Arguments
+- `base_params`: Base parameters for the simulation.
+- `grid`: NamedTuple defining the parameter axes.
+- `solver`: Function to solve the system for a given parameter set.
+- `beam_metrics_fn`: Function to extract metrics from the results.
+- `label`: Optional label for the sweep artifact.
+- `save_path`: Optional path to save the artifact in JLD2 format.
+
+# Returns
+- A `SweepArtifact` object.
 """
 function sweep_parameters(base_params, grid::NamedTuple; solver, beam_metrics_fn, label::AbstractString="", save_path::Union{Nothing,AbstractString}=nothing)
     axes = NamedTuple{keys(grid)}(Tuple(collect(v) for v in values(grid)))
@@ -155,9 +194,9 @@ function sweep_parameters(base_params, grid::NamedTuple; solver, beam_metrics_fn
 end
 
 """
-    save_sweep(path, artifact)
+    save_sweep(path::AbstractString, artifact::SweepArtifact)
 
-Write a sweep artifact to a Julia-native `JLD2` file.
+Save a `SweepArtifact` to disk.
 """
 function save_sweep(path::AbstractString, artifact::SweepArtifact)
     jldsave(path; artifact=artifact)
@@ -165,12 +204,12 @@ function save_sweep(path::AbstractString, artifact::SweepArtifact)
 end
 
 """
-    load_sweep(path)
+    load_sweep(path::AbstractString)
 
-Load a sweep artifact previously written by `save_sweep`.
+Load a `SweepArtifact` from a JLD2 file.
 """
 function load_sweep(path::AbstractString)
     return JLD2.load(path, "artifact")
 end
 
-end
+end # module

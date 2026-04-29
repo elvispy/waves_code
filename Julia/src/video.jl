@@ -19,13 +19,14 @@ export SurferbotRunRecord,
 """
     SurferbotRunRecord
 
-Canonical in-memory record for run-video rendering.
+In-memory record for Surferbot simulation runs, used for video rendering.
 
-- `U`: mean drift speed
-- `x`: horizontal grid in meters
-- `eta`: complex surface elevation amplitudes
-- `args`: solver metadata and parameters
-- `source`: provenance about where the record came from
+# Fields
+- `U`: Mean drift speed.
+- `x`: Horizontal grid coordinates (meters).
+- `eta`: Complex surface elevation amplitudes.
+- `args`: Metadata and physical parameters.
+- `source`: Provenance information (type and path).
 """
 struct SurferbotRunRecord
     U::Float64
@@ -35,12 +36,27 @@ struct SurferbotRunRecord
     source::NamedTuple
 end
 
+"""
+    repo_root()
+
+Return the absolute path to the repository root.
+"""
 repo_root() = abspath(joinpath(@__DIR__, "..", ".."))
 
+"""
+    maybe_get(nt, name::Symbol, default=nothing)
+
+Safely extract a property from a NamedTuple, returning a default if it doesn't exist.
+"""
 function maybe_get(nt, name::Symbol, default=nothing)
     hasproperty(nt, name) ? getproperty(nt, name) : default
 end
 
+"""
+    to_namedtuple(x)
+
+Convert a Dict or NamedTuple to a NamedTuple.
+"""
 function to_namedtuple(x)
     if x isa NamedTuple
         return x
@@ -53,6 +69,11 @@ function to_namedtuple(x)
     end
 end
 
+"""
+    load_saved_run(path::AbstractString)
+
+Load a simulation result from a JLD2 file or directory.
+"""
 function load_saved_run(path::AbstractString)
     if isdir(path)
         for candidate in ("results.jld2", "run.jld2", "result.jld2")
@@ -71,6 +92,11 @@ function load_saved_run(path::AbstractString)
     end
 end
 
+"""
+    normalize_run(input; source_kind="unknown", source_path=nothing)
+
+Convert various result formats (JLD2, Dict, FlexibleResult) into a `SurferbotRunRecord`.
+"""
 function normalize_run(input; source_kind::AbstractString="unknown", source_path::Union{Nothing,AbstractString}=nothing)
     if input isa SurferbotRunRecord
         return input
@@ -118,6 +144,11 @@ function normalize_run(input; source_kind::AbstractString="unknown", source_path
     end
 end
 
+"""
+    json_escape(s::AbstractString)
+
+Escape special characters for JSON strings.
+"""
 function json_escape(s::AbstractString)
     io = IOBuffer()
     for c in collect(s)
@@ -142,6 +173,11 @@ function json_escape(s::AbstractString)
     return String(take!(io))
 end
 
+"""
+    write_json_value(io, value; indent=0)
+
+Recursively write values in JSON format to an IO stream.
+"""
 function write_json_value(io, value; indent::Int=0)
     if value === nothing
         print(io, "null")
@@ -219,6 +255,11 @@ function write_json_value(io, value; indent::Int=0)
     end
 end
 
+"""
+    git_commit_hash()
+
+Return the current Git commit hash or "unknown".
+"""
 function git_commit_hash()
     try
         return strip(readchomp(`git -C $(repo_root()) rev-parse HEAD`))
@@ -227,6 +268,11 @@ function git_commit_hash()
     end
 end
 
+"""
+    build_provenance(record; output_basename, output_dir, script_name)
+
+Build a metadata NamedTuple for provenance tracking.
+"""
 function build_provenance(record::SurferbotRunRecord; output_basename::AbstractString, output_dir::AbstractString, script_name::AbstractString)
     return (
         script_name = script_name,
@@ -245,8 +291,7 @@ end
 """
     write_provenance_json(path, provenance)
 
-Write provenance metadata as pretty JSON without adding a new package
-dependency.
+Write provenance metadata to a JSON file.
 """
 function write_provenance_json(path::AbstractString, provenance)
     open(path, "w") do io
@@ -256,6 +301,11 @@ function write_provenance_json(path::AbstractString, provenance)
     return path
 end
 
+"""
+    plot_frame(record, t; omega, x_contact_mask, motor_idx, show_motor)
+
+Generate a single frame plot for the simulation at time `t`.
+"""
 function plot_frame(record::SurferbotRunRecord, t::Real; omega::Real, x_contact_mask, motor_idx::Union{Nothing,Int}, show_motor::Bool)
     scaleY = 1e6
     y = real.(record.eta .* exp.(1im * omega * t)) .* scaleY
@@ -290,6 +340,23 @@ function plot_frame(record::SurferbotRunRecord, t::Real; omega::Real, x_contact_
     return p
 end
 
+"""
+    render_surferbot_run(input; outdir=pwd(), basename="waves", fps=30, duration_periods=10, nframes=nothing, script_name=...)
+
+Render a simulation run as an MP4 video with provenance metadata.
+
+# Arguments
+- `input`: Run record or path to JLD2 file.
+- `outdir`: Directory to save outputs (default: current directory).
+- `basename`: Base name for files (default: "waves").
+- `fps`: Frames per second (default: 30).
+- `duration_periods`: Number of periods to simulate (default: 10).
+- `nframes`: Total number of frames (overrides `duration_periods`).
+- `script_name`: Name of the script calling this function.
+
+# Returns
+- A NamedTuple `(mp4 = path, json = path)`.
+"""
 function render_surferbot_run(input; outdir::AbstractString=pwd(), basename::AbstractString="waves", fps::Int=30, duration_periods::Real=10, nframes::Union{Nothing,Int}=nothing, script_name::AbstractString=Base.basename(PROGRAM_FILE))
     record = normalize_run(input)
     mkpath(outdir)
@@ -321,4 +388,4 @@ function render_surferbot_run(input; outdir::AbstractString=pwd(), basename::Abs
     return (mp4 = mp4_path, json = json_path)
 end
 
-end
+end # module

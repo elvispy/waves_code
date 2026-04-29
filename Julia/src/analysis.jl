@@ -10,9 +10,17 @@ export beam_asymmetry,
 """
     beam_asymmetry(eta_left, eta_right)
 
-Beam-end asymmetry factor
+Calculate the beam-end asymmetry factor.
 
+The asymmetry factor is defined as:
 `alpha_beam = -( |eta_left|^2 - |eta_right|^2 ) / ( |eta_left|^2 + |eta_right|^2 )`
+
+# Arguments
+- `eta_left`: Complex amplitude at the left end of the beam.
+- `eta_right`: Complex amplitude at the right end of the beam.
+
+# Returns
+- The calculated asymmetry factor (Real).
 """
 function beam_asymmetry(eta_left, eta_right)
     denom = abs2(eta_left) + abs2(eta_right)
@@ -22,7 +30,19 @@ end
 """
     beam_edge_metrics(result)
 
-Extract beam-end amplitudes and ratios from a Julia `FlexibleResult`.
+Extract beam-end amplitudes and ratios from a `FlexibleResult`.
+
+# Arguments
+- `result`: A `FlexibleResult` object containing the displacement field `eta` and metadata.
+
+# Returns
+- A NamedTuple containing:
+    - `eta_left_beam`: Displacement at the left edge of the beam.
+    - `eta_right_beam`: Displacement at the right edge of the beam.
+    - `eta_left_domain`: Displacement at the left edge of the domain.
+    - `eta_right_domain`: Displacement at the right edge of the domain.
+    - `eta_beam_ratio`: Ratio of magnitudes at the beam edges.
+    - `eta_domain_ratio`: Ratio of magnitudes at the domain edges.
 """
 function beam_edge_metrics(result)
     contact = collect(Bool.(result.metadata.args.x_contact))
@@ -47,8 +67,12 @@ end
 """
     default_coupled_motor_position_EI_sweep()
 
-Return the Julia-native counterpart of the MATLAB coupled `x_M`-`EI` sweep
-definition used for the beam-end analysis, with `d = 0.03`.
+Return the coupled `x_M`-`EI` sweep parameters used for beam-end analysis.
+
+Matches the MATLAB definition with `d = 0.03`.
+
+# Returns
+- A NamedTuple containing `base_params`, `motor_position_list`, and `EI_list`.
 """
 function default_coupled_motor_position_EI_sweep()
     L_raft = 0.05
@@ -80,8 +104,10 @@ end
 """
     default_uncoupled_motor_position_EI_sweep()
 
-Return the Julia-native counterpart of the MATLAB uncoupled `x_M`-`EI` sweep
-definition used for the beam-end white-curve analysis.
+Return the uncoupled `x_M`-`EI` sweep parameters used for beam-end analysis.
+
+# Returns
+- A NamedTuple containing `base_params`, `motor_position_list`, and `EI_list`.
 """
 function default_uncoupled_motor_position_EI_sweep()
     L_raft = 0.05
@@ -113,8 +139,17 @@ end
 """
     symmetric_antisymmetric_ratio(eta_left, eta_right)
 
-`log10(|S| / (|A| + eps()))` with `S = (eta_right + eta_left) / 2` and
+Calculate the log-ratio of symmetric to antisymmetric components.
+
+Defined as `log10(|S| / (|A| + eps()))` where `S = (eta_right + eta_left) / 2` and
 `A = (eta_right - eta_left) / 2`.
+
+# Arguments
+- `eta_left`: Complex amplitude at the left.
+- `eta_right`: Complex amplitude at the right.
+
+# Returns
+- The calculated ratio (Real).
 """
 function symmetric_antisymmetric_ratio(eta_left, eta_right)
     S = (eta_right + eta_left) / 2
@@ -125,10 +160,16 @@ end
 """
     extract_lowest_beam_curve(mp_norm_list, EI_list, eta_left, eta_right)
 
-Reproduce the MATLAB branch extraction rule used in the beam-end modal
-decomposition scripts. For each `EI` column, all `alpha_beam = 0` crossings
-are linearly interpolated in `x_M / L`, filtered to the `S ~ 0` branch by
-requiring `SA_ratio < 0`, and the lowest surviving crossing is retained.
+Extract the lowest beam-end crossing curve from a sweep dataset.
+
+# Arguments
+- `mp_norm_list`: Normalized motor positions.
+- `EI_list`: Flexural rigidity values.
+- `eta_left`: Matrix of left-end amplitudes.
+- `eta_right`: Matrix of right-end amplitudes.
+
+# Returns
+- A tuple `(curve_EI, curve_mp, asymmetry, SA_ratio)`.
 """
 function extract_lowest_beam_curve(
     mp_norm_list::AbstractVector{<:Real},
