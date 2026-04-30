@@ -87,7 +87,7 @@ end
 function run_sweep(output_path, is_coupled;
                    nkappa=100, nFr=100, num_modes=8, task_id=nothing,
                    log10_kappa_range = range(+1.0, -5.0; length=100),
-                   log10_Fr_range    = range(+2.0, +1.0; length=100))
+                   log10_Fr_range    = range(+2.0,  0.0; length=100))
     # ω is fixed at the canonical Surferbot value; only EI and g vary per point.
     base_params = is_coupled ?
         Surferbot.Analysis.default_coupled_motor_position_EI_sweep().base_params :
