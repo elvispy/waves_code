@@ -12,7 +12,7 @@
 # (each task does all κ values at a single Fr). Match --array to nFr in the
 # Julia script (default 100).
 
-cd "$(dirname "$(realpath "$0")")"
+cd "$SLURM_SUBMIT_DIR"
 
 module load julia
 
