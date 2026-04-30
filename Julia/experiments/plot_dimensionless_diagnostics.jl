@@ -13,24 +13,87 @@ import SpecialFunctions: erf
 """
 Julia/experiments/plot_dimensionless_diagnostics.jl
 
-Dimensionless diagnostic plots for coupled and uncoupled motor-position/EI sweeps.
+# Physics overview
 
-Design note:
-- the empirical modal pressure map is identified in the raw analytical `W` basis
-  by `prescribed_wn_diagonal_impedance.jl`
-- this plotting script evaluates its theoretical branch in the orthonormal `Psi`
-  basis used by the historical modal overlays and endpoint diagnostics
-- we therefore cache `Z_raw` and also cache the deliberate `W -> Psi`
-  operator conversion `Z_psi = T_{psi<-W} * Z_raw * T_{W<-psi}`
+The raft is an Euler–Bernoulli beam on a 2-D potential-flow fluid. Motor vibration
+(frequency ω, Gaussian force envelope of width σ, position xM) excites steady-state
+complex amplitudes. The principal diagnostic is the **asymmetry index**
 
-All fields manipulated here (`eta`, `pressure`, modal coefficients) are complex
-Fourier amplitudes, not physical time-domain signals.
+    α = (|η₁|² − |η_end|²) / (|η₁|² + |η_end|²)        α ∈ [-1, 1]
+
+where η₁ and η_end are the surface-elevation Fourier amplitudes at the left and
+right beam endpoints. α = 0 is the thrust-neutral condition; its sign determines
+the drift direction.
+
+# Endpoint decomposition into S and A
+
+Expand the beam response in the L²-orthonormal free-free modes {Ψ_n}.  Even
+modes are symmetric about the beam centre (same value at both ends); odd modes
+are antisymmetric (opposite sign).  Define
+
+    S ≡ Σ_{n even}  q_n · Ψ_n(x_end)    (symmetric endpoint amplitude)
+    A ≡ Σ_{n odd}   q_n · Ψ_n(x_end)    (antisymmetric endpoint amplitude)
+
+where Ψ_n(x_end) denotes the n-th mode evaluated at the right endpoint.  Then
+
+    η_end = S + A    (right endpoint: both contributions add)
+    η₁    = S − A    (left  endpoint: odd modes flip sign)
+
+so  α ∝ Re(S A*), and α = 0 when |S| = 0, |A| = 0, or ∠S − ∠A = ±π/2.
+The scatter overlays mark where each sub-condition vanishes in the (κ, xM) plane.
+
+# A-priori modal law
+
+The modal coefficient vector q ∈ ℂ^N satisfies
+
+    (D − Z_psi) q = −f                             (a-priori law)
+
+where:
+  D[m]   = EI β_m⁴ − ρ_R ω² + d ρ g    (structural stiffness − inertia + hydrostatic;
+                                           diagonal in the Ψ basis)
+  β_m    = m-th free-free eigenvalue / L  (from `freefree_betaL_roots`)
+  Z_psi  = N×N radiation impedance matrix in the Ψ basis — a purely fluid property
+            (constant across all EI and xM; computed once via N prescribed-mode
+            fluid solves by `prescribed_wn_diagonal_impedance.jl`)
+  f[m]   = ⟨Ψ_m, F_motor⟩  (L²-projection of the Gaussian motor load onto mode m)
+
+`solve_theoretical_modal_response` assembles and solves this system analytically.
+`get_roots_theoretical` sweeps (EI, xM) using the law and finds the zero curves.
+`get_roots_integral` does the same from the pre-computed CSV sweep data.
+
+# Dimensionless stiffness κ
+
+Both plot axes use
+
+    κ = EI / (ρ_R L⁴ ω²)
+
+which is the ratio of beam bending stiffness to inertial loading. In `main()`, the
+EI axis of the raw CSV is shifted by  shift = log₁₀(ρ_R L⁴ ω²)  to obtain log₁₀(κ).
+Rigid-limit: κ ≳ 1.  Highly flexible: κ ≪ 1.
+
+# Basis bookkeeping
+
+Two mode sets appear:
+- **W basis**  — raw analytical free-free modes, L∞-normalised.
+  `prescribed_wn_diagonal_impedance.jl` works in this basis to extract Z_raw.
+- **Ψ basis**  — L²-orthonormal version of W obtained by weighted Gram–Schmidt.
+  All modal coefficients in this file use the Ψ basis.
+  The CSV columns `q_w0_re`, `q_w0_im`, … store Ψ-basis coefficients despite
+  the "w" in their name (historical artefact from earlier sweeper versions).
+
+Z_psi = T_{Ψ←W} Z_raw T_{W←Ψ} is cached alongside Z_raw; this file never
+re-enters the W basis.
+
+All amplitudes are complex Fourier envelopes under the e^{iωt} convention.
 """
 
 include(joinpath(@__DIR__, "prescribed_wn_diagonal_impedance.jl"))
 const ModalPressureMap = Main.PrescribedWnDiagonalImpedance
 
-# --- Root-Finding Utils (Verbatim from plot_four_panel_diagnostics.jl) ---
+# ─── Root-finding helpers ────────────────────────────────────────────────────
+# `all_positive_roots`: sign-change crossings of a real 1-D curve (linear interp).
+# `complex_roots`: crossings of Re(η)=0 gated by |Im(η)| < threshold (used for
+#   older single-condition plots; superseded by find_filtered_minima in this file).
 
 function all_positive_roots(xs::AbstractVector{<:Real}, vals::AbstractVector{<:Real})
     roots = Float64[]
@@ -69,7 +132,7 @@ function complex_roots(xs::AbstractVector{<:Real}, re_vals::AbstractVector{<:Rea
     return unique!(roots)
 end
 
-# --- Modal Framework Helpers (Verbatim from plot_four_panel_diagnostics.jl) ---
+# ─── Modal framework helpers ─────────────────────────────────────────────────
 
 function coerce_flexible_params(params)
     params isa Surferbot.FlexibleParams && return params
@@ -112,26 +175,41 @@ function raw_mode_shapes(params, xM_norm::AbstractVector{<:Real}; max_mode::Int=
     return (; xM_norm=collect(Float64.(xM_norm)), Phi, Phi_L=vec(Phi_L), Phi_R=vec(Phi_R))
 end
 
-# --- Root Extraction (Verbatim from plot_four_panel_diagnostics.jl) ---
+# ─── Root extraction ─────────────────────────────────────────────────────────
 
 const NUM_MODES = 8
-const RATIO_CUTOFF = 0.5     # consistent with coupled_apriori_test.jl
 
+# Ratio cutoff for the filtered-minimum root-finder (see roots_for_condition).
+# A local minimum of |S| at xM only counts as a root if |S|/|A| < RATIO_CUTOFF,
+# i.e., the symmetric amplitude is genuinely small relative to the antisymmetric
+# one — not merely a shallow dip. This suppresses spurious detections in regions
+# where |S| and |A| are both large and the minimum is not physically meaningful.
+const RATIO_CUTOFF = 0.5
+
+# Run one fluid solve (any EI suffices; Ψ is EI-independent) to obtain the
+# orthonormal mode matrix Ψ on the raft grid.  Phi (= W) is returned for
+# reference but this file only uses Psi.
 function get_basis_for_plotting(params)
     fparams = coerce_flexible_params(params)
     res = Surferbot.flexible_solver(fparams)
     modal = Surferbot.Modal.decompose_raft_freefree_modes(res; num_modes=NUM_MODES, verbose=false)
-    # Phi is raw analytical W, Psi is orthonormalized
     return (Phi=modal.Phi, Psi=modal.Psi, x=modal.x_raft)
 end
 
+# Read the sweep CSV, group by EI slice, compute (S, A, η_end, η₁) for each
+# (EI, xM) row, then find the xM values where the requested condition vanishes.
+#
+# S and A are assembled by projecting the Ψ-basis modal coefficients q_n onto
+# the right-endpoint weights w_end = Ψ(x_end):
+#   S = Σ_{n even} q_n · w_end[n]    A = Σ_{n odd} q_n · w_end[n]
+# The CSV stores these coefficients in columns q_w0_{re,im}, q_w1_{re,im}, …
+# (historical name; they are Ψ-basis, not W-basis, coefficients).
 function get_roots_integral(csv_path, condition_name; modes=0:(NUM_MODES-1))
     df = CSV.read(csv_path, DataFrame)
     L_raft = first(df.L_raft)
     basis = get_basis_for_plotting((L_raft=L_raft,))
-    # Endpoint weights — w_end is used for S, A, eta_end; eta_1 uses w_start.
-    # CSV columns are named `q_w*` historically but actually store Psi-basis
-    # coefficients (see sweeper_modal_coefficients.jl).
+    # w_end[n] = Ψ_n evaluated at the right beam endpoint.
+    # w_start[n] = Ψ_n at left endpoint (kept for reference; currently unused).
     w_end = basis.Psi[end, :]
     w_start = basis.Psi[1, :]
 
@@ -150,13 +228,13 @@ function get_roots_integral(csv_path, condition_name; modes=0:(NUM_MODES-1))
             for n in 0:(NUM_MODES - 1)
                 qn = complex(row[Symbol("q_w$(n)_re")], row[Symbol("q_w$(n)_im")])
                 if iseven(n)
-                    S += qn * w_end[n + 1]
+                    S += qn * w_end[n + 1]   # even mode: same sign at both ends
                 else
-                    A += qn * w_end[n + 1]
+                    A += qn * w_end[n + 1]   # odd  mode: flips sign end-to-end
                 end
             end
-            eta_end = S + A                        # right beam end
-            eta_1   = S - A                        # left beam end (odd modes flip sign)
+            eta_end = S + A    # right endpoint: η = S + A
+            eta_1   = S - A    # left  endpoint: odd modes contribute with opposite sign
             push!(absS, abs(S))
             push!(absA, abs(A))
             push!(abs_eta_1, abs(eta_1))
@@ -174,7 +252,15 @@ function get_roots_integral(csv_path, condition_name; modes=0:(NUM_MODES-1))
     return (; logEI=pts_logEI, xM_norm=pts_xM)
 end
 
-# Unified condition→roots dispatcher (used by both integral and theoretical paths).
+# For each condition, find xM values where that amplitude has a local minimum
+# that passes the ratio test (see RATIO_CUTOFF).
+#
+# The ratio is defined so that it measures how dominant the vanishing quantity
+# is relative to its complement:
+#   |S| = 0 condition:    ratio = |S| / |A|   (must be < 0.5 to avoid spurious hits)
+#   |A| = 0 condition:    ratio = |A| / |S|
+#   |η₁| = 0 condition:   ratio = |η₁| / (|η₁| + |η_end|)
+#   |η_end| = 0 condition: ratio = |η_end| / (|η₁| + |η_end|)
 function roots_for_condition(condition_name, xgrid, absS, absA, abs_eta_1, abs_eta_end)
     if condition_name == "S"
         ratio = absS ./ max.(absA, eps())
@@ -194,6 +280,11 @@ function roots_for_condition(condition_name, xgrid, absS, absA, abs_eta_1, abs_e
     return Float64[]
 end
 
+# Load (or compute and cache) the radiation impedance Z_psi and all fixed modal
+# quantities needed to evaluate the a-priori law for arbitrary (EI, xM).
+# Z_psi is computed once via N prescribed-displacement fluid solves; it captures
+# the full fluid-structure radiation coupling in the Ψ basis.
+# beta[m] = β_m L (dimensionless wavenumber) from the free-free characteristic eq.
 function theoretical_modal_context(params; output_dir::AbstractString)
     fparams = coerce_flexible_params(params)
     payload = ModalPressureMap.load_or_compute_modal_pressure_map(
@@ -210,54 +301,73 @@ function theoretical_modal_context(params; output_dir::AbstractString)
         mode_numbers = collect(Int.(payload.mode_labels)),
         Psi     = Matrix{Float64}(Psi),
         x_raft  = collect(Float64.(payload.x_raft)),
-        weights = collect(Float64.(payload.weights)),
-        w_start = Psi[1, :],
-        w_end   = Psi[end, :],
-        beta    = collect(Float64.(payload.beta)),
-        Z_psi   = ComplexF64.(payload.Z_psi),         # already in Psi basis (post-fix)
-        c_hydro = derived.d * fparams.rho * fparams.g,  # d ρ g
+        weights = collect(Float64.(payload.weights)),  # quadrature weights for ⟨·,·⟩
+        w_start = Psi[1, :],    # Ψ_n(x_left)  — left-endpoint evaluation vector
+        w_end   = Psi[end, :],  # Ψ_n(x_right) — right-endpoint evaluation vector
+        beta    = collect(Float64.(payload.beta)),  # β_m L, free-free wavenumbers
+        Z_psi   = ComplexF64.(payload.Z_psi),       # N×N radiation impedance, Ψ basis
+        c_hydro = derived.d * fparams.rho * fparams.g,  # d ρ g (hydrostatic stiffness)
         F0      = fparams.motor_inertia * fparams.omega^2,
         forcing_width = fparams.forcing_width,
     )
 end
 
+# Solve the a-priori modal law  (D − Z_psi) q = −f  for given EI and xM.
+#
+# Step 1 — project the Gaussian motor load onto the Ψ basis:
+#   f[m] = ⟨Ψ_m, F_motor⟩ = Σ_k Ψ_m(x_k) F(x_k) w_k    (quadrature)
+#
+# Step 2 — assemble the diagonal structural operator:
+#   D[m] = EI (β_m/L)⁴  −  ρ_R ω²  +  d ρ g
+#          ^^^^^^^^^^^^     ^^^^^^^     ^^^^^
+#          bending          inertia     hydrostatic restoring
+#   Note: payload.beta stores β_m * L, so (β_m/L)⁴ = (beta[m]/L)⁴ = beta[m]⁴ / L⁴.
+#   The factor 1/L⁴ is absorbed into EI * beta^4 because beta was extracted at L=1
+#   in the solver convention — verify against the modal.jl normalisation if in doubt.
+#
+# Step 3 — solve the linear system A_sys q = -f,  A_sys = Diagonal(D) - Z_psi.
 function solve_theoretical_modal_response(EI, xM_norm, theory_ctx)
     p = theory_ctx.params
     F_c = theory_ctx.derived.F_c
     L_c = theory_ctx.derived.L_c
 
-    # Loads via the same Surferbot.gaussian_load used by flexible_solver
     x_raft_adim = theory_ctx.x_raft ./ L_c
     loads_adim  = (theory_ctx.F0 / F_c) .*
                   Surferbot.gaussian_load(Float64(xM_norm), p.forcing_width, x_raft_adim)
-    loads_dim   = loads_adim .* (F_c / L_c)               # N/m
-    F_psi       = theory_ctx.Psi' * (loads_dim .* theory_ctx.weights)
+    loads_dim   = loads_adim .* (F_c / L_c)           # dimensional load, N/m
+    F_psi       = theory_ctx.Psi' * (loads_dim .* theory_ctx.weights)  # modal force f[m]
 
-    # D = EI β⁴ − ρ_R ω² + d ρ g  (hydrostatic restoring stiffness on diagonal)
+    # D[m] = EI β_m⁴ − ρ_R ω² + d ρ g   (diagonal structural-inertia-hydrostatic operator)
     D = ComplexF64.(EI .* theory_ctx.beta .^ 4
                     .- p.rho_raft * p.omega^2
                     .+ theory_ctx.c_hydro)
-    A_sys = Diagonal(D) - theory_ctx.Z_psi
-    return -(A_sys \ ComplexF64.(F_psi))
+    A_sys = Diagonal(D) - theory_ctx.Z_psi   # full system matrix (D − Z_psi)
+    return -(A_sys \ ComplexF64.(F_psi))      # q = −(D − Z_psi)⁻¹ f
 end
 
-# S/A/eta endpoints from a Psi-basis q-vector.  Uses w_end for both S and A so
-# the integral and theoretical paths share the same definition.
+# Compute S, A, η_end, η₁ from a Ψ-basis modal coefficient vector q.
+# Mirrors get_roots_integral exactly so both paths are consistent.
 function theoretical_endpoint_diagnostics(q, theory_ctx)
     S = zero(ComplexF64)
     A = zero(ComplexF64)
     for j in eachindex(theory_ctx.mode_numbers)
         if iseven(theory_ctx.mode_numbers[j])
-            S += q[j] * theory_ctx.w_end[j]
+            S += q[j] * theory_ctx.w_end[j]   # even mode: symmetric contribution
         else
-            A += q[j] * theory_ctx.w_end[j]
+            A += q[j] * theory_ctx.w_end[j]   # odd  mode: antisymmetric contribution
         end
     end
-    eta_end = S + A                           # right beam end
-    eta_1   = S - A                           # left beam end (odd modes flip)
+    eta_end = S + A    # η(x_right) = S + A
+    eta_1   = S - A    # η(x_left)  = S − A  (odd modes flip sign across beam centre)
     return (; S, A, eta_1, eta_end)
 end
 
+# Discrete local-minimum detector with a ratio gate.
+# A grid point i is accepted as a root only when:
+#   (a) values[i] is a local minimum (≤ both neighbours), AND
+#   (b) ratio[i] < ratio_cutoff  — the amplitude is genuinely small relative
+#       to its complement (avoids reporting shallow troughs where both |S| and
+#       |A| are large and the minimum is physically irrelevant).
 function find_filtered_minima(xgrid, values, ratio; ratio_cutoff::Float64)
     roots = Float64[]
     for i in 2:(length(xgrid) - 1)
@@ -305,7 +415,10 @@ function get_roots_theoretical(artifact, condition_name; output_dir::AbstractStr
     return (; logEI=pts_logEI, xM_norm=pts_xM)
 end
 
-# --- GPR Smoothing Logic (Verbatim from plot_four_panel_diagnostics.jl) ---
+# ─── Optional GPR background smoothing (disabled by default) ─────────────────
+# When USE_GPR=true in main(), the raw α heatmap is replaced by a GP posterior
+# mean on a denser grid. The kernel is squared-exponential with length scales
+# chosen heuristically from the grid spacing.  Not used for publication figures.
 
 function fit_gp2d(x::AbstractVector, y::AbstractVector, values::AbstractVector)
     n = length(values)
@@ -347,7 +460,7 @@ function predict_gp2d(model, xq::Real, yq::Real)
     return model.mean + acc
 end
 
-# --- Main Logic (Verbatim except for axis shift) ---
+# ─── Main ────────────────────────────────────────────────────────────────────
 
 function main()
     output_dir = joinpath(@__DIR__, "..", "output")
@@ -374,9 +487,12 @@ function main()
         artifact = load_sweep(joinpath(output_dir, "jld2", jld2_file))
 
         params = artifact.base_params
+        # κ = EI / (ρ_R L⁴ ω²)  →  log₁₀(κ) = log₁₀(EI) − shift
         shift = log10(params.rho_raft * params.L_raft^4 * params.omega^2)
 
-        # α heatmap from CSV (300 × 100 grid; matches the integral scatter exactly)
+        # α heatmap from CSV (300 EI × 100 xM grid).
+        # Using the CSV (not the JLD2 artifact) keeps the heatmap self-consistent
+        # with the integral-scatter overlay — both come from the same solver runs.
         csv_file = cfg.coupled ?
             "sweeper_coupled_full_grid.csv" :
             "sweeper_uncoupled_full_grid.csv"
@@ -384,6 +500,7 @@ function main()
         df_heat = CSV.read(csv_path, DataFrame)
         logEI_axis = sort(unique(df_heat.log10_EI))
         xM_axis    = sort(unique(df_heat.xM_over_L))
+        # alpha[i, j] = α(xM_axis[i], logEI_axis[j])
         alpha = zeros(Float64, length(xM_axis), length(logEI_axis))
         let row_lookup = Dict{Tuple{Float64,Float64}, Float64}(
                 (row.log10_EI, row.xM_over_L) => row.alpha for row in eachrow(df_heat))
