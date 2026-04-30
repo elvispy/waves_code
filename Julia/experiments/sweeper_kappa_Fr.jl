@@ -6,25 +6,25 @@ using DelimitedFiles
 """
 sweeper_kappa_Fr.jl
 
-Inviscid, fixed-x_M sweep over (κ, Fr) constructed by independently varying
-(EI, ω) at the canonical Surferbot length scale L. Coupled (d=0.03) and
-uncoupled (d=0) variants share the same (κ, Fr) grid.
+Clean (κ, Fr) sweep at fixed ω (canonical Surferbot frequency). Only EI and g
+are varied per grid point, so Re = L²ω/ν and We = ρ_R Lω²/σ stay constant
+across the entire plane — the only ND parameters that move are κ and Fr.
 
 Convention:
     κ  = EI / (ρ_R L^4 ω²)
     Fr = √(L ω² / g)
 For a (κ, Fr) grid point we set
-    ω  = Fr · √(g / L)
+    g  = L ω² / Fr²          (effective gravity; ω held at canonical value)
     EI = κ · ρ_R · L^4 · ω²
 
 The CSV layout matches `sweeper_modal_coefficients.jl` except the two primary
-axes are now `log10_kappa` and `log10_Fr`. Other physical parameters are
-echoed per row so each row is self-describing.
+axes are now `log10_kappa` and `log10_Fr`, and the `g` column records the
+effective gravity for each row (omega is constant and equals base_params.omega).
 """
 
 function generate_header(num_modes)
     header = ["log10_kappa", "log10_Fr",
-              "EI", "omega", "L_raft", "d", "rho_raft", "xM_over_L", "alpha"]
+              "EI", "g", "L_raft", "d", "rho_raft", "xM_over_L", "alpha"]
     append!(header, [
         "eta_1_beam_re", "eta_1_beam_im",
         "eta_1_domain_re", "eta_1_domain_im",
@@ -50,7 +50,7 @@ function format_row(params, log10_kappa, log10_Fr, res, modal)
         log10_kappa,
         log10_Fr,
         params.EI,
-        params.omega,
+        params.g,
         params.L_raft,
         isnothing(params.d) ? 0.0 : params.d,
         params.rho_raft,
@@ -72,13 +72,15 @@ function format_row(params, log10_kappa, log10_Fr, res, modal)
 end
 
 # Build a FlexibleParams override at a (κ, Fr) point.
+# ω is fixed at its canonical value; only EI and g vary so that Re and We
+# remain constant across the entire (κ, Fr) plane.
 function params_at_kappa_Fr(base_params, kappa::Real, Fr::Real, L::Real,
-                            rho_raft::Real, g::Real)
-    omega = Fr * sqrt(g / L)
-    EI    = kappa * rho_raft * L^4 * omega^2
+                            rho_raft::Real, omega::Real)
+    g  = L * omega^2 / Fr^2
+    EI = kappa * rho_raft * L^4 * omega^2
     return Surferbot.Sweep.apply_parameter_overrides(base_params, (
-        EI    = EI,
-        omega = omega,
+        EI = EI,
+        g  = g,
     ))
 end
 
@@ -86,15 +88,14 @@ function run_sweep(output_path, is_coupled;
                    nkappa=100, nFr=100, num_modes=8, task_id=nothing,
                    log10_kappa_range = range(+1.0, -5.0; length=100),
                    log10_Fr_range    = range(+2.0, +1.0; length=100))
-    # Use the canonical motor-position / fluid params that the existing default
-    # sweep config defines; we override (EI, ω) per grid point.
+    # ω is fixed at the canonical Surferbot value; only EI and g vary per point.
     base_params = is_coupled ?
         Surferbot.Analysis.default_coupled_motor_position_EI_sweep().base_params :
         Surferbot.Analysis.default_uncoupled_motor_position_EI_sweep().base_params
 
     L_raft   = base_params.L_raft
     rho_raft = base_params.rho_raft
-    g        = base_params.g
+    omega    = base_params.omega
 
     @assert length(log10_kappa_range) == nkappa
     @assert length(log10_Fr_range)    == nFr
@@ -118,14 +119,14 @@ function run_sweep(output_path, is_coupled;
         println("Grid: $nFr Fr × $nkappa κ ($((nFr*nkappa)) total)")
         @threads for iFr in indices
             process_Fr_slice(iFr, Fr_list, kappa_list, base_params,
-                             L_raft, rho_raft, g, output_path, num_modes,
+                             L_raft, rho_raft, omega, output_path, num_modes,
                              write_lock, task_id, nkappa, nFr,
                              collect(log10_Fr_range), collect(log10_kappa_range))
         end
     else
         for iFr in indices
             process_Fr_slice(iFr, Fr_list, kappa_list, base_params,
-                             L_raft, rho_raft, g, output_path, num_modes,
+                             L_raft, rho_raft, omega, output_path, num_modes,
                              write_lock, task_id, nkappa, nFr,
                              collect(log10_Fr_range), collect(log10_kappa_range))
         end
@@ -133,7 +134,7 @@ function run_sweep(output_path, is_coupled;
 end
 
 function process_Fr_slice(iFr, Fr_list, kappa_list, base_params,
-                          L_raft, rho_raft, g, output_path, num_modes,
+                          L_raft, rho_raft, omega, output_path, num_modes,
                           write_lock, task_id, nkappa, nFr,
                           log10_Fr_axis, log10_kappa_axis)
     Fr = Fr_list[iFr]
@@ -144,7 +145,7 @@ function process_Fr_slice(iFr, Fr_list, kappa_list, base_params,
         kappa       = kappa_list[ik]
         log10_kappa = log10_kappa_axis[ik]
         params      = params_at_kappa_Fr(base_params, kappa, Fr,
-                                         L_raft, rho_raft, g)
+                                         L_raft, rho_raft, omega)
         try
             res   = flexible_solver(params)
             modal = decompose_raft_freefree_modes(res; num_modes=num_modes,
