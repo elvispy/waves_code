@@ -177,7 +177,9 @@ The relation includes gravity, surface tension, and kinematic viscosity.
 # Returns
 - The complex wavenumber `k`.
 """
-function dispersion_k(omega::T, g::T, H::T, nu::T, sigma::T, rho::T; k0=Complex{T}(1.0 + 0.0im), num_steps=500) where {T<:Real}
+function dispersion_k(omega::T, g::T, H::T, nu::T, sigma::T, rho::T;
+                      k0=Complex{T}(min(omega^2 / g, (rho * omega^2 / sigma)^(T(1)/3))),
+                      num_steps=500) where {T<:Real}
     function dispersion_eq(k)
         tanh_kH = tanh(k * H)
         lhs = k * tanh_kH * g

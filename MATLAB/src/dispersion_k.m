@@ -1,7 +1,7 @@
 function k_final = dispersion_k(omega, g, H, nu, sigma, rho, k0, num_steps)
     % Newton iteration for complex dispersion relation
     if nargin < 7 || isempty(k0)
-        k0 = 1.0 + 0.0i;
+        k0 = min(omega^2 / g, (rho * omega^2 / sigma)^(1/3)) + 0.0i;
     end
     if nargin < 8
         num_steps = 500;
