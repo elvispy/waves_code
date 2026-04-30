@@ -45,13 +45,13 @@ function calculate_surferbot_outputs(args, phi, phi_z, getNonCompactFDmatrix, ge
     phi_surf = vec(phi[end, :])
     phi_raft = phi_surf[contact_mask]
 
-    P1_r = (im * args.nd_groups.Gamma) .* phi_raft .- (2 * args.nd_groups.Gamma / args.nd_groups.Re) .* (D2r * phi_raft)
-    p_adim = (-im * args.nd_groups.Gamma / args.nd_groups.Fr^2) .* eta_raft .+ P1_r
+    P1_r = -(im * args.nd_groups.Gamma) .* phi_raft .+ (2 * args.nd_groups.Gamma / args.nd_groups.Re) .* (D2r * phi_raft)
+    p_adim = -(args.nd_groups.Gamma / args.nd_groups.Fr^2) .* eta_raft .+ P1_r
 
-    Q_adim = f_adim .- args.d / args.L_c .* p_adim
+    Q_adim = -f_adim .+ args.nd_groups.Lambda .* p_adim
     x_contact = args.x[contact_mask] ./ args.L_c
     integrand = real.(Q_adim) .* real.(eta_x_raft) .+ imag.(Q_adim) .* imag.(eta_x_raft)
-    thrust_adim = -trapz(x_contact, integrand) / 2
+    thrust_adim = trapz(x_contact, integrand) / 2
     thrust_adim += args.sigma * args.d / F_c / 4 * (abs(eta_x_surf_L)^2 - abs(eta_x_surf_R)^2)
     thrust = real(thrust_adim * F_c)
 

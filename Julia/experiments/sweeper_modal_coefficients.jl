@@ -71,7 +71,10 @@ end
 function run_sweep(output_path, is_coupled; nx=100, nei=300, num_modes=8, task_id=nothing)
     L_raft = 0.05
     motor_position_list = collect(range(0.0, 0.49; length=nx) .* L_raft)
-    logEI_range = range(-2.0, -8.0; length=nei)
+    # Shifted up by 1.5 decades vs. the original [-8, -2] window so that the
+    # rigid-asymptote regime (log10(κ) ≳ 0.4 in the coupled case) is sampled.
+    # log10(EI) ∈ [-6.5, -0.5]  ⇒  log10(κ) ∈ [-5.41, +0.59].
+    logEI_range = range(-0.5, -6.5; length=nei)
     EI_list = 10.0 .^ logEI_range
 
     # Setup parameters

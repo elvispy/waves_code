@@ -52,9 +52,9 @@ function [U, power, thrust, eta, p] = calculate_surferbot_outputs(args, phi, phi
     phi_raft = phi_surf(contact_mask);            % length-Nr
 
     % Pressure on raft
-    P1_r   = (1i*args.nd_groups.Gamma) * phi_raft ...
-           - (2*args.nd_groups.Gamma/args.nd_groups.Re) * (D2r * phi_raft);
-    p_adim = -1i*args.nd_groups.Gamma/args.nd_groups.Fr^2 * eta_raft + P1_r;
+    P1_r   = -(1i*args.nd_groups.Gamma) * phi_raft ...
+           + (2*args.nd_groups.Gamma/args.nd_groups.Re) * (D2r * phi_raft);
+    p_adim = - args.nd_groups.Gamma/args.nd_groups.Fr^2 * eta_raft + P1_r;
 
     
     % Minus because of sign convention: if the right of the raft has higher
@@ -62,8 +62,8 @@ function [U, power, thrust, eta, p] = calculate_surferbot_outputs(args, phi, phi
     % of the game of "thrust force applied to the body" and "thrust force
     % as felt by the body"
     %w_r         = simpson_weights(Nr, dx_adim);
-    Q_adim      = f_adim(:) - args.d / args.L_c * p_adim; % Total load applied on the raft
-    thrust_adim =  - trapz(args.x(args.x_contact)/args.L_c, ...
+    Q_adim      = - f_adim(:) + args.d / args.L_c * p_adim; % Total load applied on the raft
+    thrust_adim =   trapz(args.x(args.x_contact)/args.L_c, ...
         real(Q_adim) .* real(eta_x_raft) + imag(Q_adim) .* imag(eta_x_raft))/2; 
     %disp(trapz(real(p_adim .* eta_x_r))* dx_adim);
     %figure(7); plot(linspace(0, 1, Nr), real(p_adim .* eta_x_r)); hold on;

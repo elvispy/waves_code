@@ -18,11 +18,11 @@ prediction errors.
 
 function main()
     Random.seed!(1234) # Same seed as previous for consistency
-    n_pts = 20
+    n_pts = 5
     
     data_results = []
     
-    println("--- 20-Solve Randomized Audit: Raft-Displacement Law ---")
+    println("--- 5-Solve Randomized Audit: Raft-Displacement Law ---")
     println("Law: |Q_f| propto L^-1.27 * d^-0.11 * omega^-0.28 * |q0|^-0.14")
     
     for i in 1:n_pts

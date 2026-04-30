@@ -1,6 +1,7 @@
 using Surferbot
 using JLD2
 using Plots
+using LaTeXStrings
 using LinearAlgebra
 using Printf
 using DelimitedFiles
@@ -113,23 +114,24 @@ end
 
 # --- Root Extraction (Verbatim from plot_four_panel_diagnostics.jl) ---
 
+const NUM_MODES = 8
+const RATIO_CUTOFF = 0.5     # consistent with coupled_apriori_test.jl
+
 function get_basis_for_plotting(params)
     fparams = coerce_flexible_params(params)
     res = Surferbot.flexible_solver(fparams)
-    modal = Surferbot.Modal.decompose_raft_freefree_modes(res; num_modes=8, verbose=false)
+    modal = Surferbot.Modal.decompose_raft_freefree_modes(res; num_modes=NUM_MODES, verbose=false)
     # Phi is raw analytical W, Psi is orthonormalized
-    return (Phi=modal.Phi, Psi=modal.Psi, x=modal.x_raft) 
+    return (Phi=modal.Phi, Psi=modal.Psi, x=modal.x_raft)
 end
 
-function get_roots_integral(csv_path, condition_name; modes=0:7)
+function get_roots_integral(csv_path, condition_name; modes=0:(NUM_MODES-1))
     df = CSV.read(csv_path, DataFrame)
     L_raft = first(df.L_raft)
     basis = get_basis_for_plotting((L_raft=L_raft,))
-    
-    # Historical note: the CSV column names are `q_w*`, `Q_w*`, `F_w*`, but
-    # `sweeper_modal_coefficients.jl` currently writes `modal.q`, `modal.Q`,
-    # `modal.F`, i.e. Psi-basis coefficients. Therefore the integral overlays
-    # must continue to use Psi endpoint weights here.
+    # Endpoint weights — w_end is used for S, A, eta_end; eta_1 uses w_start.
+    # CSV columns are named `q_w*` historically but actually store Psi-basis
+    # coefficients (see sweeper_modal_coefficients.jl).
     w_end = basis.Psi[end, :]
     w_start = basis.Psi[1, :]
 
@@ -138,48 +140,32 @@ function get_roots_integral(csv_path, condition_name; modes=0:7)
 
     for group in groupby(df, :log10_EI)
         logEI = first(group.log10_EI)
-        xM_slice = group.xM_over_L
-        
-        re_vals = Float64[]
-        im_vals = Float64[]
-        
-        for row in eachrow(group)
-            val = 0.0 + 0.0im
-            if condition_name == "S02"
-                for n in (0, 2)
-                    val += complex(row[Symbol("q_w$(n)_re")], row[Symbol("q_w$(n)_im")]) * w_end[n+1]
-                end
-            elseif condition_name == "S0246"
-                for n in (0, 2, 4, 6)
-                    val += complex(row[Symbol("q_w$(n)_re")], row[Symbol("q_w$(n)_im")]) * w_end[n+1]
-                end
-            elseif condition_name == "A13"
-                for n in (1, 3)
-                    val += complex(row[Symbol("q_w$(n)_re")], row[Symbol("q_w$(n)_im")]) * w_end[n+1]
-                end
-            elseif condition_name == "A1357"
-                for n in (1, 3, 5, 7)
-                    val += complex(row[Symbol("q_w$(n)_re")], row[Symbol("q_w$(n)_im")]) * w_end[n+1]
-                end
-            elseif condition_name == "eta_1"
-                for n in 0:7
-                    val += complex(row[Symbol("q_w$(n)_re")], row[Symbol("q_w$(n)_im")]) * w_start[n+1]
-                end
-            elseif condition_name == "eta_end"
-                for n in 0:7
-                    val += complex(row[Symbol("q_w$(n)_re")], row[Symbol("q_w$(n)_im")]) * w_end[n+1]
+        sorted = sort(group, :xM_over_L)
+        xM_slice = collect(Float64.(sorted.xM_over_L))
+
+        absS = Float64[]; absA = Float64[]
+        abs_eta_1 = Float64[]; abs_eta_end = Float64[]
+        for row in eachrow(sorted)
+            S = 0.0 + 0.0im; A = 0.0 + 0.0im
+            for n in 0:(NUM_MODES - 1)
+                qn = complex(row[Symbol("q_w$(n)_re")], row[Symbol("q_w$(n)_im")])
+                if iseven(n)
+                    S += qn * w_end[n + 1]
+                else
+                    A += qn * w_end[n + 1]
                 end
             end
-            push!(re_vals, real(val))
-            push!(im_vals, imag(val))
+            eta_end = S + A                        # right beam end
+            eta_1   = S - A                        # left beam end (odd modes flip sign)
+            push!(absS, abs(S))
+            push!(absA, abs(A))
+            push!(abs_eta_1, abs(eta_1))
+            push!(abs_eta_end, abs(eta_end))
         end
-        
-        roots = if startswith(condition_name, "eta")
-            complex_roots(xM_slice, re_vals, im_vals)
-        else
-            all_positive_roots(xM_slice, re_vals)
-        end
-        
+
+        roots = roots_for_condition(condition_name, xM_slice,
+                                    absS, absA, abs_eta_1, abs_eta_end)
+
         for r in roots
             push!(pts_logEI, logEI)
             push!(pts_xM, r)
@@ -188,66 +174,87 @@ function get_roots_integral(csv_path, condition_name; modes=0:7)
     return (; logEI=pts_logEI, xM_norm=pts_xM)
 end
 
-function gaussian_load_nd(x0, sigma, x, L_raft)
-    phi = exp.(-0.5 .* ((x .- x0) ./ sigma).^2)
-    Z = sum(phi)
-    return phi ./ Z ./ L_raft
+# Unified condition→roots dispatcher (used by both integral and theoretical paths).
+function roots_for_condition(condition_name, xgrid, absS, absA, abs_eta_1, abs_eta_end)
+    if condition_name == "S"
+        ratio = absS ./ max.(absA, eps())
+        return find_filtered_minima(xgrid, absS, ratio; ratio_cutoff=RATIO_CUTOFF)
+    elseif condition_name == "A"
+        ratio = absA ./ max.(absS, eps())
+        return find_filtered_minima(xgrid, absA, ratio; ratio_cutoff=RATIO_CUTOFF)
+    elseif condition_name == "eta_1"
+        denom = abs_eta_1 .+ abs_eta_end .+ eps()
+        ratio = abs_eta_1 ./ denom
+        return find_filtered_minima(xgrid, abs_eta_1, ratio; ratio_cutoff=RATIO_CUTOFF)
+    elseif condition_name == "eta_end"
+        denom = abs_eta_1 .+ abs_eta_end .+ eps()
+        ratio = abs_eta_end ./ denom
+        return find_filtered_minima(xgrid, abs_eta_end, ratio; ratio_cutoff=RATIO_CUTOFF)
+    end
+    return Float64[]
 end
 
 function theoretical_modal_context(params; output_dir::AbstractString)
     fparams = coerce_flexible_params(params)
-    num_modes = 4
     payload = ModalPressureMap.load_or_compute_modal_pressure_map(
         fparams;
         output_dir=output_dir,
-        num_modes_basis=8,
+        num_modes_basis=NUM_MODES,
     )
-    basis_result = Surferbot.flexible_solver(fparams)
-    modal = Surferbot.Modal.decompose_raft_freefree_modes(basis_result; num_modes=num_modes, verbose=false)
-    Psi = modal.Psi
-    weights = Surferbot.Modal.trapz_weights(modal.x_raft)
-    psi_gram = Psi' * (Psi .* weights)
-    Phi_raw = payload.raw_basis.Phi[:, 1:num_modes]
-    raw_gram = payload.raw_basis.gram[1:num_modes, 1:num_modes]
-    raw_from_psi = raw_gram \ (Phi_raw' * (Psi .* weights))
-    psi_from_raw = psi_gram \ (Psi' * (Phi_raw .* weights))
+    derived = Surferbot.derive_params(fparams)
+    Psi = payload.psi_basis.Psi
     return (
-        params = fparams,
+        params  = fparams,
+        derived = derived,
         payload = payload,
-        mode_numbers = collect(Int.(modal.n)),
-        Psi = Matrix{Float64}(Psi),
-        psi_gram = psi_gram,
-        x_raft = collect(Float64.(modal.x_raft)),
-        weights = collect(Float64.(weights)),
+        mode_numbers = collect(Int.(payload.mode_labels)),
+        Psi     = Matrix{Float64}(Psi),
+        x_raft  = collect(Float64.(payload.x_raft)),
+        weights = collect(Float64.(payload.weights)),
         w_start = Psi[1, :],
-        w_end = Psi[end, :],
-        beta = collect(Float64.(modal.beta)),
-        Z_psi = ComplexF64.(psi_from_raw * payload.Z_raw[1:num_modes, 1:num_modes] * raw_from_psi),
-        F0 = fparams.motor_inertia * fparams.omega^2,
-        sigma_f = 0.05 * fparams.L_raft,
+        w_end   = Psi[end, :],
+        beta    = collect(Float64.(payload.beta)),
+        Z_psi   = ComplexF64.(payload.Z_psi),         # already in Psi basis (post-fix)
+        c_hydro = derived.d * fparams.rho * fparams.g,  # d ρ g
+        F0      = fparams.motor_inertia * fparams.omega^2,
+        forcing_width = fparams.forcing_width,
     )
 end
 
 function solve_theoretical_modal_response(EI, xM_norm, theory_ctx)
-    xM = xM_norm * theory_ctx.params.L_raft
-    load_dist = theory_ctx.F0 .* gaussian_load_nd(xM, theory_ctx.sigma_f, theory_ctx.x_raft, theory_ctx.params.L_raft)
-    forcing_rhs = theory_ctx.psi_gram \ (theory_ctx.Psi' * (load_dist .* theory_ctx.weights))
-    structural = Diagonal(ComplexF64.(EI .* theory_ctx.beta .^ 4 .- theory_ctx.params.rho_raft .* theory_ctx.params.omega^2))
-    return (structural - theory_ctx.Z_psi) \ (-ComplexF64.(forcing_rhs))
+    p = theory_ctx.params
+    F_c = theory_ctx.derived.F_c
+    L_c = theory_ctx.derived.L_c
+
+    # Loads via the same Surferbot.gaussian_load used by flexible_solver
+    x_raft_adim = theory_ctx.x_raft ./ L_c
+    loads_adim  = (theory_ctx.F0 / F_c) .*
+                  Surferbot.gaussian_load(Float64(xM_norm), p.forcing_width, x_raft_adim)
+    loads_dim   = loads_adim .* (F_c / L_c)               # N/m
+    F_psi       = theory_ctx.Psi' * (loads_dim .* theory_ctx.weights)
+
+    # D = EI β⁴ − ρ_R ω² + d ρ g  (hydrostatic restoring stiffness on diagonal)
+    D = ComplexF64.(EI .* theory_ctx.beta .^ 4
+                    .- p.rho_raft * p.omega^2
+                    .+ theory_ctx.c_hydro)
+    A_sys = Diagonal(D) - theory_ctx.Z_psi
+    return -(A_sys \ ComplexF64.(F_psi))
 end
 
+# S/A/eta endpoints from a Psi-basis q-vector.  Uses w_end for both S and A so
+# the integral and theoretical paths share the same definition.
 function theoretical_endpoint_diagnostics(q, theory_ctx)
     S = zero(ComplexF64)
     A = zero(ComplexF64)
     for j in eachindex(theory_ctx.mode_numbers)
         if iseven(theory_ctx.mode_numbers[j])
-            S += q[j] * theory_ctx.w_start[j]
+            S += q[j] * theory_ctx.w_end[j]
         else
             A += q[j] * theory_ctx.w_end[j]
         end
     end
-    eta_1 = sum(q .* theory_ctx.w_start)
-    eta_end = sum(q .* theory_ctx.w_end)
+    eta_end = S + A                           # right beam end
+    eta_1   = S - A                           # left beam end (odd modes flip)
     return (; S, A, eta_1, eta_end)
 end
 
@@ -261,22 +268,8 @@ function find_filtered_minima(xgrid, values, ratio; ratio_cutoff::Float64)
     return roots
 end
 
-function compact_mode_range(mode_numbers::AbstractVector{<:Integer}, parity::Function)
-    selected = [n for n in mode_numbers if parity(n)]
-    isempty(selected) && return "?"
-    return "$(first(selected))-$(last(selected))"
-end
-
-function theoretical_curve_labels(theory_ctx)
-    s_range = compact_mode_range(theory_ctx.mode_numbers, iseven)
-    a_range = compact_mode_range(theory_ctx.mode_numbers, isodd)
-    return [
-        "S_{$s_range}≈0",
-        "A_{$a_range}≈0",
-        "|eta_1|≈0",
-        "|eta_end|≈0",
-    ]
-end
+const CURVE_NAMES  = ["S", "A", "eta_1", "eta_end"]
+const CURVE_LABELS = [L"|S| = 0", L"|A| = 0", L"|\eta_1| = 0", L"|\eta_{\mathrm{end}}| = 0"]
 
 function get_roots_theoretical(artifact, condition_name; output_dir::AbstractString)
     params = artifact.base_params
@@ -284,15 +277,13 @@ function get_roots_theoretical(artifact, condition_name; output_dir::AbstractStr
     logEI_axis = log10.(EI_list)
     xM_grid = collect(range(0.0, 0.49, length=401))
     theory_ctx = theoretical_modal_context(params; output_dir=output_dir)
-    
+
     pts_logEI = Float64[]
     pts_xM = Float64[]
 
     for (iei, EI) in enumerate(EI_list)
-        absS = Float64[]
-        absA = Float64[]
-        abs_eta_1 = Float64[]
-        abs_eta_end = Float64[]
+        absS = Float64[]; absA = Float64[]
+        abs_eta_1 = Float64[]; abs_eta_end = Float64[]
 
         for xM_norm in xM_grid
             q = solve_theoretical_modal_response(EI, xM_norm, theory_ctx)
@@ -303,23 +294,8 @@ function get_roots_theoretical(artifact, condition_name; output_dir::AbstractStr
             push!(abs_eta_end, abs(diag.eta_end))
         end
 
-        roots = if condition_name in ("S", "S02", "S0246")
-            ratio = absS ./ max.(absA, eps())
-            find_filtered_minima(xM_grid, absS, ratio; ratio_cutoff=0.05)
-        elseif condition_name in ("A", "A13", "A1357")
-            ratio = absA ./ max.(absS, eps())
-            find_filtered_minima(xM_grid, absA, ratio; ratio_cutoff=0.05)
-        elseif condition_name == "eta_1"
-            denom = abs_eta_1 .+ abs_eta_end .+ eps()
-            ratio = abs_eta_1 ./ denom
-            find_filtered_minima(xM_grid, abs_eta_1, ratio; ratio_cutoff=0.05)
-        elseif condition_name == "eta_end"
-            denom = abs_eta_1 .+ abs_eta_end .+ eps()
-            ratio = abs_eta_end ./ denom
-            find_filtered_minima(xM_grid, abs_eta_end, ratio; ratio_cutoff=0.05)
-        else
-            Float64[]
-        end
+        roots = roots_for_condition(condition_name, xM_grid,
+                                    absS, absA, abs_eta_1, abs_eta_end)
 
         for r in roots
             push!(pts_logEI, logEI_axis[iei])
@@ -387,20 +363,34 @@ function main()
 
     for cfg in configs
         println("Processing $(cfg.name)...")
-        
-        # Load Heatmap Data (JLD2 for Alpha background)
-        jld2_file = cfg.coupled ? 
-            "sweep_motor_position_EI_coupled_from_matlab.jld2" : 
+
+        # Artifact still supplies base_params (for the κ shift) and the EI grid
+        # over which the theoretical curve is computed. The α heatmap and the
+        # integral overlay both come from the higher-resolution CSV so that
+        # the heatmap field is self-consistent with the integral scatter.
+        jld2_file = cfg.coupled ?
+            "sweep_motor_position_EI_coupled_from_matlab.jld2" :
             "sweep_motor_position_EI_uncoupled_from_matlab.jld2"
         artifact = load_sweep(joinpath(output_dir, "jld2", jld2_file))
-        
-        # --- CALC SHIFT ---
+
         params = artifact.base_params
         shift = log10(params.rho_raft * params.L_raft^4 * params.omega^2)
 
-        logEI_axis = log10.(collect(Float64.(artifact.parameter_axes.EI)))
-        xM_axis = collect(Float64.(artifact.parameter_axes.motor_position)) ./ artifact.base_params.L_raft
-        alpha = beam_asymmetry.(map(s->s.eta_left_beam, artifact.summaries), map(s->s.eta_right_beam, artifact.summaries))
+        # α heatmap from CSV (300 × 100 grid; matches the integral scatter exactly)
+        csv_file = cfg.coupled ?
+            "sweeper_coupled_full_grid.csv" :
+            "sweeper_uncoupled_full_grid.csv"
+        csv_path = joinpath(output_dir, "csv", csv_file)
+        df_heat = CSV.read(csv_path, DataFrame)
+        logEI_axis = sort(unique(df_heat.log10_EI))
+        xM_axis    = sort(unique(df_heat.xM_over_L))
+        alpha = zeros(Float64, length(xM_axis), length(logEI_axis))
+        let row_lookup = Dict{Tuple{Float64,Float64}, Float64}(
+                (row.log10_EI, row.xM_over_L) => row.alpha for row in eachrow(df_heat))
+            for (j, le) in enumerate(logEI_axis), (i, xm) in enumerate(xM_axis)
+                alpha[i, j] = row_lookup[(le, xm)]
+            end
+        end
         
         # --- Background GPR Smoothing ---
         local p_heatmap
@@ -427,11 +417,10 @@ function main()
             p_heatmap = (logEI_axis .- shift, xM_axis, alpha)
         end
 
-        curve_names = cfg.source == :theoretical ?
-            ["S", "A", "eta_1", "eta_end"] :
-            ["S02", "S0246", "A13", "A1357", "eta_1", "eta_end"]
+        # Same 4 conditions in both paths so theoretical and integral plots line up directly.
+        curve_names = CURVE_NAMES
         results = Dict()
-        
+
         if cfg.source == :integral
             csv_file = cfg.coupled ? "sweeper_coupled_full_grid.csv" : "sweeper_uncoupled_full_grid.csv"
             csv_path = joinpath(output_dir, "csv", csv_file)
@@ -448,56 +437,85 @@ function main()
             end
         end
         
-        # Plotting with expert scientific visualization
-        # Okabe-Ito Colorblind-Safe Palette
-        okabe_ito = ["#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7", "#000000"]
-        
-        plt_opts = (
-            xlabel="log10(kappa)", ylabel="x_M / L", 
-            colormap=:balance, clims=(-1, 1), 
-            levels=51, # High granularity for smooth gradients
-            interpolate=true,
-            xlims=(minimum(logEI_axis) - shift, maximum(logEI_axis) - shift),
-            ylims=(minimum(xM_axis), maximum(xM_axis)),
-            legend=:topright, size=(1000, 750), margin=10Plots.mm,
-            # Font sizes optimized for readability
-            titlefontsize=14, guidefontsize=11, tickfontsize=9, legendfontsize=9,
-            fontfamily="sans-serif"
-        )
-        
-        # Determine Title
-        fig_title = if cfg.name == "unc_theo"
-            "Uncoupled Theoretical (Cached Z)"
-        elseif cfg.name == "unc_int"
-            "Uncoupled Integral"
-        elseif cfg.name == "cpl_theo"
-            "Coupled Theoretical (Cached Z)"
-        elseif cfg.name == "cpl_int"
-            "Coupled Integral"
-        end
+        # ── Publication styling ───────────────────────────────────────────
+        # Okabe–Ito colorblind-safe palette; pick four mutually distinct hues
+        # that sit far from the red/blue heatmap extremes for visibility.
+        okabe_ito  = ["#E69F00", "#56B4E9", "#009E73", "#F0E442",
+                      "#0072B2", "#D55E00", "#CC79A7", "#000000"]
+        curve_colors = [okabe_ito[8], okabe_ito[1], okabe_ito[3], okabe_ito[7]]
+                        # black,         orange,       green,        pink
+        markers      = [:circle, :rect, :diamond, :utriangle]
+        labels       = CURVE_LABELS
 
-        p = heatmap(p_heatmap[1], p_heatmap[2], p_heatmap[3], title=fig_title; plt_opts...)
-        
-        curve_colors = cfg.source == :theoretical ?
-            [okabe_ito[2], okabe_ito[4], okabe_ito[5], okabe_ito[6]] :
-            [okabe_ito[1], okabe_ito[2], okabe_ito[3], okabe_ito[4], okabe_ito[5], okabe_ito[6]]
-        markers = cfg.source == :theoretical ?
-            [:rect, :utriangle, :star5, :star8] :
-            [:circle, :rect, :diamond, :utriangle, :star5, :star8]
-        labels = cfg.source == :theoretical ?
-            theoretical_curve_labels(theoretical_modal_context(params; output_dir=output_dir)) :
-            ["S02=0", "S0246=0", "A13=0", "A1357=0", "|eta_1|=0", "|eta_end|=0"]
-        
+        # κ-window of physical interest; clip to CSV data extent so the panel
+        # has no empty strip past the largest sampled κ.
+        max_logK_data = maximum(logEI_axis) - shift
+        XLIMS = (-4.0, min(0.0, max_logK_data))
+        YLIMS = (0.0, 0.5)
+
+        # Plot options shared by both heatmap and scatter calls.
+        plt_opts = (
+            xlabel = L"\log_{10}\,\kappa",
+            ylabel = L"x_M / L",
+            colormap = :balance,
+            clims = (-1, 1),
+            levels = 51,
+            interpolate = true,
+            xlims = XLIMS,
+            ylims = YLIMS,
+            legend = :topright,
+            background_color_legend = RGBA(1, 1, 1, 0.85),
+            foreground_color_legend = :black,
+            legend_font_halign = :left,
+            size = (820, 640),
+            margin = 6Plots.mm,
+            dpi = 220,
+            titlefontsize = 14,
+            guidefontsize = 14,
+            tickfontsize = 12,
+            legendfontsize = 11,
+            fontfamily = "Computer Modern",
+            framestyle = :box,
+            grid = false,
+            colorbar_title = L"\alpha",
+            colorbar_titlefontsize = 14,
+            colorbar_tickfontsize = 11,
+        )
+
+        # Title: keep prose outside math mode (GR's math renderer eats spaces
+        # inside \textrm{...}); only Λ goes through math mode.
+        adj         = cfg.coupled ? "Coupled" : "Uncoupled"
+        method_str  = cfg.source == :theoretical ? "a-priori prediction" : "direct integration"
+        Lambda_val  = cfg.coupled ? @sprintf("%.2f", params.d / params.L_raft) : "0"
+        fig_title   = LaTeXString(
+            "$adj raft, \$\\Lambda = $Lambda_val\$ — $method_str")
+
+        p = heatmap(p_heatmap[1], p_heatmap[2], p_heatmap[3];
+                    title = fig_title, plt_opts...)
+
         for (i, cname) in enumerate(curve_names)
             res = results[cname]
-            scatter!(p, res.logK, res.xM_norm, 
-                label=labels[i], color=curve_colors[i], marker=markers[i], 
-                markersize=8, markerstrokewidth=0)
+            # Restrict scatter to the publication κ-window.
+            mask = (XLIMS[1] .<= res.logK .<= XLIMS[2]) .&
+                   (YLIMS[1] .<= res.xM_norm .<= YLIMS[2])
+            isempty(res.logK[mask]) && continue
+            scatter!(p, res.logK[mask], res.xM_norm[mask];
+                     label = labels[i],
+                     color = curve_colors[i],
+                     marker = markers[i],
+                     markersize = 5,
+                     markerstrokewidth = 0.6,
+                     markerstrokecolor = :white,
+                     markeralpha = 0.95)
         end
         
-        out_path = joinpath(output_dir, "figures", "plot_dimensionless_diagnostics_$(cfg.name).pdf")
-        savefig(p, out_path)
-        println("Saved $out_path")
+        fig_dir = joinpath(output_dir, "figures")
+        out_pdf = joinpath(fig_dir, "plot_dimensionless_diagnostics_$(cfg.name).pdf")
+        out_png = joinpath(fig_dir, "plot_dimensionless_diagnostics_$(cfg.name).png")
+        savefig(p, out_pdf)
+        savefig(p, out_png)
+        println("Saved $out_pdf")
+        println("Saved $out_png")
     end
 end
 

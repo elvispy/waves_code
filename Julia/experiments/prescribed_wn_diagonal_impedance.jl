@@ -27,10 +27,11 @@ This is not a Korobkin comparison script. Its purpose is:
 5. Validate that map against the original forced problem for the same parameters.
 
 Pressure convention note:
-`flexible_solver` returns `result.pressure` using the codebase postprocess
-convention `p = p_dyn - i * rho * g * eta`. This experiment identifies the map
-for `p_dyn`, so the forced-solve validation removes the hydrostatic term using
-that same convention rather than the paper notation directly.
+`flexible_solver` returns `result.pressure` using the postprocess convention
+`p = p_dyn - rho * g * eta` (real hydrostatic, matching the paper Bernoulli
+under the e^{i ω t} time convention). This experiment identifies the map
+for `p_dyn`, so the forced-solve validation removes the hydrostatic term in
+that convention.
 """
 module PrescribedWnDiagonalImpedance
 
@@ -55,6 +56,13 @@ function cache_path(output_dir::AbstractString, cache_file::AbstractString)
     return joinpath(output_dir, "jld2", cache_file)
 end
 
+"""
+Bumped from 1 → 2 when the postprocess Bernoulli sign convention was corrected
+(p_dyn = -iωρφ + 2ρν φ_xx, real hydrostatic). Old v1 cache entries are
+automatically bypassed because their SHA-1 key no longer matches.
+"""
+const PRESSURE_CONVENTION_VERSION = 2
+
 function operator_signature(params::Surferbot.FlexibleParams; num_modes_basis::Int=DEFAULT_NUM_MODES_BASIS)
     derived = derive_params(params)
     return (
@@ -73,6 +81,7 @@ function operator_signature(params::Surferbot.FlexibleParams; num_modes_basis::I
         ooa = params.ooa,
         bc = params.bc,
         num_modes_basis = num_modes_basis,
+        convention_version = PRESSURE_CONVENTION_VERSION,
     )
 end
 
@@ -273,7 +282,7 @@ function reconstruct_dynamic_fields(params::Surferbot.FlexibleParams, derived, p
 
     phi_raft = ComplexF64.(vec(phi[end, :])[contact])
     eta_contact = ComplexF64.(eta[contact])
-    p_dyn_adim = (im * args.nd_groups.Gamma) .* phi_raft .-
+    p_dyn_adim = -(im * args.nd_groups.Gamma) .* phi_raft .+
                  (2 * args.nd_groups.Gamma / args.nd_groups.Re) .* (D2r * phi_raft)
     p_dyn = p_dyn_adim .* derived.F_c ./ derived.L_c^2
 
@@ -319,9 +328,9 @@ function dynamic_pressure_from_forced_result(result)
     contact = collect(Bool.(args.x_contact))
     eta_contact = ComplexF64.(result.eta[contact])
     p_total_contact = ComplexF64.(result.pressure)
-    # `result.pressure` follows the codebase postprocess convention
-    # p = p_dyn - i * rho * g * eta, so we invert that convention here.
-    p_dyn_contact = p_total_contact .+ im .* args.rho .* args.g .* eta_contact
+    # postprocess.jl now uses the corrected convention p = p_dyn - rho*g*eta
+    # (real hydrostatic). Recover p_dyn by adding back the hydrostatic term.
+    p_dyn_contact = p_total_contact .+ args.rho .* args.g .* eta_contact
     return eta_contact, p_dyn_contact
 end
 
