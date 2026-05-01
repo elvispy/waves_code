@@ -10,7 +10,7 @@ using Surferbot
 
     derived = derive_params(params)
 
-    @test isapprox(derived.d, 0.6 * params.L_raft; atol=1e-12)
+    @test isapprox(derived.d, params.d; atol=1e-12)
     @test isapprox(derived.motor_force, params.motor_inertia * params.omega^2; rtol=1e-12)
     @test derived.motor_position == params.L_raft / 2
     @test derived.domain_depth > 0.0
