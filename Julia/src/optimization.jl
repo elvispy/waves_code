@@ -138,6 +138,9 @@ Map optimization variables `theta = [xA, logEI]` to `FlexibleParams`.
 - A new `FlexibleParams` instance.
 """
 function theta_to_params(theta::AbstractVector{<:Real}, base_params::FlexibleParams)
+    base_params.EI isa AbstractVector && error(
+        "theta_to_params does not support spatially varying EI (base_params.EI is a vector). " *
+        "Optimization with graded EI is not yet implemented.")
     @assert length(theta) == 2
     T = eltype(theta)
     return FlexibleParams{T}(;
