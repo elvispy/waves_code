@@ -373,6 +373,10 @@ function decompose_raft_freefree_modes(
     Nr = length(x_raft)
     Nr >= 3 || error("Need at least 3 raft points for modal decomposition.")
 
+    if args.EI isa AbstractVector && !allequal(args.EI)
+        @warn "decompose_raft_freefree_modes: EI is spatially varying; free-free mode shapes assume uniform EI. Modal decomposition is approximate."
+    end
+
     p_raft = ComplexF64.(pressure)
     f_raft = ComplexF64.(loads)
     length(p_raft) == Nr || throw(DimensionMismatch("pressure must have one value per raft point"))
@@ -445,7 +449,8 @@ function decompose_raft_freefree_modes(
     F_w = G \ (Phi' * Wf)
 
     beta4 = beta .^ 4
-    balance_residual = (args.EI .* beta4 .- args.rho_raft .* args.omega^2) .* q_w .- (Q_w .- F_w)
+    EI_scalar = args.EI isa AbstractVector ? exp(sum(log, args.EI) / length(args.EI)) : args.EI
+    balance_residual = (EI_scalar .* beta4 .- args.rho_raft .* args.omega^2) .* q_w .- (Q_w .- F_w)
     eta_recon = Psi * q
 
     recon_num = sqrt(max(real(dot(eta_raft - eta_recon, (eta_raft - eta_recon) .* w)), 0.0))

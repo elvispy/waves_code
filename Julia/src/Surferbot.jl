@@ -130,7 +130,7 @@ Base.@kwdef struct FlexibleParams{T<:Real}
     L_raft::T = 0.05
     motor_position::T = 0.6 / 2.5 * 0.05
     d::Union{Nothing, T} = 0.05
-    EI::T = 3.0e9 * 3e-2 * 9e-4^3 / 12
+    EI::Union{T, AbstractVector{T}} = 3.0e9 * 3e-2 * 9e-4^3 / 12
     rho_raft::T = 0.052
     L_domain::Union{Nothing, T} = nothing
     domain_depth::Union{Nothing, T} = nothing
@@ -198,11 +198,15 @@ function derive_params(params::FlexibleParams{T}) where {T<:Real}
     m_c = params.rho_raft * L_c
     F_c = m_c * L_c / t_c^2
 
+    EI_scalar = params.EI isa AbstractVector ?
+                exp(sum(log, params.EI) / length(params.EI)) :
+                params.EI
+
     nd_groups = (
         Gamma = params.rho * params.L_raft^2 / params.rho_raft,
         Fr = sqrt(params.L_raft * params.omega^2 / params.g),
         Re = params.L_raft^2 * params.omega / params.nu,
-        kappa = params.EI / (params.rho_raft * params.L_raft^4 * params.omega^2),
+        kappa = EI_scalar / (params.rho_raft * params.L_raft^4 * params.omega^2),
         We = params.rho_raft * params.L_raft * params.omega^2 / params.sigma,
         Lambda = d / params.L_raft,
     )
@@ -254,6 +258,15 @@ function derive_params(params::FlexibleParams{T}) where {T<:Real}
 
     loads = motor_force / F_c * gaussian_load(motor_position / L_c, params.forcing_width, x[x_contact])
 
+    nb_contact = count(x_contact)
+    kappa_denom = params.rho_raft * params.L_raft^4 * params.omega^2
+    if params.EI isa AbstractVector
+        @assert length(params.EI) == nb_contact "EI vector length ($(length(params.EI))) must match contact nodes ($nb_contact)"
+        kappa_vec = params.EI ./ kappa_denom
+    else
+        kappa_vec = fill(params.EI / kappa_denom, nb_contact)
+    end
+
     return (
         params = params,
         motor_force = motor_force,
@@ -277,6 +290,8 @@ function derive_params(params::FlexibleParams{T}) where {T<:Real}
         x_contact = x_contact,
         x_free = x_free,
         loads = loads,
+        nb_contact = nb_contact,
+        kappa_vec = kappa_vec,
     )
 end
 
@@ -294,13 +309,12 @@ Assemble the coupled fluid-raft linear system.
 function assemble_flexible_system(params::FlexibleParams{T}) where {T<:Real}
     derived = derive_params(params)
     NP = derived.N * derived.M
-    nb_contact = count(derived.x_contact)
+    nb_contact = derived.nb_contact
     system_size = 2 * NP + nb_contact
     BCtype = String(derived.params.bc)
     Fr = derived.nd_groups.Fr
     Gamma = derived.nd_groups.Gamma
     We = derived.nd_groups.We
-    kappa = derived.nd_groups.kappa
     Lambda = derived.nd_groups.Lambda
     Re = derived.nd_groups.Re
     I_NP = sparse(T(1) * I, NP, NP)
@@ -373,7 +387,7 @@ function assemble_flexible_system(params::FlexibleParams{T}) where {T<:Real}
     S12[CC[end], R] = (-Complex{T}(1im) * derived.dx * Lambda / We) .* DxFree[1, :]
 
     S32[:, CC] = Complex{T}(1im) .* Dx2Raft
-    S33 .= (derived.dx^2 / kappa) .* I_CC
+    S33 .= Diagonal(derived.dx^2 ./ derived.kappa_vec)
     S32[boundary_contact, :] .= 0
     S33[boundary_contact, :] .= 0
     S33[1, 1] = 1

@@ -15,6 +15,7 @@ include("test_sweep.jl")
 include("test_video.jl")
 include("test_optimization_objective.jl")
 include("test_optimization_gradients.jl")
+include("test_graded_EI.jl")
 if get(ENV, "SURFERBOT_ENABLE_FULL_PARITY", "0") == "1"
     include("test_matlab_parity.jl")
 end
