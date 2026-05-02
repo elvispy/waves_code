@@ -131,7 +131,7 @@ Base.@kwdef struct FlexibleParams{T<:Real}
     motor_position::T = 0.6 / 2.5 * 0.05
     d::Union{Nothing, T} = 0.05
     EI::Union{T, AbstractVector{T}} = 3.0e9 * 3e-2 * 9e-4^3 / 12
-    rho_raft::T = 0.052
+    rho_raft::Union{T, AbstractVector{T}} = 0.052
     L_domain::Union{Nothing, T} = nothing
     domain_depth::Union{Nothing, T} = nothing
     n::Union{Nothing, Int} = nothing
@@ -195,19 +195,17 @@ function derive_params(params::FlexibleParams{T}) where {T<:Real}
 
     L_c = params.L_raft
     t_c = 1 / params.omega
-    m_c = params.rho_raft * L_c
+    rho_raft_scalar = params.rho_raft isa AbstractVector ? minimum(params.rho_raft) : params.rho_raft
+    m_c = rho_raft_scalar * L_c
     F_c = m_c * L_c / t_c^2
 
-    EI_scalar = params.EI isa AbstractVector ?
-                exp(sum(log, params.EI) / length(params.EI)) :
-                params.EI
-
+    EI_scalar = params.EI isa AbstractVector ? minimum(params.EI) : params.EI
     nd_groups = (
-        Gamma = params.rho * params.L_raft^2 / params.rho_raft,
+        Gamma = params.rho * params.L_raft^2 / rho_raft_scalar,
         Fr = sqrt(params.L_raft * params.omega^2 / params.g),
         Re = params.L_raft^2 * params.omega / params.nu,
-        kappa = EI_scalar / (params.rho_raft * params.L_raft^4 * params.omega^2),
-        We = params.rho_raft * params.L_raft * params.omega^2 / params.sigma,
+        kappa = EI_scalar / (rho_raft_scalar * params.L_raft^4 * params.omega^2),
+        We = rho_raft_scalar * params.L_raft * params.omega^2 / params.sigma,
         Lambda = d / params.L_raft,
     )
 
@@ -259,13 +257,15 @@ function derive_params(params::FlexibleParams{T}) where {T<:Real}
     loads = motor_force / F_c * gaussian_load(motor_position / L_c, params.forcing_width, x[x_contact])
 
     nb_contact = count(x_contact)
-    kappa_denom = params.rho_raft * params.L_raft^4 * params.omega^2
     if params.EI isa AbstractVector
         @assert length(params.EI) == nb_contact "EI vector length ($(length(params.EI))) must match contact nodes ($nb_contact)"
-        kappa_vec = params.EI ./ kappa_denom
-    else
-        kappa_vec = fill(params.EI / kappa_denom, nb_contact)
     end
+    if params.rho_raft isa AbstractVector
+        @assert length(params.rho_raft) == nb_contact "rho_raft vector length ($(length(params.rho_raft))) must match contact nodes ($nb_contact)"
+    end
+    EI_vec = params.EI isa AbstractVector ? params.EI : fill(EI_scalar, nb_contact)
+    rho_raft_vec = params.rho_raft isa AbstractVector ? params.rho_raft : fill(rho_raft_scalar, nb_contact)
+    kappa_vec = EI_vec ./ (rho_raft_vec .* params.L_raft^4 .* params.omega^2)
 
     return (
         params = params,
