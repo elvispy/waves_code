@@ -1,9 +1,13 @@
 using CSV
 using DataFrames
+using LinearAlgebra
 using Plots
 using LaTeXStrings
 using Printf
 using Surferbot
+
+include(joinpath(@__DIR__, "prescribed_wn_diagonal_impedance.jl"))
+const ModalPressureMap = Main.PrescribedWnDiagonalImpedance
 
 """
 plot_kappa_Fr_diagnostics.jl
@@ -45,8 +49,70 @@ function surferbot_kappa_Fr(is_coupled::Bool)
     return log10(kappa), log10(Fr)
 end
 
+# ─── Resonance κ prediction via generalized eigenvalue problem ───────────────
+#
+# For fixed Fr, D_m(κ) = κ·b_m + D0_m is linear in κ.  The system matrix
+# A(κ) = Diagonal(D(κ)) − Z_ψ is singular when det A = 0, which is equivalent
+# to the standard eigenvalue problem C·v = κ·v with
+#
+#   C = diag(b)⁻¹ · (Z_ψ − diag(D₀))
+#
+# One N×N eigenvalue problem per Fr value; eigenvalues are generally complex.
+# We scatter Re(κ) > 0 on the (log₁₀κ, log₁₀Fr) heatmap.
+
+function kappa_resonances_at_Fr(base_params, Fr::Real; output_dir, num_modes=8)
+    L     = base_params.L_raft
+    omega = base_params.omega
+    rho_R = base_params.rho_raft isa AbstractVector ?
+            minimum(base_params.rho_raft) : float(base_params.rho_raft)
+
+    g_eff     = L * omega^2 / Fr^2
+    params_Fr = Surferbot.Sweep.apply_parameter_overrides(base_params, (g = g_eff,))
+
+    payload = ModalPressureMap.load_or_compute_modal_pressure_map(
+                  params_Fr; output_dir = output_dir, num_modes_basis = num_modes)
+    Z_psi   = ComplexF64.(payload.Z_psi)
+    beta    = collect(Float64.(payload.beta))   # β_m, dimensional (1/m)
+    d_eff   = Float64(Surferbot.derive_params(params_Fr).d)
+
+    # κ-slope of D_m:  b_m = ρ_R L^4 ω^2 β_m^4
+    b  = rho_R .* L^4 .* omega^2 .* beta .^ 4
+    # κ-independent part of D_m:  D0_m = −ρ_R ω^2 + d ρ g
+    D0 = fill(-rho_R * omega^2 + base_params.rho * g_eff * d_eff, length(beta))
+
+    C = Diagonal(1.0 ./ b) * (Z_psi - Diagonal(ComplexF64.(D0)))
+    return eigvals(Matrix(C))
+end
+
+function overlay_kappa_resonances!(plt, base_params, log10_Fr_vals;
+                                    output_dir, num_modes=8)
+    xs = Float64[]; ys = Float64[]
+    for log10_Fr in log10_Fr_vals
+        Fr = 10.0^log10_Fr
+        kappa_eigs = kappa_resonances_at_Fr(base_params, Fr;
+                                             output_dir = output_dir,
+                                             num_modes  = num_modes)
+        for κ in kappa_eigs
+            Re_kappa = real(κ)
+            Re_kappa > 0 || continue
+            push!(xs, log10(Re_kappa))
+            push!(ys, log10_Fr)
+        end
+        println("  resonance κ done for log10(Fr) = $(round(log10_Fr; digits=3))")
+    end
+    scatter!(plt, xs, ys;
+             marker           = :circle,
+             markersize        = 6,
+             color             = :white,
+             markerstrokecolor = :black,
+             markerstrokewidth = 1.2,
+             label             = L"\det(D - Z_\psi) = 0")
+end
+
 # ─── Render one panel with the same publication style as plot_dimensionless_*
-function render_panel(grid, fig_title, out_base, is_coupled; xlims=nothing, ylims=nothing)
+function render_panel(grid, fig_title, out_base, is_coupled;
+                      xlims=nothing, ylims=nothing,
+                      base_params=nothing, output_dir=nothing, n_eig_Fr=15)
     XLIMS = something(xlims, (minimum(grid.log10_kappa), maximum(grid.log10_kappa)))
     YLIMS = something(ylims, (minimum(grid.log10_Fr),    maximum(grid.log10_Fr)))
 
@@ -82,6 +148,12 @@ function render_panel(grid, fig_title, out_base, is_coupled; xlims=nothing, ylim
              marker = :star5, markersize = 12,
              color = :white, markerstrokecolor = :black, markerstrokewidth = 1,
              label = false)
+
+    if !isnothing(base_params) && !isnothing(output_dir)
+        log10_Fr_vals = range(YLIMS[1], YLIMS[2]; length = n_eig_Fr)
+        overlay_kappa_resonances!(p, base_params, collect(log10_Fr_vals);
+                                   output_dir = output_dir)
+    end
 
     savefig(p, out_base * ".pdf")
     savefig(p, out_base * ".png")
@@ -164,8 +236,12 @@ function main()
             "$adj raft, \$\\Lambda = $Lambda_val\$, \$x_M/L = $xM_str\$ — \$\\alpha\$ field")
 
         is_coupled = case.label == "coupled"
+        bp         = is_coupled ?
+            Surferbot.Analysis.default_coupled_motor_position_EI_sweep().base_params :
+            Surferbot.Analysis.default_uncoupled_motor_position_EI_sweep().base_params
         out_base   = joinpath(fig_dir, "plot_kappa_Fr_$(case.label)")
-        render_panel(grid, fig_title, out_base, is_coupled)
+        render_panel(grid, fig_title, out_base, is_coupled;
+                     base_params = bp, output_dir = output_dir)
 
         if !is_coupled
             render_linear_panel(grid, fig_title, out_base * "_linear", is_coupled)
