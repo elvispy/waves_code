@@ -80,7 +80,14 @@ function kappa_resonances_at_Fr(base_params, Fr::Real; output_dir, num_modes=8)
     # κ-independent part of D_m:  D0_m = −ρ_R ω^2 + d ρ g
     D0 = fill(-rho_R * omega^2 + base_params.rho * g_eff * d_eff, length(beta))
 
-    C = Diagonal(1.0 ./ b) * (Z_psi - Diagonal(ComplexF64.(D0)))
+    # Rigid-body modes (β = 0) have b_m = 0: D_m is κ-independent so they
+    # have no resonant κ.  Restrict C to elastic modes only.
+    elastic = b .> sqrt(eps()) .* maximum(b)
+    b_el  = b[elastic]
+    D0_el = D0[elastic]
+    Z_el  = Z_psi[elastic, elastic]
+
+    C = Diagonal(1.0 ./ b_el) * (Z_el - Diagonal(ComplexF64.(D0_el)))
     return eigvals(Matrix(C))
 end
 
