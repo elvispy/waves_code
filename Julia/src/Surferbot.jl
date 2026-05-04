@@ -265,7 +265,8 @@ function derive_params(params::FlexibleParams{T}) where {T<:Real}
     end
     EI_vec = params.EI isa AbstractVector ? params.EI : fill(EI_scalar, nb_contact)
     rho_raft_vec = params.rho_raft isa AbstractVector ? params.rho_raft : fill(rho_raft_scalar, nb_contact)
-    kappa_vec = EI_vec ./ (rho_raft_vec .* params.L_raft^4 .* params.omega^2)
+    kappa_vec   = EI_vec ./ (rho_raft_scalar .* params.L_raft^4 .* params.omega^2)
+    inertia_vec = rho_raft_vec ./ rho_raft_scalar
 
     return (
         params = params,
@@ -291,7 +292,8 @@ function derive_params(params::FlexibleParams{T}) where {T<:Real}
         x_free = x_free,
         loads = loads,
         nb_contact = nb_contact,
-        kappa_vec = kappa_vec,
+        kappa_vec   = kappa_vec,
+        inertia_vec = inertia_vec,
     )
 end
 
@@ -372,8 +374,9 @@ function assemble_flexible_system(params::FlexibleParams{T}) where {T<:Real}
     DxRaft = getNonCompactFDmatrix(nb_contact, T(1.0), 1, derived.params.ooa)
     Dx2Raft = getNonCompactFDmatrix(nb_contact, T(1.0), 2, derived.params.ooa)
 
+    inertia_diag = Diagonal(Complex{T}.(1im .* derived.inertia_vec .- 1im * Gamma * Lambda / Fr^2))
     S11[CC, CC] = (Complex{T}(1im) * Lambda * Gamma * derived.dx^2) .* I_NP[CC, CC] .+ (T(2) * Gamma * Lambda / Re) .* Dx2Raft
-    S12[CC, CC] = ((Complex{T}(1im) - Complex{T}(1im) * Gamma * Lambda / Fr^2) * derived.dx^2) .* I_NP[CC, CC]
+    S12[CC, CC] = derived.dx^2 .* inertia_diag
     S13[CC, :] = Dx2Raft
 
     boundary_contact = [1, nb_contact]
