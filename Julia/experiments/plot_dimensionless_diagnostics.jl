@@ -567,7 +567,7 @@ function main()
         # κ-window of physical interest; clip to CSV data extent so the panel
         # has no empty strip past the largest sampled κ.
         max_logK_data = maximum(logEI_axis) - shift
-        XLIMS = (-4.0, min(0.0, max_logK_data))
+        XLIMS = (-4.0, max_logK_data)
         YLIMS = (0.0, 0.5)
 
         # Plot options shared by both heatmap and scatter calls.

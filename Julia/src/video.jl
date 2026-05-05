@@ -305,36 +305,86 @@ end
     plot_frame(record, t; omega, x_contact_mask, motor_idx, show_motor)
 
 Generate a single frame plot for the simulation at time `t`.
+The raft is colour-coded by log₁₀(EI): dark = stiff, light grey = compliant.
 """
 function plot_frame(record::SurferbotRunRecord, t::Real; omega::Real, x_contact_mask, motor_idx::Union{Nothing,Int}, show_motor::Bool)
     scaleY = 1e6
-    y = real.(record.eta .* exp.(1im * omega * t)) .* scaleY
+    y        = real.(record.eta .* exp.(1im * omega * t)) .* scaleY
     x_scaled = record.x .* 1e2
-    y_limit = maximum(abs.(record.eta)) * scaleY * 1.1
+    y_limit  = maximum(abs.(record.eta)) * scaleY * 1.1
 
+    # ── Water surface ─────────────────────────────────────────────────────────
     p = plot(
-        x_scaled,
-        y;
-        fillrange = -y_limit,
-        fillalpha = 0.25,
-        color = :steelblue,
-        linewidth = 4,
-        label = false,
-        xlabel = "x (cm)",
-        ylabel = "y (um)",
-        ylim = (-y_limit, y_limit * 1.35),
-        xlim = (first(x_scaled), last(x_scaled)),
-        title = @sprintf("f = %.2f Hz, t = %.3f s", omega / (2π), t),
-        legend = show_motor,
-        size = (1400, 480),
+        x_scaled, y;
+        fillrange  = -y_limit,
+        fillcolor  = RGBA(0.18, 0.48, 0.80, 0.18),
+        fillalpha  = 1.0,
+        color      = RGB(0.12, 0.38, 0.72),
+        linewidth  = 2.0,
+        label      = false,
+        xlabel     = "x  (cm)",
+        ylabel     = "η  (μm)",
+        ylim       = (-y_limit, y_limit * 1.45),
+        xlim       = (first(x_scaled), last(x_scaled)),
+        title      = @sprintf("f = %.1f Hz     t = %.3f s     U = %.3f mm/s",
+                               omega / (2π), t, record.U * 1e3),
+        legend     = show_motor ? :topright : false,
+        background_color_legend = RGBA(1, 1, 1, 0.85),
+        size       = (1400, 520),
+        dpi        = 150,
+        background_color = :white,
+        framestyle = :box,
+        grid       = false,
+        margin     = 8Plots.mm,
+        guidefontsize  = 18,
+        tickfontsize   = 15,
+        titlefontsize  = 16,
+        legendfontsize = 15,
+        fontfamily = "Computer Modern",
     )
 
-    if !isempty(x_contact_mask)
-        plot!(p, x_scaled[x_contact_mask], y[x_contact_mask]; color = :black, linewidth = 8, label = false)
+    # ── Raft coloured by log₁₀(EI): dark = stiff, light grey = compliant ─────
+    if !isempty(x_contact_mask) && any(x_contact_mask)
+        x_raft = x_scaled[x_contact_mask]
+        y_raft = y[x_contact_mask]
+        n_raft = length(x_raft)
+
+        EI_raw = maybe_get(record.args, :EI, nothing)
+        if EI_raw !== nothing
+            EI_vec = EI_raw isa AbstractVector ? Float64.(EI_raw) : fill(Float64(EI_raw), n_raft)
+
+            # Replace Inf / NaN with a large sentinel before taking log
+            EI_fin  = [isfinite(e) && e > 0 ? e : 1e30 for e in EI_vec]
+            log_EI  = log10.(EI_fin)
+
+            lo, hi  = extrema(log_EI)
+            span    = hi - lo
+            # norm_EI: 0 = most compliant (light grey), 1 = stiffest (dark)
+            norm_EI = span < 1e-10 ? zeros(n_raft) : (log_EI .- lo) ./ span
+
+            scatter!(p, x_raft, y_raft;
+                     marker_z          = norm_EI,
+                     colormap          = cgrad([:gainsboro, :black]),
+                     clims             = (0.0, 1.0),
+                     colorbar          = false,
+                     markersize         = 7,
+                     markerstrokewidth  = 0,
+                     label              = false)
+        else
+            # Fallback for scalar or missing EI
+            plot!(p, x_raft, y_raft; color = :black, linewidth = 8, label = false)
+        end
     end
 
-    if show_motor
-        motor_idx === nothing || scatter!(p, [x_scaled[motor_idx]], [y[motor_idx]]; color = :goldenrod, markersize = 8, label = "Motor")
+    # ── Motor marker ──────────────────────────────────────────────────────────
+    if show_motor && motor_idx !== nothing
+        scatter!(p, [x_scaled[motor_idx]], [y[motor_idx]];
+                 marker             = :star5,
+                 markersize          = 18,
+                 color              = RGB(0.95, 0.75, 0.05),
+                 markerstrokecolor   = :white,
+                 markerstrokewidth   = 1.5,
+                 label              = "Motor")
     end
 
     return p
