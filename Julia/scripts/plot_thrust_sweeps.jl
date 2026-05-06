@@ -22,7 +22,7 @@ using Printf
 
 const CACHE_PATH = joinpath(@__DIR__, "..", "output", "jld2", "thrust_sweeps.jld2")
 const FIG_DIR    = joinpath(@__DIR__, "..", "output", "figures")
-const N_SWEEP    = 20
+const N_SWEEP    = 50
 const NU_WATER   = 1e-6
 
 # ─── Per-solve extraction ─────────────────────────────────────────────────────
@@ -156,10 +156,10 @@ const BASE_OPTS = (
 )
 
 function make_panel(sw, xlabel_str, title_str, sp_x, sp_T, sp_S;
-                    log_x = false)
+                    log_x = false, xticks = :auto)
     yt         = sw.thrust .* 1e3
     yS         = sw.Sxx    .* 1e3
-    ylabel_str = L"$T/d\;(\mathrm{mN\,m^{-1}})$"
+    ylabel_str = L"$F_T/d\;(\mathrm{mN\,m^{-1}})$"
     sp_y       = sp_T * 1e3
 
     p = plot(sw.x, yt;
@@ -169,6 +169,7 @@ function make_panel(sw, xlabel_str, title_str, sp_x, sp_T, sp_S;
              ylabel     = ylabel_str,
              title      = title_str,
              xscale     = log_x ? :log10 : :identity,
+             xticks     = xticks,
              BASE_OPTS...)
 
     plot!(p, sw.x, yS;
@@ -200,13 +201,13 @@ function main()
         L"$\kappa$",
         "Stiffness sweep",
         sp.kappa, sp.thrust, sp.Sxx;
-        log_x = true)
+        log_x = true, xticks = 10.0 .^ collect(-4:1))
 
     p3 = make_panel(sw3,
         L"$Re$",
         "Reynolds sweep",
         sp.Re, sp.thrust, sp.Sxx;
-        log_x = true)
+        log_x = true, xticks = 10.0 .^ collect(4:8))
 
     mkpath(FIG_DIR)
     for (fig, name) in [(p1, "thrust_sweep_xM"), (p2, "thrust_sweep_kappa"), (p3, "thrust_sweep_Re")]
