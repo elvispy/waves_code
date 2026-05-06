@@ -10,7 +10,7 @@ function plot_sweep_motorPosition_EI(saveDir, export, dataFile, edgeSource)
 
 if nargin < 1, saveDir = 'data'; end
 if nargin < 2, export = false; end
-if nargin < 3 || isempty(dataFile), dataFile = 'sweepMotorPositionEI2.mat'; end
+if nargin < 3 || isempty(dataFile), dataFile = 'sweepMotorPositionEI.mat'; end
 if nargin < 4 || isempty(edgeSource), edgeSource = 'domain'; end
 if ~exist(saveDir,'dir'), mkdir(saveDir); end
 
