@@ -156,18 +156,11 @@ const BASE_OPTS = (
 )
 
 function make_panel(sw, xlabel_str, title_str, sp_x, sp_T, sp_S;
-                    log_x = false, log_y = false)
-    if log_y
-        yt = abs.(sw.thrust)
-        yS = abs.(sw.Sxx)
-        ylabel_str = L"$|F_T L\,/\,(d\,F_c)|$"
-        sp_y = abs(sp_T)
-    else
-        yt = sw.thrust .* 1e3
-        yS = sw.Sxx    .* 1e3
-        ylabel_str = L"$F_T L\,/\,(d\,F_c)\;\times 10^{-3}$"
-        sp_y = sp_T * 1e3
-    end
+                    log_x = false)
+    yt         = sw.thrust .* 1e3
+    yS         = sw.Sxx    .* 1e3
+    ylabel_str = L"$T/d\;(\mathrm{mN\,m^{-1}})$"
+    sp_y       = sp_T * 1e3
 
     p = plot(sw.x, yt;
              label      = "Numerics",
@@ -176,16 +169,13 @@ function make_panel(sw, xlabel_str, title_str, sp_x, sp_T, sp_S;
              ylabel     = ylabel_str,
              title      = title_str,
              xscale     = log_x ? :log10 : :identity,
-             yscale     = log_y ? :log10 : :identity,
              BASE_OPTS...)
 
     plot!(p, sw.x, yS;
           label     = "Longuet-Higgins",
           color     = :crimson, linewidth = 2.5, linestyle = :dash)
 
-    if !log_y
-        hline!(p, [0.0]; color = :black, linewidth = 0.8, linestyle = :dot, label = false)
-    end
+    hline!(p, [0.0]; color = :black, linewidth = 0.8, linestyle = :dot, label = false)
 
     scatter!(p, [sp_x], [sp_y];
              marker           = :star5, markersize = 14,
@@ -216,7 +206,7 @@ function main()
         L"$Re$",
         "Reynolds sweep",
         sp.Re, sp.thrust, sp.Sxx;
-        log_x = true, log_y = true)
+        log_x = true)
 
     mkpath(FIG_DIR)
     for (fig, name) in [(p1, "thrust_sweep_xM"), (p2, "thrust_sweep_kappa"), (p3, "thrust_sweep_Re")]
