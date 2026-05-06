@@ -30,3 +30,16 @@ using Surferbot
     @test isapprox(nd.Gamma, params.rho * params.L_raft^2 / params.rho_raft; rtol=1e-12)
     @test isapprox(nd.Lambda, derived.d / params.L_raft; rtol=1e-12)
 end
+
+@testset "derive_params depth selection converges at 80 Hz capillary regime" begin
+    params = FlexibleParams(
+        sigma = 72.2e-3,
+        rho = 1000.0,
+        nu = 0.0,
+        g = 9.81,
+        L_raft = 0.05,
+        omega = 2 * pi * 80.0,
+    )
+    derived = derive_params(params)
+    @test tanh(real(derived.k) * derived.domain_depth) >= 0.99
+end

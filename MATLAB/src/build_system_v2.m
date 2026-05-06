@@ -127,7 +127,7 @@ CC = idxContact;
 %[Dx4Raft, ~] = getNonCompactFDmatrix(sum(x_contact),1,4,args.ooa);
 
 
-S2D{1, 1}(CC, CC) = 1.0i * Lambda * Gamma * dx^2 * I_NP(CC, CC) + 2*Gamma*Lambda / Re * Dx2Raft;
+S2D{1, 1}(CC, CC) = 1.0i * Lambda * Gamma * dx^2 * I_NP(CC, CC) - 2*Gamma*Lambda / Re * Dx2Raft;
 S2D{1, 2}(CC, CC) = (1.0i - 1.0i * Gamma * Lambda/Fr^2) * dx^2 * I_NP(CC, CC); %+ (-1.0i * kappa/dx^2) * Dx4Raft;
 S2D{1, 3}(CC, :)  =  Dx2Raft;
 

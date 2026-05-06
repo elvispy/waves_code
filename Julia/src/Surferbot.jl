@@ -213,13 +213,9 @@ function derive_params(params::FlexibleParams{T}) where {T<:Real}
     k = dispersion_k(params.omega, params.g, current_depth, params.nu, params.sigma, params.rho)
     
     if isnothing(params.domain_depth)
-        for _ in 1:50
-            if isnan(k) || tanh(real(k) * current_depth) < T(0.99)
-                current_depth *= T(1.05)
-                k = dispersion_k(params.omega, params.g, current_depth, params.nu, params.sigma, params.rho)
-            else
-                break
-            end
+        while isnan(k) || tanh(real(k) * current_depth) < T(0.99)
+            current_depth *= T(1.05)
+            k = dispersion_k(params.omega, params.g, current_depth, params.nu, params.sigma, params.rho)
         end
     end
     domain_depth = current_depth
@@ -375,7 +371,7 @@ function assemble_flexible_system(params::FlexibleParams{T}) where {T<:Real}
     Dx2Raft = getNonCompactFDmatrix(nb_contact, T(1.0), 2, derived.params.ooa)
 
     inertia_diag = Diagonal(Complex{T}.(1im .* derived.inertia_vec .- 1im * Gamma * Lambda / Fr^2))
-    S11[CC, CC] = (Complex{T}(1im) * Lambda * Gamma * derived.dx^2) .* I_NP[CC, CC] .+ (T(2) * Gamma * Lambda / Re) .* Dx2Raft
+    S11[CC, CC] = (Complex{T}(1im) * Lambda * Gamma * derived.dx^2) .* I_NP[CC, CC] .- (T(2) * Gamma * Lambda / Re) .* Dx2Raft
     S12[CC, CC] = derived.dx^2 .* inertia_diag
     S13[CC, :] = Dx2Raft
 
