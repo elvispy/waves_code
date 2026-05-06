@@ -58,7 +58,7 @@ function run_sweep_xM(bp)
     Sxx = Vector{Float64}(undef, N_SWEEP)
     println("Sweep 1/3: motor position ($N_SWEEP points) …")
     for (i, xM_norm) in enumerate(xs)
-        T[i], Sxx[i] = solve_one((motor_position = xM_norm * L, nu = NU_WATER), bp)
+        T[i], Sxx[i] = solve_one((motor_position = xM_norm * L, nu = 0.0), bp)
         @printf "  [%2d/%d]  xM/L=%.3f   T/d=%+.3e   Sxx=%+.3e\n" i N_SWEEP xM_norm T[i] Sxx[i]
     end
     return (; x = xs, thrust = T, Sxx)
@@ -77,7 +77,7 @@ function run_sweep_kappa(bp)
     println("Sweep 2/3: stiffness κ ($N_SWEEP points) …")
     for (i, lk) in enumerate(log10_kappa)
         EI_i = 10.0^lk * EI_scale
-        T[i], Sxx[i] = solve_one((EI = EI_i, motor_position = xM, nu = NU_WATER), bp)
+        T[i], Sxx[i] = solve_one((EI = EI_i, motor_position = xM, nu = 0.0), bp)
         @printf "  [%2d/%d]  log10(κ)=%.2f   T/d=%+.3e   Sxx=%+.3e\n" i N_SWEEP lk T[i] Sxx[i]
     end
     return (; x = log10_kappa, thrust = T, Sxx)
