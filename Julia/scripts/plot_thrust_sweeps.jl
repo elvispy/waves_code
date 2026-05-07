@@ -143,19 +143,18 @@ const BASE_OPTS = (
     legend     = :topright,
     background_color_legend = RGBA(1, 1, 1, 0.85),
     foreground_color_legend = :black,
-    size       = (700, 380),
+    size       = (875, 380),
     dpi        = 220,
     margin     = 5Plots.mm,
     framestyle = :box,
     grid       = false,
     guidefontsize  = 14,
     tickfontsize   = 12,
-    titlefontsize  = 13,
     legendfontsize = 12,
     fontfamily = "Computer Modern",
 )
 
-function make_panel(sw, xlabel_str, title_str, sp_x, sp_T, sp_S;
+function make_panel(sw, xlabel_str, sp_x, sp_T, sp_S;
                     log_x = false, xticks = :auto)
     yt         = sw.thrust .* 1e3
     yS         = sw.Sxx    .* 1e3
@@ -167,7 +166,6 @@ function make_panel(sw, xlabel_str, title_str, sp_x, sp_T, sp_S;
              color      = :royalblue, linewidth = 2.5,
              xlabel     = xlabel_str,
              ylabel     = ylabel_str,
-             title      = title_str,
              xscale     = log_x ? :log10 : :identity,
              xticks     = xticks,
              BASE_OPTS...)
@@ -194,18 +192,15 @@ function main()
 
     p1 = make_panel(sw1,
         L"$x_M / L$",
-        "Motor position sweep",
         sp.xM_norm, sp.thrust, sp.Sxx)
 
     p2 = make_panel(sw2,
         L"$\kappa$",
-        "Stiffness sweep",
         sp.kappa, sp.thrust, sp.Sxx;
         log_x = true, xticks = 10.0 .^ collect(-4:1))
 
     p3 = make_panel(sw3,
         L"$Re$",
-        "Reynolds sweep",
         sp.Re, sp.thrust, sp.Sxx;
         log_x = true, xticks = 10.0 .^ collect(4:8))
 
